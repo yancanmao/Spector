@@ -552,6 +552,10 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		for (ExecutionVertex ev : getTaskVertices()) {
 			ev.cancel();
 		}
+		// cancel standby executionvertex
+		for (ExecutionVertex ev : getStandbyExecutionVertexs()) {
+			ev.cancel();
+		}
 	}
 
 	/**
@@ -569,9 +573,13 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 
 	@Nonnull
 	private Collection<CompletableFuture<?>> mapExecutionVertices(final Function<ExecutionVertex, CompletableFuture<?>> mapFunction) {
-		return Arrays.stream(getTaskVertices())
+		Collection<CompletableFuture<?>> future = Arrays.stream(getTaskVertices())
 			.map(mapFunction)
 			.collect(Collectors.toList());
+		future.addAll(getStandbyExecutionVertexs().stream()
+			.map(mapFunction)
+			.collect(Collectors.toList()));
+		return future;
 	}
 
 	public void fail(Throwable t) {

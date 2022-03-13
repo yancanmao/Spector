@@ -756,7 +756,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			}
 
 			// these two are the common cases where we need to send a cancel call
-			else if (current == RUNNING || current == DEPLOYING) {
+			else if (current == RUNNING || current == STANDBY || current == DEPLOYING) {
 				// try to transition to canceling, if successful, send the cancel call
 				if (startCancelling(NUM_CANCEL_CALL_TRIES)) {
 					return;
@@ -880,10 +880,10 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				}
 			}
 			// ----------------------------------------------------------------
-			// Consumer is running => send update message now
+			// Consumer is running (or a standby task called to run) => send update message now
 			// ----------------------------------------------------------------
 			else {
-				if (consumerState == RUNNING) {
+				if (consumerState == RUNNING || consumerState == STANDBY) {
 					final LogicalSlot consumerSlot = consumer.getAssignedResource();
 
 					if (consumerSlot == null) {
@@ -1313,6 +1313,15 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 			return false;
 		}
+	}
+
+	boolean switchToStandby() {
+
+		if (!this.isStandby) {
+			markFailed(new Exception("Tried to switch to STANDBY state a non-standby execution instance."));
+		}
+
+		return transitionState(DEPLOYING, STANDBY);
 	}
 
 	/**

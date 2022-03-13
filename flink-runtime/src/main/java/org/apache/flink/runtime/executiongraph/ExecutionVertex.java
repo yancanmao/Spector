@@ -194,7 +194,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			0,
 			initialGlobalModVersion,
 			createTimestamp,
-			timeout);
+			timeout,
+			isStandby);
 
 		// create a co-location scheduling hint, if necessary
 		CoLocationGroup clg = jobVertex.getCoLocationGroup();

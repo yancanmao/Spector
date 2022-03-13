@@ -1634,6 +1634,9 @@ public class ExecutionGraph implements AccessExecutionGraph {
 						attempt.markFailed(state.getError(userClassLoader), accumulators, state.getIOMetrics());
 						return true;
 
+					case STANDBY:
+						return attempt.switchToStandby();
+
 					default:
 						// we mark as failed and return false, which triggers the TaskManager
 						// to remove the task
