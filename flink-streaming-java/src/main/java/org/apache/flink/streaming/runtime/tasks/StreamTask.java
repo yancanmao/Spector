@@ -67,9 +67,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -179,6 +177,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	private final List<RecordWriter<SerializationDelegate<StreamRecord<OUT>>>> recordWriters;
 
+	/**
+	 * Future for standby tasks that completes when they are required to run
+	 */
+	private final CompletableFuture<Void> standbyFuture;
+
 	// ------------------------------------------------------------------------
 
 	/**
@@ -210,6 +213,12 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		this.configuration = new StreamConfig(getTaskConfiguration());
 		this.accumulatorMap = getEnvironment().getAccumulatorRegistry().getUserMap();
 		this.recordWriters = createRecordWriters(configuration, environment);
+
+		if (isStandby()) {
+			this.standbyFuture = new CompletableFuture<>();
+		} else {
+			this.standbyFuture = null;
+		}
 	}
 
 	// ------------------------------------------------------------------------
@@ -287,6 +296,19 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				// registers a timer, that fires before the open() is called.
 
 				initializeState();
+			}
+
+			// Block until the standby task is requested to run.
+			// In the meantime checkpointed state snapshots of the running task mirrored by the
+			// standby task are dispatched to the standby task. See Task.dispatchStateToStandbyTask().
+			// Also block until input channel connections are ready, determinants have arrived and we are ready to
+			// replay.
+			if (isStandby())
+				blockStandbyTask();
+
+			// we need to make sure that any triggers scheduled in open() cannot be
+			// executed before all operators are opened
+			synchronized (lock) {
 				openAllOperators();
 			}
 
@@ -389,6 +411,13 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		}
 	}
 
+	private void blockStandbyTask() throws InterruptedException, ExecutionException {
+		getEnvironment().getContainingTask().transitionToStandbyState();
+		standbyFuture.get();
+		// TODO: By far, we do not need to make standby tasks to replay/switch to running
+		LOG.debug("Task {} starts recovery after standbyFuture {}.", getName(), standbyFuture);
+	}
+
 	@Override
 	public final void cancel() throws Exception {
 		isRunning = false;
@@ -410,6 +439,10 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	public final boolean isCanceled() {
 		return canceled;
+	}
+
+	public final boolean isStandby() {
+		return getEnvironment().getContainingTask().getIsStandby();
 	}
 
 	/**
@@ -729,7 +762,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		checkpointingOperation.executeCheckpointing();
 	}
 
-	private void initializeState() throws Exception {
+	public void initializeState() throws Exception {
 
 		StreamOperator<?>[] allOperators = operatorChain.getAllOperators();
 
