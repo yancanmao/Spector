@@ -248,4 +248,15 @@ public abstract class AbstractInvokable {
 	public void notifyCheckpointComplete(long checkpointId) throws Exception {
 		throw new UnsupportedOperationException(String.format("notifyCheckpointComplete not supported by %s", this.getClass().getName()));
 	}
+
+	public void initializeState() throws Exception {
+
+	}
+
+	public void notifyStartedRestoringCheckpoint(long checkpointId){
+
+	}
+	public void notifyCompletedRestoringCheckpoint(long checkpointId){
+
+	}
 }

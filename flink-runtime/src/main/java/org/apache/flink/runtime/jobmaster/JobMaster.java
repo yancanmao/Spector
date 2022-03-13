@@ -99,6 +99,7 @@ import org.apache.flink.runtime.rpc.FencedRpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.RpcUtils;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils;
+import org.apache.flink.runtime.spector.JobStateCoordinator;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.taskexecutor.AccumulatorReport;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
@@ -224,6 +225,11 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 	private Map<String, Object> accumulators;
 
+	/**
+	 * For fine-grained state management
+	 */
+	private final JobStateCoordinator jobStateCoordinator;
+
 	// ------------------------------------------------------------------------
 
 	public JobMaster(
@@ -291,6 +297,10 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		this.establishedResourceManagerConnection = null;
 
 		this.accumulators = new HashMap<>();
+
+		this.jobStateCoordinator = new JobStateCoordinator(
+			jobGraph, executionGraph, userCodeLoader);
+		jobStateCoordinator.notifyNewVertices(executionGraph.getExecutionJobVertices());
 	}
 
 	//----------------------------------------------------------------------------------------------

@@ -146,6 +146,9 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	@Nullable
 	private final JobManagerTaskRestore taskRestore;
 
+	/** Whether the deployment concerns a standby task. */
+	private final boolean isStandby;
+
 	public TaskDeploymentDescriptor(
 		JobID jobId,
 		MaybeOffloaded<JobInformation> serializedJobInformation,
@@ -158,6 +161,25 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		@Nullable JobManagerTaskRestore taskRestore,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors) {
+
+		this(jobId, serializedJobInformation, serializedTaskInformation,
+			executionAttemptId, allocationId, subtaskIndex, attemptNumber,
+			targetSlotNumber, taskRestore, resultPartitionDeploymentDescriptors,
+			inputGateDeploymentDescriptors, false);
+	}
+
+	public TaskDeploymentDescriptor(
+		JobID jobId,
+		MaybeOffloaded<JobInformation> serializedJobInformation,
+		MaybeOffloaded<TaskInformation> serializedTaskInformation,
+		ExecutionAttemptID executionAttemptId,
+		AllocationID allocationId,
+		int subtaskIndex,
+		int attemptNumber,
+		int targetSlotNumber,
+		@Nullable JobManagerTaskRestore taskRestore,
+		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors, boolean isStandby) {
 
 		this.jobId = Preconditions.checkNotNull(jobId);
 
@@ -180,6 +202,8 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 		this.producedPartitions = Preconditions.checkNotNull(resultPartitionDeploymentDescriptors);
 		this.inputGates = Preconditions.checkNotNull(inputGateDeploymentDescriptors);
+
+		this.isStandby = isStandby;
 	}
 
 	/**
@@ -346,5 +370,9 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		strBuilder.append("]");
 
 		return strBuilder.toString();
+	}
+
+	public boolean getIsStandby() {
+		return isStandby;
 	}
 }

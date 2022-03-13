@@ -107,6 +107,11 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	/** The current or latest execution attempt of this vertex's task. */
 	private volatile Execution currentExecution;	// this field must never be null
 
+	/** Whether this is a standby execution vertex.
+	 *  In this case the underlying task waits in STANDBY state to maintain replicated running state backend
+	 *  for current execution job vertex on each node */
+	private volatile boolean isStandby;
+
 	// --------------------------------------------------------------------------------------------
 
 	/**
@@ -129,6 +134,18 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			JobManagerOptions.MAX_ATTEMPTS_HISTORY_SIZE.defaultValue());
 	}
 
+	public ExecutionVertex(
+		ExecutionJobVertex jobVertex,
+		int subTaskIndex,
+		IntermediateResult[] producedDataSets,
+		Time timeout,
+		long initialGlobalModVersion,
+		long createTimestamp,
+		int maxPriorExecutionHistoryLength) {
+		this(jobVertex, subTaskIndex, producedDataSets, timeout, initialGlobalModVersion,
+			createTimestamp, maxPriorExecutionHistoryLength, false);
+	}
+
 	/**
 	 * Creates an ExecutionVertex.
 	 *
@@ -148,12 +165,15 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			Time timeout,
 			long initialGlobalModVersion,
 			long createTimestamp,
-			int maxPriorExecutionHistoryLength) {
+			int maxPriorExecutionHistoryLength,
+			boolean isStandby) {
+
+		this.isStandby = isStandby;
 
 		this.jobVertex = jobVertex;
 		this.subTaskIndex = subTaskIndex;
-		this.taskNameWithSubtask = String.format("%s (%d/%d)",
-				jobVertex.getJobVertex().getName(), subTaskIndex + 1, jobVertex.getParallelism());
+		this.taskNameWithSubtask = String.format("%s (%d/%d) isStandby: %s",
+				jobVertex.getJobVertex().getName(), subTaskIndex + 1, jobVertex.getParallelism(), isStandby);
 
 		this.resultPartitions = new LinkedHashMap<>(producedDataSets.length, 1);
 
@@ -188,6 +208,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		getExecutionGraph().registerExecution(currentExecution);
 
 		this.timeout = timeout;
+
 	}
 
 
@@ -805,7 +826,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			ExecutionAttemptID executionId,
 			LogicalSlot targetSlot,
 			@Nullable JobManagerTaskRestore taskRestore,
-			int attemptNumber) throws ExecutionGraphException {
+			int attemptNumber,
+			boolean isStandby) throws ExecutionGraphException {
 
 		// Produced intermediate results
 		List<ResultPartitionDeploymentDescriptor> producedPartitions = new ArrayList<>(resultPartitions.size());
@@ -895,7 +917,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			targetSlot.getPhysicalSlotNumber(),
 			taskRestore,
 			producedPartitions,
-			consumedPartitions);
+			consumedPartitions,
+			isStandby);
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -910,5 +933,13 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	@Override
 	public ArchivedExecutionVertex archive() {
 		return new ArchivedExecutionVertex(this);
+	}
+
+	public Time getTimeout() {
+		return timeout;
+	}
+
+	public String getVertexId() {
+		return taskNameWithSubtask;
 	}
 }

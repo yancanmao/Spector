@@ -70,23 +70,12 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.Executor;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import static org.apache.flink.runtime.execution.ExecutionState.CANCELED;
-import static org.apache.flink.runtime.execution.ExecutionState.CANCELING;
-import static org.apache.flink.runtime.execution.ExecutionState.CREATED;
-import static org.apache.flink.runtime.execution.ExecutionState.DEPLOYING;
-import static org.apache.flink.runtime.execution.ExecutionState.FAILED;
-import static org.apache.flink.runtime.execution.ExecutionState.FINISHED;
-import static org.apache.flink.runtime.execution.ExecutionState.RUNNING;
-import static org.apache.flink.runtime.execution.ExecutionState.SCHEDULED;
+import static org.apache.flink.runtime.execution.ExecutionState.*;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -182,7 +171,19 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 	private volatile IOMetrics ioMetrics;
 
+	private boolean isStandby;
+
 	// --------------------------------------------------------------------------------------------
+
+	public Execution(
+		Executor executor,
+		ExecutionVertex vertex,
+		int attemptNumber,
+		long globalModVersion,
+		long startTimestamp,
+		Time rpcTimeout) {
+		this(executor, vertex, attemptNumber, globalModVersion, startTimestamp, rpcTimeout, false);
+	}
 
 	/**
 	 * Creates a new Execution attempt.
@@ -206,7 +207,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			int attemptNumber,
 			long globalModVersion,
 			long startTimestamp,
-			Time rpcTimeout) {
+			Time rpcTimeout,
+			boolean isStandby) {
 
 		this.executor = checkNotNull(executor);
 		this.vertex = checkNotNull(vertex);
@@ -225,6 +227,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		this.taskManagerLocationFuture = new CompletableFuture<>();
 
 		this.assignedResource = null;
+
+		this.isStandby = isStandby;
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -253,6 +257,10 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	@Nullable
 	public AllocationID getAssignedAllocationID() {
 		return assignedAllocationID;
+	}
+
+	public boolean getIsStandby() {
+		return isStandby;
 	}
 
 	/**
@@ -358,8 +366,50 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	 * @param taskRestore information to restore the state
 	 */
 	public void setInitialState(@Nullable JobManagerTaskRestore taskRestore) {
-		checkState(state == CREATED, "Can only assign operator state when execution attempt is in CREATED");
+		checkState(state == CREATED || (isStandby && state == STANDBY),
+			"Can only assign operator state when execution attempt is a) in CREATED state or b) a " +
+				"standby execution attempt in STANDBY state. execution: %s, isStandby: %s, state: %s.",
+			this, isStandby, state);
 		this.taskRestore = taskRestore;
+
+		if (isStandby && state == STANDBY) {
+			CompletableFuture<Acknowledge> ack = dispatchStateToStandbyTaskRpcCall(taskRestore);
+			//We must synchronously wait for the result
+			try {
+				ack.get();
+			} catch (InterruptedException | ExecutionException e) {
+				e.printStackTrace();
+			}
+			LOG.info("++++++ Dispatch state snapshot {} to standby task {}.", taskRestore, vertex.getTaskNameWithSubtaskIndex());
+		}
+	}
+
+	/**
+	 * This method sends a dispatchStateToStandbyTask message to the instance of the assigned slot.
+	 *
+	 * <p>The sending is tried up to NUM_CANCEL_CALL_TRIES times.
+	 * @return
+	 */
+	private CompletableFuture<Acknowledge> dispatchStateToStandbyTaskRpcCall(JobManagerTaskRestore taskRestore) {
+		final LogicalSlot slot = assignedResource;
+
+		final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+
+		CompletableFuture<Acknowledge> dispatchStateResultFuture = FutureUtils.retry(
+			() -> taskManagerGateway.dispatchStateToStandbyTask(attemptId, taskRestore, rpcTimeout),
+			NUM_CANCEL_CALL_TRIES,
+			executor);
+
+		dispatchStateResultFuture.whenCompleteAsync(
+			(ack, failure) -> {
+				if (failure != null) {
+					fail(new Exception("State snapshot could not be dispatched to standby task " +
+						vertex.getTaskNameWithSubtaskIndex() + '.', failure));
+				}
+			},
+			executor);
+
+		return dispatchStateResultFuture;
 	}
 
 	/**
@@ -614,15 +664,20 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			}
 
 			if (LOG.isInfoEnabled()) {
-				LOG.info(String.format("Deploying %s (attempt #%d) to %s", vertex.getTaskNameWithSubtaskIndex(),
-						attemptNumber, getAssignedResourceLocation()));
+				LOG.info(String.format("Deploying %s to %s (TaskManager location: %s)", this,
+					getAssignedResourceLocation().getHostname(),
+					slot.getTaskManagerLocation()
+				));
 			}
+
+			LOG.info("Creating deployment descriptor for {}", this.getVertex().getVertexId());
 
 			final TaskDeploymentDescriptor deployment = vertex.createDeploymentDescriptor(
 				attemptId,
 				slot,
 				taskRestore,
-				attemptNumber);
+				attemptNumber,
+				isStandby);
 
 			// null taskRestore to let it be GC'ed
 			taskRestore = null;

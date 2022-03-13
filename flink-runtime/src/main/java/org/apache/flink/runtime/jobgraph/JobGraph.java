@@ -26,7 +26,9 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
+import org.apache.flink.runtime.spector.JobGraphRescaler;
 import org.apache.flink.util.InstantiationUtil;
+import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
 
 import java.io.IOException;
@@ -107,6 +109,11 @@ public class JobGraph implements Serializable {
 
 	/** List of classpaths required to run this job. */
 	private List<URL> classpaths = Collections.emptyList();
+
+	/**
+	 * For supporting state repartition
+	 */
+	private String jobRescalerClassName;
 
 	// --------------------------------------------------------------------------------------------
 
@@ -383,6 +390,15 @@ public class JobGraph implements Serializable {
 
 	public List<URL> getClasspaths() {
 		return classpaths;
+	}
+
+	public void setJobRescalerClass(Class<? extends JobGraphRescaler> jobRescaler) {
+		Preconditions.checkNotNull(jobRescaler);
+		this.jobRescalerClassName = jobRescaler.getName();
+	}
+
+	public String getJobRescalerClassName() {
+		return this.jobRescalerClassName;
 	}
 
 	/**

@@ -35,6 +35,7 @@ import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
+import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.checkpoint.decline.CheckpointDeclineTaskNotReadyException;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
@@ -270,6 +271,48 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	private ClassLoader userCodeClassLoader;
 
 	/**
+	 * Whether the task is a standby task
+	 */
+	private final boolean isStandby;
+
+	public Task(
+		JobInformation jobInformation,
+		TaskInformation taskInformation,
+		ExecutionAttemptID executionAttemptID,
+		AllocationID slotAllocationId,
+		int subtaskIndex,
+		int attemptNumber,
+		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
+		int targetSlotNumber,
+		MemoryManager memManager,
+		IOManager ioManager,
+		NetworkEnvironment networkEnvironment,
+		BroadcastVariableManager bcVarManager,
+		TaskStateManager taskStateManager,
+		TaskManagerActions taskManagerActions,
+		InputSplitProvider inputSplitProvider,
+		CheckpointResponder checkpointResponder,
+		GlobalAggregateManager aggregateManager,
+		BlobCacheService blobService,
+		LibraryCacheManager libraryCache,
+		FileCache fileCache,
+		TaskManagerRuntimeInfo taskManagerConfig,
+		@Nonnull TaskMetricGroup metricGroup,
+		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
+		PartitionProducerStateChecker partitionProducerStateChecker,
+		Executor executor) {
+		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId,
+			subtaskIndex, attemptNumber, resultPartitionDeploymentDescriptors,
+			inputGateDeploymentDescriptors, targetSlotNumber, memManager,
+			ioManager, networkEnvironment, bcVarManager, taskStateManager,
+			taskManagerActions, inputSplitProvider, checkpointResponder, aggregateManager,
+			blobService, libraryCache, fileCache, taskManagerConfig,
+			metricGroup, resultPartitionConsumableNotifier,
+			partitionProducerStateChecker, executor, false);
+	}
+
+	/**
 	 * <p><b>IMPORTANT:</b> This constructor may not start any work that would need to
 	 * be undone in the case of a failing task deployment.</p>
 	 */
@@ -299,7 +342,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		@Nonnull TaskMetricGroup metricGroup,
 		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
 		PartitionProducerStateChecker partitionProducerStateChecker,
-		Executor executor) {
+		Executor executor,
+		boolean isStandby) {
 
 		Preconditions.checkNotNull(jobInformation);
 		Preconditions.checkNotNull(taskInformation);
@@ -320,7 +364,12 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		this.vertexId = taskInformation.getJobVertexId();
 		this.executionId  = Preconditions.checkNotNull(executionAttemptID);
 		this.allocationId = Preconditions.checkNotNull(slotAllocationId);
-		this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks();
+		this.isStandby = isStandby;
+		if (this.isStandby) {
+			this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks() + " (STANDBY)";
+		} else {
+			this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks();
+		}
 		this.jobConfiguration = jobInformation.getJobConfiguration();
 		this.taskConfiguration = taskInformation.getTaskConfiguration();
 		this.requiredJarFiles = jobInformation.getRequiredJarFileBlobKeys();
@@ -428,6 +477,10 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 
 	public AllocationID getAllocationId() {
 		return allocationId;
+	}
+
+	public boolean getIsStandby() {
+		return isStandby;
 	}
 
 	public TaskInfo getTaskInfo() {
@@ -696,13 +749,15 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			// by the time we switched to running.
 			this.invokable = invokable;
 
-			// switch to the RUNNING state, if that fails, we have been canceled/failed in the meantime
-			if (!transitionState(ExecutionState.DEPLOYING, ExecutionState.RUNNING)) {
-				throw new CancelTaskException();
+			if (!this.isStandby) {
+				// switch to the RUNNING state, if that fails, we have been canceled/failed in the meantime
+				if (!transitionState(ExecutionState.DEPLOYING, ExecutionState.RUNNING)) {
+					throw new CancelTaskException();
+				}
+				// notify everyone that we switched to running
+				taskManagerActions.updateTaskExecutionState(new TaskExecutionState(jobId, executionId,
+					ExecutionState.RUNNING));
 			}
-
-			// notify everyone that we switched to running
-			taskManagerActions.updateTaskExecutionState(new TaskExecutionState(jobId, executionId, ExecutionState.RUNNING));
 
 			// make sure the user code classloader is accessible thread-locally
 			executingThread.setContextClassLoader(userCodeClassLoader);
@@ -855,6 +910,20 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			catch (Throwable t) {
 				LOG.error("Error during metrics de-registration of task {} ({}).", taskNameWithSubtask, executionId, t);
 			}
+		}
+	}
+
+	public void transitionToStandbyState() {
+		if (this.isStandby) {
+			// switch to the STANDBY state, if that fails, we have been canceled/failed in the meantime
+			if (!transitionState(ExecutionState.DEPLOYING, ExecutionState.STANDBY)) {
+				throw new CancelTaskException();
+			}
+
+			LOG.info("Standby task " + taskNameWithSubtask + " is at STANDBY state.");
+			// notify everyone that we switched to standby
+			taskManagerActions.updateTaskExecutionState(new TaskExecutionState(jobId, executionId,
+				ExecutionState.STANDBY));
 		}
 	}
 
@@ -1086,6 +1155,43 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 					current, taskNameWithSubtask, executionId));
 			}
 		}
+	}
+
+	/**
+	 * Receive the latest checkpointed state snapshot of a running task.
+	 * It only applies to a standby task in STANDBY state.
+	 */
+	public void dispatchStateToStandbyTask(JobManagerTaskRestore taskRestore) throws Exception {
+		if (!isStandby) {
+			throw new Exception("Task " + taskNameWithSubtask + " is not a STANDBY task. It cannot receive a state " +
+				"snapshot.");
+		}
+
+		ExecutionState current = executionState;
+		if (current != ExecutionState.STANDBY) {
+			throw new Exception("Standby task " + taskNameWithSubtask + " is not in STANDBY state. Failing state " +
+				"dispatch.");
+		}
+
+		taskStateManager.setTaskRestore(taskRestore);
+		LOG.info("Standby task " + taskNameWithSubtask + " received state snapshot of checkpoint " +
+			taskRestore.getRestoreCheckpointId() + ".");
+
+		long checkpointId = taskRestore.getRestoreCheckpointId();
+
+		// TODO: this may not be required, we only need to make the state be initialize on the task
+		invokable.notifyStartedRestoringCheckpoint(checkpointId);
+
+
+		// Invokable should be an instance of an operator class in the hierarchy of StreamTask.
+		executeAsyncCallRunnable(() -> {
+			try {
+				invokable.initializeState();
+				invokable.notifyCompletedRestoringCheckpoint(checkpointId);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}, "Async restore checkpoint " + checkpointId);
 	}
 
 	// ------------------------------------------------------------------------

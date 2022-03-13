@@ -568,7 +568,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				taskMetricGroup,
 				resultPartitionConsumableNotifier,
 				partitionStateChecker,
-				getRpcService().getExecutor());
+				getRpcService().getExecutor(),
+				tdd.getIsStandby());
 
 			log.info("Received task {}.", task.getTaskInfo().getTaskNameWithSubtasks());
 
@@ -629,6 +630,25 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			}
 		} else {
 			final String message = "Cannot find task to stop for execution " + executionAttemptID + '.';
+
+			log.debug(message);
+			return FutureUtils.completedExceptionally(new TaskException(message));
+		}
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobManagerTaskRestore taskRestore, Time timeout) {
+		final Task task = taskSlotTable.getTask(executionAttemptID);
+
+		if (task != null) {
+			try {
+				task.dispatchStateToStandbyTask(taskRestore);
+				return CompletableFuture.completedFuture(Acknowledge.get());
+			} catch (Throwable t) {
+				return FutureUtils.completedExceptionally(new TaskException("Cannot dispatch state snapshot to standby task " + executionAttemptID + '.', t));
+			}
+		} else {
+			final String message = "Cannot find standby task " + executionAttemptID + " to dispatch state to it.";
 
 			log.debug(message);
 			return FutureUtils.completedExceptionally(new TaskException(message));

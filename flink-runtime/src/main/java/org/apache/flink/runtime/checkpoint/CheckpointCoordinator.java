@@ -35,6 +35,7 @@ import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.messages.checkpoint.AcknowledgeCheckpoint;
 import org.apache.flink.runtime.messages.checkpoint.DeclineCheckpoint;
+import org.apache.flink.runtime.spector.CheckpointProgressListener;
 import org.apache.flink.runtime.state.CheckpointStorage;
 import org.apache.flink.runtime.state.CheckpointStorageLocation;
 import org.apache.flink.runtime.state.CompletedCheckpointStorageLocation;
@@ -64,6 +65,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Operation.RESTORE_STATE;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -180,6 +182,8 @@ public class CheckpointCoordinator {
 
 	/** Registry that tracks state which is shared across (incremental) checkpoints */
 	private SharedStateRegistry sharedStateRegistry;
+
+	private CheckpointProgressListener checkpointProgressListener;
 
 	// --------------------------------------------------------------------------------------------
 
@@ -302,6 +306,12 @@ public class CheckpointCoordinator {
 	 */
 	public void setCheckpointStatsTracker(@Nullable CheckpointStatsTracker statsTracker) {
 		this.statsTracker = statsTracker;
+	}
+
+	public void setCheckpointProgressListener(CheckpointProgressListener listener) {
+		if (listener != null) {
+			this.checkpointProgressListener = listener;
+		}
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -875,6 +885,24 @@ public class CheckpointCoordinator {
 		LOG.info("Completed checkpoint {} for job {} ({} bytes in {} ms).", checkpointId, job,
 			completedCheckpoint.getStateSize(), completedCheckpoint.getDuration());
 
+		try {
+			synchronized (lock) {
+				if (shutdown) {
+					throw new IllegalStateException("CheckpointCoordinator is shut down");
+				}
+				// Get the latest checkpoint
+				CompletedCheckpoint latest = completedCheckpointStore.getLatestCheckpoint();
+
+				if (latest == null) {
+					throw new IllegalStateException("No completed checkpoint available");
+				}
+
+				checkpointProgressListener.onCompleteCheckpoint(latest);
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
 		if (LOG.isDebugEnabled()) {
 			StringBuilder builder = new StringBuilder();
 			builder.append("Checkpoint state: ");
@@ -1044,7 +1072,7 @@ public class CheckpointCoordinator {
 			final Map<OperatorID, OperatorState> operatorStates = latest.getOperatorStates();
 
 			StateAssignmentOperation stateAssignmentOperation =
-					new StateAssignmentOperation(latest.getCheckpointID(), tasks, operatorStates, allowNonRestoredState);
+					new StateAssignmentOperation(latest.getCheckpointID(), tasks, operatorStates, allowNonRestoredState, RESTORE_STATE);
 
 			stateAssignmentOperation.assignStates();
 

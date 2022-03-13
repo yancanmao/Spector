@@ -136,6 +136,9 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 
 	private InputSplitAssigner splitAssigner;
 
+	// created standby tasks for replication
+	private final List<ExecutionVertex> standbyExecutionVertexs;
+
 	/**
 	 * Convenience constructor for testing.
 	 */
@@ -266,6 +269,8 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		catch (Throwable t) {
 			throw new JobException("Creating the input splits caused an error: " + t.getMessage(), t);
 		}
+
+		standbyExecutionVertexs = new ArrayList<>();
 	}
 
 	/**
@@ -730,5 +735,51 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		}
 
 		return expanded;
+	}
+
+	public List<ExecutionVertex> addStandbyExecutionVertex(
+		Time timeout,
+		long initialGlobalModVersion,
+		long createTimestamp,
+		int numBackupTasks) {
+//		int defaultBackupId = Integer.MAX_VALUE / 2;
+		int defaultBackupId = 0;
+
+		Configuration jobConfiguration = graph.getJobConfiguration();
+		int maxPriorAttemptsHistoryLength = jobConfiguration != null ?
+			jobConfiguration.getInteger(JobManagerOptions.MAX_ATTEMPTS_HISTORY_SIZE) :
+			JobManagerOptions.MAX_ATTEMPTS_HISTORY_SIZE.defaultValue();
+
+		List<ExecutionVertex> createdTaskVertices = new ArrayList<>(numBackupTasks);
+
+		for (int i = 0; i < numBackupTasks; i++) {
+			ExecutionVertex taskVertex = new ExecutionVertex(
+				this,
+				defaultBackupId,
+				producedDataSets,
+				timeout,
+				initialGlobalModVersion,
+				createTimestamp,
+				maxPriorAttemptsHistoryLength,
+				true);
+
+			for (int num = 0; num < inputs.size(); num++) {
+				JobEdge edge = jobVertex.getInputs().get(num);
+
+				IntermediateResult ires = inputs.get(num);
+				int consumerIndex = 0; // default index for task 1
+
+				taskVertex.connectSource(num, ires, edge, consumerIndex);
+			}
+
+			createdTaskVertices.add(taskVertex);
+			standbyExecutionVertexs.add(taskVertex);
+		}
+
+		return createdTaskVertices;
+	}
+
+	public List<ExecutionVertex> getStandbyExecutionVertexs() {
+		return standbyExecutionVertexs;
 	}
 }

@@ -18,10 +18,7 @@
 
 package org.apache.flink.runtime.state;
 
-import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
-import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
-import org.apache.flink.runtime.checkpoint.PrioritizedOperatorSubtaskState;
-import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
+import org.apache.flink.runtime.checkpoint.*;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 
 import javax.annotation.Nonnull;
@@ -69,4 +66,15 @@ public interface TaskStateManager extends CheckpointListener {
 	 */
 	@Nonnull
 	LocalRecoveryConfig createLocalRecoveryConfig();
+
+	/**
+	 * Receive the latest checkpointed state of running task.
+	 * Only applies to a standby task in STANDBY state.
+	 */
+	void setTaskRestore(JobManagerTaskRestore taskRestore);
+
+	/**
+	 * Retrieve the checkpointID of the latest restored checkpoint
+	 */
+	long getCurrentCheckpointRestoreID();
 }

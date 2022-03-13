@@ -454,6 +454,10 @@ public class ExecutionGraph implements AccessExecutionGraph {
 		return this.verticesInCreationOrder.size();
 	}
 
+	public List<ExecutionJobVertex> getExecutionJobVertices() {
+		return verticesInCreationOrder;
+	}
+
 	public boolean isQueuedSchedulingAllowed() {
 		return this.allowQueuedScheduling;
 	}
@@ -1391,7 +1395,7 @@ public class ExecutionGraph implements AccessExecutionGraph {
 	 * and is used to disambiguate concurrent modifications between local and global
 	 * failover actions.
 	 */
-	long getGlobalModVersion() {
+	public long getGlobalModVersion() {
 		return globalModVersion;
 	}
 
@@ -1702,7 +1706,7 @@ public class ExecutionGraph implements AccessExecutionGraph {
 		return Collections.unmodifiableMap(currentExecutions);
 	}
 
-	void registerExecution(Execution exec) {
+	public void registerExecution(Execution exec) {
 		assertRunningInJobMasterMainThread();
 		Execution previous = currentExecutions.putIfAbsent(exec.getAttemptId(), exec);
 		if (previous != null) {
@@ -1850,5 +1854,9 @@ public class ExecutionGraph implements AccessExecutionGraph {
 		if (!(jobMasterMainThreadExecutor instanceof ComponentMainThreadExecutor.DummyComponentMainThreadExecutor)) {
 			jobMasterMainThreadExecutor.assertRunningInMainThread();
 		}
+	}
+
+	public Time getRpcTimeout() {
+		return this.rpcTimeout;
 	}
 }

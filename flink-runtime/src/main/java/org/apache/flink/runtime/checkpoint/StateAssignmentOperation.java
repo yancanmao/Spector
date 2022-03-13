@@ -22,14 +22,11 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.executiongraph.Execution;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
+import org.apache.flink.runtime.executiongraph.ExecutionVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.OperatorInstanceID;
-import org.apache.flink.runtime.state.KeyGroupRange;
-import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
-import org.apache.flink.runtime.state.KeyGroupsStateHandle;
-import org.apache.flink.runtime.state.KeyedStateHandle;
-import org.apache.flink.runtime.state.OperatorStateHandle;
+import org.apache.flink.runtime.state.*;
 import org.apache.flink.util.Preconditions;
 
 import org.slf4j.Logger;
@@ -52,6 +49,11 @@ import static org.apache.flink.util.Preconditions.checkState;
  */
 public class StateAssignmentOperation {
 
+	public static enum Operation {
+		RESTORE_STATE,
+		DISPATCH_STATE_TO_STANDBY_TASK
+	}
+
 	private static final Logger LOG = LoggerFactory.getLogger(StateAssignmentOperation.class);
 
 	private final Map<JobVertexID, ExecutionJobVertex> tasks;
@@ -59,17 +61,20 @@ public class StateAssignmentOperation {
 
 	private final long restoreCheckpointId;
 	private final boolean allowNonRestoredState;
+	public final Operation operation;
 
 	public StateAssignmentOperation(
 		long restoreCheckpointId,
 		Map<JobVertexID, ExecutionJobVertex> tasks,
 		Map<OperatorID, OperatorState> operatorStates,
-		boolean allowNonRestoredState) {
+		boolean allowNonRestoredState,
+		Operation operation) {
 
 		this.restoreCheckpointId = restoreCheckpointId;
 		this.tasks = Preconditions.checkNotNull(tasks);
 		this.operatorStates = Preconditions.checkNotNull(operatorStates);
 		this.allowNonRestoredState = allowNonRestoredState;
+		this.operation = operation;
 	}
 
 	public void assignStates() {
@@ -101,7 +106,9 @@ public class StateAssignmentOperation {
 				}
 				operatorStates.add(operatorState);
 			}
-			if (statelessTask) { // skip tasks where no operator has any state
+			if (statelessTask && operation == Operation.RESTORE_STATE) { // skip tasks where no operator has any state
+				// skip tasks where no operator has any state and we want to restore state.
+				//If dispatching to standbytask we use this as an epochID notification
 				continue;
 			}
 
@@ -149,25 +156,41 @@ public class StateAssignmentOperation {
 		Map<OperatorInstanceID, List<OperatorStateHandle>> newRawOperatorStates =
 			new HashMap<>(expectedNumberOfSubTasks);
 
-		reDistributePartitionableStates(
-			operatorStates,
-			newParallelism,
-			operatorIDs,
-			newManagedOperatorStates,
-			newRawOperatorStates);
+		if (operation == Operation.RESTORE_STATE) {
+			reDistributePartitionableStates(
+				operatorStates,
+				newParallelism,
+				operatorIDs,
+				newManagedOperatorStates,
+				newRawOperatorStates);
+		} else {
+			reDistributePartitionableStatesToStandbyTasks(
+				operatorStates,
+				operatorIDs,
+				newManagedOperatorStates,
+				newRawOperatorStates);
+		}
 
 		Map<OperatorInstanceID, List<KeyedStateHandle>> newManagedKeyedState =
 			new HashMap<>(expectedNumberOfSubTasks);
 		Map<OperatorInstanceID, List<KeyedStateHandle>> newRawKeyedState =
 			new HashMap<>(expectedNumberOfSubTasks);
 
-		reDistributeKeyedStates(
-			operatorStates,
-			newParallelism,
-			operatorIDs,
-			keyGroupPartitions,
-			newManagedKeyedState,
-			newRawKeyedState);
+		if (operation == Operation.RESTORE_STATE) {
+			reDistributeKeyedStates(
+				operatorStates,
+				newParallelism,
+				operatorIDs,
+				keyGroupPartitions,
+				newManagedKeyedState,
+				newRawKeyedState);
+		} else {
+			reDistributeKeyedStatesToStandbyTasks(
+				operatorStates,
+				operatorIDs,
+				newManagedKeyedState,
+				newRawKeyedState);
+		}
 
 		/*
 		 *  An executionJobVertex's all state handles needed to restore are something like a matrix
@@ -179,14 +202,57 @@ public class StateAssignmentOperation {
 		 * op3   sh(3,0)	 sh(3,1)	   sh(3,2)		sh(3,3)
 		 *
 		 */
-		assignTaskStateToExecutionJobVertices(
-			executionJobVertex,
-			newManagedOperatorStates,
-			newRawOperatorStates,
-			newManagedKeyedState,
-			newRawKeyedState,
-			newParallelism);
+		if (operation == Operation.RESTORE_STATE) {
+			assignTaskStateToExecutionJobVertices(
+				executionJobVertex,
+				newManagedOperatorStates,
+				newRawOperatorStates,
+				newManagedKeyedState,
+				newRawKeyedState,
+				newParallelism);
+		} else {
+			backupTaskStateToExecutionJobVertices(
+				executionJobVertex,
+				newManagedOperatorStates,
+				newRawOperatorStates,
+				newManagedKeyedState,
+				newRawKeyedState
+			);
+		}
 	}
+
+	private void reDistributeKeyedStatesToStandbyTasks(
+		List<OperatorState> oldOperatorStates,
+		List<OperatorID> newOperatorIDs,
+		Map<OperatorInstanceID, List<KeyedStateHandle>> newManagedKeyedState,
+		Map<OperatorInstanceID, List<KeyedStateHandle>> newRawKeyedState) {
+
+		checkState(newOperatorIDs.size() == oldOperatorStates.size(),
+			"This method still depends on the order of the new and old operators");
+
+		for (int operatorIndex = 0; operatorIndex < newOperatorIDs.size(); operatorIndex++) {
+			OperatorState operatorState = oldOperatorStates.get(operatorIndex);
+
+			int subTaskIndex = 0; // default subtaskindex for standby task
+			OperatorInstanceID instanceID = OperatorInstanceID.of(subTaskIndex, newOperatorIDs.get(operatorIndex));
+
+			List<KeyedStateHandle> subManagedKeyedStates = new ArrayList<>();
+			List<KeyedStateHandle> subRawKeyedStates = new ArrayList<>();
+
+			// TODO: we hard code that all standby task to backup all state of the operator
+			// TODO: we will find a policy to make the replication more flexible
+			for (int i = 0; i < operatorState.getParallelism(); i++) {
+				if (operatorState.getState(i) != null) {
+					subManagedKeyedStates.addAll(operatorState.getState(i).getManagedKeyedState());
+					subRawKeyedStates.addAll(operatorState.getState(i).getRawKeyedState());
+				}
+			}
+
+			newManagedKeyedState.put(instanceID, subManagedKeyedStates);
+			newRawKeyedState.put(instanceID, subRawKeyedStates);
+		}
+	}
+
 
 	private void assignTaskStateToExecutionJobVertices(
 			ExecutionJobVertex executionJobVertex,
@@ -207,6 +273,47 @@ public class StateAssignmentOperation {
 			boolean statelessTask = true;
 
 			for (OperatorID operatorID : operatorIDs) {
+				OperatorInstanceID instanceID = OperatorInstanceID.of(subTaskIndex, operatorID);
+
+				OperatorSubtaskState operatorSubtaskState = operatorSubtaskStateFrom(
+					instanceID,
+					subManagedOperatorState,
+					subRawOperatorState,
+					subManagedKeyedState,
+					subRawKeyedState);
+
+				if (operatorSubtaskState.hasState()) {
+					statelessTask = false;
+				}
+				taskState.putSubtaskStateByOperatorID(operatorID, operatorSubtaskState);
+			}
+
+			if (!statelessTask) {
+				JobManagerTaskRestore taskRestore = new JobManagerTaskRestore(restoreCheckpointId, taskState);
+				currentExecutionAttempt.setInitialState(taskRestore);
+			}
+		}
+	}
+
+	private void backupTaskStateToExecutionJobVertices(
+		ExecutionJobVertex executionJobVertex,
+		Map<OperatorInstanceID, List<OperatorStateHandle>> subManagedOperatorState,
+		Map<OperatorInstanceID, List<OperatorStateHandle>> subRawOperatorState,
+		Map<OperatorInstanceID, List<KeyedStateHandle>> subManagedKeyedState,
+		Map<OperatorInstanceID, List<KeyedStateHandle>> subRawKeyedState) {
+
+		List<ExecutionVertex> standbyExecutionVertexs = executionJobVertex.getStandbyExecutionVertexs();
+		List<OperatorID> operatorIDs = executionJobVertex.getOperatorIDs();
+
+		for (ExecutionVertex standbyExecutionVertex : standbyExecutionVertexs) {
+
+			Execution currentExecutionAttempt = standbyExecutionVertex.getCurrentExecutionAttempt();
+
+			TaskStateSnapshot taskState = new TaskStateSnapshot(operatorIDs.size());
+			boolean statelessTask = true;
+
+			for (OperatorID operatorID : operatorIDs) {
+				int subTaskIndex = 0; // default subtaskindex for standby task
 				OperatorInstanceID instanceID = OperatorInstanceID.of(subTaskIndex, operatorID);
 
 				OperatorSubtaskState operatorSubtaskState = operatorSubtaskStateFrom(
@@ -356,6 +463,42 @@ public class StateAssignmentOperation {
 				oldRawOperatorStates.get(operatorIndex),
 				oldParallelism,
 				newParallelism));
+		}
+	}
+
+	@VisibleForTesting
+	static void reDistributePartitionableStatesToStandbyTasks(
+		List<OperatorState> oldOperatorStates,
+		List<OperatorID> newOperatorIDs,
+		Map<OperatorInstanceID, List<OperatorStateHandle>> newManagedOperatorStates,
+		Map<OperatorInstanceID, List<OperatorStateHandle>> newRawOperatorStates) {
+
+		//TODO: rewrite this method to only use OperatorID
+		checkState(newOperatorIDs.size() == oldOperatorStates.size(),
+			"This method still depends on the order of the new and old operators");
+
+		for (int operatorIndex = 0; operatorIndex < newOperatorIDs.size(); operatorIndex++) {
+			OperatorState operatorState = oldOperatorStates.get(operatorIndex);
+			int oldParallelism = operatorState.getParallelism();
+
+			int subTaskIndex = 0; // default subtaskindex for standby task
+			OperatorInstanceID instanceID = OperatorInstanceID.of(subTaskIndex, newOperatorIDs.get(operatorIndex));
+
+			List<OperatorStateHandle> managedOpState = new ArrayList<>();
+			List<OperatorStateHandle> rawOpState = new ArrayList<>();
+
+			for (int i = 0; i < oldParallelism; i++) {
+				OperatorSubtaskState operatorSubtaskState = operatorState.getState(i);
+
+				StateObjectCollection<OperatorStateHandle> managed = operatorSubtaskState.getManagedOperatorState();
+				StateObjectCollection<OperatorStateHandle> raw = operatorSubtaskState.getRawOperatorState();
+
+				managedOpState.addAll(managed.asList());
+				rawOpState.addAll(raw.asList());
+			}
+
+			newManagedOperatorStates.put(instanceID, managedOpState);
+			newRawOperatorStates.put(instanceID, rawOpState);
 		}
 	}
 
