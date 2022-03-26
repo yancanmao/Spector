@@ -239,6 +239,15 @@ public class CheckpointProperties implements Serializable {
 			false,
 			false);
 
+	private static final CheckpointProperties RECONFIGPOINT = new CheckpointProperties(
+		true,
+		CheckpointType.RECONFIGPOINT,
+		true,
+		true,  // Delete on success
+		true,  // Delete on cancellation
+		true,  // Delete on failure
+		true); // Delete on suspension
+
 	private static final CheckpointProperties CHECKPOINT_NEVER_RETAINED = new CheckpointProperties(
 			false,
 			CheckpointType.CHECKPOINT,
@@ -277,6 +286,10 @@ public class CheckpointProperties implements Serializable {
 	 */
 	public static CheckpointProperties forSavepoint() {
 		return SAVEPOINT;
+	}
+
+	public static CheckpointProperties forRconfigPoint() {
+		return RECONFIGPOINT;
 	}
 
 	/**

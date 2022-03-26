@@ -36,6 +36,8 @@ import org.apache.flink.runtime.messages.TaskManagerMessages;
 import org.apache.flink.runtime.messages.TaskMessages;
 import org.apache.flink.runtime.messages.checkpoint.NotifyCheckpointComplete;
 import org.apache.flink.runtime.messages.checkpoint.TriggerCheckpoint;
+import org.apache.flink.runtime.spector.reconfig.ReconfigID;
+import org.apache.flink.runtime.spector.reconfig.ReconfigOptions;
 import org.apache.flink.util.Preconditions;
 
 import java.util.concurrent.CompletableFuture;
@@ -104,6 +106,12 @@ public class ActorTaskManagerGateway implements TaskManagerGateway {
 			.mapTo(ClassTag$.MODULE$.<Acknowledge>apply(Acknowledge.class));
 
 		return FutureUtils.toJava(submitResult);
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> reconfigTask(ExecutionAttemptID executionAttemptID, TaskDeploymentDescriptor tdd, ReconfigOptions reconfigOptions, Time timeout) {
+		// TODO scaling: implement soon
+		throw new RuntimeException("not implement yet");
 	}
 
 	@Override

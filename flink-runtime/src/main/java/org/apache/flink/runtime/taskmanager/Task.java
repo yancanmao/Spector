@@ -66,8 +66,13 @@ import org.apache.flink.runtime.jobmanager.PartitionProducerDisposedException;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
+import org.apache.flink.runtime.spector.reconfig.ReconfigID;
+import org.apache.flink.runtime.spector.reconfig.ReconfigOptions;
+import org.apache.flink.runtime.spector.reconfig.TaskConfigManager;
 import org.apache.flink.runtime.state.CheckpointListener;
+import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.TaskStateManager;
+import org.apache.flink.runtime.state.TaskStateManagerImpl;
 import org.apache.flink.runtime.taskexecutor.GlobalAggregateManager;
 import org.apache.flink.runtime.util.FatalExitExceptionHandler;
 import org.apache.flink.util.ExceptionUtils;
@@ -275,6 +280,12 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	 */
 	private final boolean isStandby;
 
+	private final TaskConfigManager taskConfigManager;
+
+	/** The begin KeyGroupRange used to initialize streamtask */
+	@Nullable
+	private final KeyGroupRange keyGroupRange;
+
 	public Task(
 		JobInformation jobInformation,
 		TaskInformation taskInformation,
@@ -302,7 +313,46 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
 		PartitionProducerStateChecker partitionProducerStateChecker,
 		Executor executor) {
-		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId,
+		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId, ReconfigID.DEFAULT, null,
+			subtaskIndex, attemptNumber, resultPartitionDeploymentDescriptors,
+			inputGateDeploymentDescriptors, targetSlotNumber, memManager,
+			ioManager, networkEnvironment, bcVarManager, taskStateManager,
+			taskManagerActions, inputSplitProvider, checkpointResponder, aggregateManager,
+			blobService, libraryCache, fileCache, taskManagerConfig,
+			metricGroup, resultPartitionConsumableNotifier,
+			partitionProducerStateChecker, executor, false);
+	}
+
+	public Task(
+		JobInformation jobInformation,
+		TaskInformation taskInformation,
+		ExecutionAttemptID executionAttemptID,
+		AllocationID slotAllocationId,
+		ReconfigID reconfigId,
+		@Nullable KeyGroupRange keyGroupRange,
+		int subtaskIndex,
+		int attemptNumber,
+		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
+		int targetSlotNumber,
+		MemoryManager memManager,
+		IOManager ioManager,
+		NetworkEnvironment networkEnvironment,
+		BroadcastVariableManager bcVarManager,
+		TaskStateManager taskStateManager,
+		TaskManagerActions taskManagerActions,
+		InputSplitProvider inputSplitProvider,
+		CheckpointResponder checkpointResponder,
+		GlobalAggregateManager aggregateManager,
+		BlobCacheService blobService,
+		LibraryCacheManager libraryCache,
+		FileCache fileCache,
+		TaskManagerRuntimeInfo taskManagerConfig,
+		@Nonnull TaskMetricGroup metricGroup,
+		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
+		PartitionProducerStateChecker partitionProducerStateChecker,
+		Executor executor) {
+		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId, reconfigId, keyGroupRange,
 			subtaskIndex, attemptNumber, resultPartitionDeploymentDescriptors,
 			inputGateDeploymentDescriptors, targetSlotNumber, memManager,
 			ioManager, networkEnvironment, bcVarManager, taskStateManager,
@@ -321,6 +371,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		TaskInformation taskInformation,
 		ExecutionAttemptID executionAttemptID,
 		AllocationID slotAllocationId,
+		ReconfigID reconfigId,
+		@Nullable KeyGroupRange keyGroupRange,
 		int subtaskIndex,
 		int attemptNumber,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
@@ -364,6 +416,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		this.vertexId = taskInformation.getJobVertexId();
 		this.executionId  = Preconditions.checkNotNull(executionAttemptID);
 		this.allocationId = Preconditions.checkNotNull(slotAllocationId);
+		this.keyGroupRange = keyGroupRange;
 		this.isStandby = isStandby;
 		if (this.isStandby) {
 			this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks() + " (STANDBY)";
@@ -413,7 +466,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		int counter = 0;
 
 		for (ResultPartitionDeploymentDescriptor desc: resultPartitionDeploymentDescriptors) {
-			ResultPartitionID partitionId = new ResultPartitionID(desc.getPartitionId(), executionId);
+			ResultPartitionID partitionId = new ResultPartitionID(desc.getPartitionId(), executionId, reconfigId);
 
 			this.producedPartitions[counter] = new ResultPartition(
 				taskNameWithSubtaskAndId,
@@ -454,6 +507,16 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		}
 
 		invokableHasBeenCanceled = new AtomicBoolean(false);
+
+		taskConfigManager = new TaskConfigManager(
+			jobId,
+			executionId,
+			taskNameWithSubtaskAndId,
+			this,
+			network,
+			ioManager,
+			metrics,
+			resultPartitionConsumableNotifier);
 
 		// finally, create the executing thread, but do not start it
 		executingThread = new Thread(TASK_THREADS_GROUP, this, taskNameWithSubtask);
@@ -736,7 +799,9 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				checkpointResponder,
 				taskManagerConfig,
 				metrics,
-				this);
+				this,
+				taskConfigManager,
+				keyGroupRange);
 
 			// now load and instantiate the task's invokable code
 			invokable = loadAndInstantiateInvokable(userCodeClassLoader, nameOfInvokableClass, env);
@@ -1334,6 +1399,41 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		else {
 			LOG.debug("Ignoring checkpoint commit notification for non-running task {}.", taskNameWithSubtask);
 		}
+	}
+
+	// ------------------------------------------------------------------------
+	//  Actions on rescale
+	// ------------------------------------------------------------------------
+
+	public void updateTaskConfiguration(TaskInformation newTaskInfo) {
+		this.taskConfiguration.addAll(newTaskInfo.getTaskConfiguration());
+	}
+
+	public void prepareRescalingComponent(
+		ReconfigID reconfigId,
+		ReconfigOptions reconfigOptions,
+		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors) {
+
+		taskConfigManager.prepareRescaleMeta(
+			reconfigId,
+			reconfigOptions,
+			resultPartitionDeploymentDescriptors,
+			inputGateDeploymentDescriptors);
+	}
+
+	public void assignNewState(KeyGroupRange keyGroupRange, JobManagerTaskRestore taskRestore) {
+		((TaskStateManagerImpl) taskStateManager).updateTaskRestore(taskRestore);
+
+		invokable.reinitializeState(keyGroupRange);
+	}
+
+	public void updateKeyGroupRange(KeyGroupRange keyGroupRange) {
+		invokable.updateKeyGroupRange(keyGroupRange);
+	}
+
+	public void createNewResultPartitions() throws IOException {
+		taskConfigManager.createNewResultPartitions();
 	}
 
 	// ------------------------------------------------------------------------

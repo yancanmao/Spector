@@ -24,6 +24,7 @@ import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.execution.Environment;
+import org.apache.flink.runtime.state.KeyGroupRange;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -258,5 +259,13 @@ public abstract class AbstractInvokable {
 	}
 	public void notifyCompletedRestoringCheckpoint(long checkpointId){
 
+	}
+
+	public void reinitializeState(KeyGroupRange keyGroupRange) {
+		throw new UnsupportedOperationException(String.format("reinitializeState not supported by %s", this.getClass().getName()));
+	}
+
+	public void updateKeyGroupRange(KeyGroupRange keyGroupRange) {
+		throw new UnsupportedOperationException(String.format("updateKeyGroupRange not supported by %s", this.getClass().getName()));
 	}
 }

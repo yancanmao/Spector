@@ -39,6 +39,8 @@ import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
+import org.apache.flink.runtime.spector.reconfig.TaskConfigManager;
+import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.TaskStateManager;
 
 import java.util.List;
@@ -90,33 +92,39 @@ public class RuntimeEnvironment implements Environment {
 
 	private final Task containingTask;
 
+	public final TaskConfigManager taskConfigManager;
+
+	public final KeyGroupRange keyGroupRange;
+
 	// ------------------------------------------------------------------------
 
 	public RuntimeEnvironment(
-			JobID jobId,
-			JobVertexID jobVertexId,
-			ExecutionAttemptID executionId,
-			ExecutionConfig executionConfig,
-			TaskInfo taskInfo,
-			Configuration jobConfiguration,
-			Configuration taskConfiguration,
-			ClassLoader userCodeClassLoader,
-			MemoryManager memManager,
-			IOManager ioManager,
-			BroadcastVariableManager bcVarManager,
-			TaskStateManager taskStateManager,
-			GlobalAggregateManager aggregateManager,
-			AccumulatorRegistry accumulatorRegistry,
-			TaskKvStateRegistry kvStateRegistry,
-			InputSplitProvider splitProvider,
-			Map<String, Future<Path>> distCacheEntries,
-			ResultPartitionWriter[] writers,
-			InputGate[] inputGates,
-			TaskEventDispatcher taskEventDispatcher,
-			CheckpointResponder checkpointResponder,
-			TaskManagerRuntimeInfo taskManagerInfo,
-			TaskMetricGroup metrics,
-			Task containingTask) {
+		JobID jobId,
+		JobVertexID jobVertexId,
+		ExecutionAttemptID executionId,
+		ExecutionConfig executionConfig,
+		TaskInfo taskInfo,
+		Configuration jobConfiguration,
+		Configuration taskConfiguration,
+		ClassLoader userCodeClassLoader,
+		MemoryManager memManager,
+		IOManager ioManager,
+		BroadcastVariableManager bcVarManager,
+		TaskStateManager taskStateManager,
+		GlobalAggregateManager aggregateManager,
+		AccumulatorRegistry accumulatorRegistry,
+		TaskKvStateRegistry kvStateRegistry,
+		InputSplitProvider splitProvider,
+		Map<String, Future<Path>> distCacheEntries,
+		ResultPartitionWriter[] writers,
+		InputGate[] inputGates,
+		TaskEventDispatcher taskEventDispatcher,
+		CheckpointResponder checkpointResponder,
+		TaskManagerRuntimeInfo taskManagerInfo,
+		TaskMetricGroup metrics,
+		Task containingTask,
+		TaskConfigManager taskConfigManager,
+		KeyGroupRange keyGroupRange) {
 
 		this.jobId = checkNotNull(jobId);
 		this.jobVertexId = checkNotNull(jobVertexId);
@@ -142,6 +150,9 @@ public class RuntimeEnvironment implements Environment {
 		this.taskManagerInfo = checkNotNull(taskManagerInfo);
 		this.containingTask = containingTask;
 		this.metrics = metrics;
+
+		this.taskConfigManager = checkNotNull(taskConfigManager);
+		this.keyGroupRange = keyGroupRange;
 	}
 
 	// ------------------------------------------------------------------------

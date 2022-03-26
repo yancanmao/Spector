@@ -21,6 +21,7 @@ package org.apache.flink.runtime.io.network.partition;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.IntermediateResultPartition;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
+import org.apache.flink.runtime.spector.reconfig.ReconfigID;
 
 import java.io.Serializable;
 
@@ -39,13 +40,20 @@ public final class ResultPartitionID implements Serializable {
 
 	private final ExecutionAttemptID producerId;
 
+	private final ReconfigID reconfigId;
+
 	public ResultPartitionID() {
 		this(new IntermediateResultPartitionID(), new ExecutionAttemptID());
 	}
 
 	public ResultPartitionID(IntermediateResultPartitionID partitionId, ExecutionAttemptID producerId) {
+		this(partitionId, producerId, ReconfigID.DEFAULT);
+	}
+
+	public ResultPartitionID(IntermediateResultPartitionID partitionId, ExecutionAttemptID producerId, ReconfigID reconfigId) {
 		this.partitionId = partitionId;
 		this.producerId = producerId;
+		this.reconfigId = reconfigId;
 	}
 
 	public IntermediateResultPartitionID getPartitionId() {
@@ -56,12 +64,18 @@ public final class ResultPartitionID implements Serializable {
 		return producerId;
 	}
 
+	public ReconfigID getReconfigId() {
+		return reconfigId;
+	}
+
 	@Override
 	public boolean equals(Object obj) {
 		if (obj != null && obj.getClass() == ResultPartitionID.class) {
 			ResultPartitionID o = (ResultPartitionID) obj;
 
-			return o.getPartitionId().equals(partitionId) && o.getProducerId().equals(producerId);
+			return o.getPartitionId().equals(partitionId)
+				&& o.getProducerId().equals(producerId)
+				&& o.getReconfigId().equals(reconfigId);
 		}
 
 		return false;

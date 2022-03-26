@@ -26,12 +26,12 @@ import java.lang.reflect.Constructor;
 import java.util.List;
 import java.util.Map;
 
-public abstract class JobGraphRescaler {
+public abstract class JobGraphUpdater {
 
 	protected final JobGraph jobGraph;
 	protected final ClassLoader userCodeLoader;
 
-	public JobGraphRescaler(JobGraph jobGraph, ClassLoader userCodeLoader) {
+	public JobGraphUpdater(JobGraph jobGraph, ClassLoader userCodeLoader) {
 		this.jobGraph = jobGraph;
 		this.userCodeLoader = userCodeLoader;
 	}
@@ -42,25 +42,16 @@ public abstract class JobGraphRescaler {
 
 	public abstract String print(Configuration config);
 
-	public static JobGraphRescaler instantiate(JobGraph jobGraph, ClassLoader userCodeLoader) {
+	public static JobGraphUpdater instantiate(JobGraph jobGraph, ClassLoader userCodeLoader) {
 		try {
-			Class<? extends JobGraphRescaler> jobRescaleClass = Class
-				.forName(jobGraph.getJobRescalerClassName(), true, userCodeLoader).asSubclass(JobGraphRescaler.class);
+			Class<? extends JobGraphUpdater> jobRescaleClass = Class
+				.forName(jobGraph.getJobRescalerClassName(), true, userCodeLoader).asSubclass(JobGraphUpdater.class);
 
-			Constructor<? extends JobGraphRescaler> statelessCtor = jobRescaleClass.getConstructor(JobGraph.class, ClassLoader.class);
+			Constructor<? extends JobGraphUpdater> statelessCtor = jobRescaleClass.getConstructor(JobGraph.class, ClassLoader.class);
 
 			return statelessCtor.newInstance(jobGraph, userCodeLoader);
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}
 	}
-
-//	public static JobGraphRescaler instantiate(ClassLoader userCodeLoader) throws Exception {
-//		Class<? extends JobGraphRescaler> jobRescaleClass = Class
-//			.forName("org.apache.flink.streaming.api.graph.StreamJobRescale", true, userCodeLoader).asSubclass(JobGraphRescaler.class);
-//
-//		Constructor<? extends JobGraphRescaler> statelessCtor = jobRescaleClass.getConstructor(JobGraph.class, ClassLoader.class);
-//
-//		return statelessCtor.newInstance(null, userCodeLoader);
-//	}
 }

@@ -47,6 +47,10 @@ public class KeyGroupStreamPartitioner<T, K> extends StreamPartitioner<T> implem
 		return maxParallelism;
 	}
 
+	public KeySelector<T, K> getKeySelector() {
+		return keySelector;
+	}
+
 	@Override
 	public int selectChannel(SerializationDelegate<StreamRecord<T>> record) {
 		K key;

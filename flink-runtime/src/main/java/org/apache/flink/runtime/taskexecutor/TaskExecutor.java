@@ -75,6 +75,7 @@ import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils;
+import org.apache.flink.runtime.spector.reconfig.ReconfigOptions;
 import org.apache.flink.runtime.state.TaskExecutorLocalStateStoresManager;
 import org.apache.flink.runtime.state.TaskLocalStateStore;
 import org.apache.flink.runtime.state.TaskStateManager;
@@ -547,6 +548,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				taskInformation,
 				tdd.getExecutionAttemptId(),
 				tdd.getAllocationId(),
+				tdd.getReconfigId(),
+				tdd.getKeyGroupRange(),
 				tdd.getSubtaskIndex(),
 				tdd.getAttemptNumber(),
 				tdd.getProducedPartitions(),
@@ -594,6 +597,65 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			}
 		} catch (TaskSubmissionException e) {
 			return FutureUtils.completedExceptionally(e);
+		}
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> reconfigTask(
+		ExecutionAttemptID executionAttemptID,
+		TaskDeploymentDescriptor tdd,
+		JobMasterId jobMasterId,
+		ReconfigOptions reconfigOptions,
+		Time timeout) {
+		final Task task = taskSlotTable.getTask(executionAttemptID);
+
+		if (task != null) {
+			try {
+				try {
+					tdd.loadBigData(blobCacheService.getPermanentBlobService());
+				} catch (IOException | ClassNotFoundException e) {
+					throw new TaskException("Could not re-integrate offloaded TaskDeploymentDescriptor data.", e);
+				}
+
+				final TaskInformation taskInformation;
+				try {
+					taskInformation = tdd.getSerializedTaskInformation().deserializeValue(getClass().getClassLoader());
+				} catch (IOException | ClassNotFoundException e) {
+					throw new TaskException("Could not deserialize the job or task information.", e);
+				}
+
+				task.updateTaskConfiguration(taskInformation);
+
+				task.prepareRescalingComponent(
+					tdd.getReconfigId(),
+					reconfigOptions,
+					tdd.getProducedPartitions(),
+					tdd.getInputGates());
+
+				if (reconfigOptions.isScalingPartitions()) {
+					task.createNewResultPartitions();
+				}
+
+				if (reconfigOptions.isRepartition()) {
+					log.info("++++++ update task state: " + tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId());
+					task.assignNewState(tdd.getKeyGroupRange(), tdd.getTaskRestore());
+				}
+
+				if (reconfigOptions.isUpdateKeyGroupRange()) {
+					log.info("++++++ update task keyGroupRange for subtask: " + tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId());
+					task.updateKeyGroupRange(tdd.getKeyGroupRange());
+				}
+
+				return CompletableFuture.completedFuture(Acknowledge.get());
+			} catch (Exception e) {
+				log.error("++++++ rescaleTask err", e);
+				return FutureUtils.completedExceptionally(e);
+			}
+		} else {
+			final String message = "Cannot find task to update its configuration " + executionAttemptID + '.';
+
+			log.debug(message);
+			return FutureUtils.completedExceptionally(new TaskException(message));
 		}
 	}
 

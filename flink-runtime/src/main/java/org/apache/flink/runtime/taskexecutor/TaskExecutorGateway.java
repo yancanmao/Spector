@@ -37,6 +37,7 @@ import org.apache.flink.runtime.messages.StackTraceSampleResponse;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rpc.RpcGateway;
 import org.apache.flink.runtime.rpc.RpcTimeout;
+import org.apache.flink.runtime.spector.reconfig.ReconfigOptions;
 import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.types.SerializableOptional;
 
@@ -85,6 +86,13 @@ public interface TaskExecutorGateway extends RpcGateway {
 	CompletableFuture<Acknowledge> submitTask(
 		TaskDeploymentDescriptor tdd,
 		JobMasterId jobMasterId,
+		@RpcTimeout Time timeout);
+
+	CompletableFuture<Acknowledge> reconfigTask(
+		ExecutionAttemptID executionAttemptID,
+		TaskDeploymentDescriptor tdd,
+		JobMasterId jobMasterId,
+		ReconfigOptions reconfigOptions,
 		@RpcTimeout Time timeout);
 
 	/**

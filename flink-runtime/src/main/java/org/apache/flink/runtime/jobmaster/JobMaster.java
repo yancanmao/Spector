@@ -1153,6 +1153,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		if (executionGraph.getState() == JobStatus.CREATED) {
 			executionGraphAssignedFuture = CompletableFuture.completedFuture(null);
 			executionGraph.start(getMainThreadExecutor());
+			jobStateCoordinator.init(getMainThreadExecutor());
 		} else {
 			suspendAndClearExecutionGraphFields(new FlinkException("ExecutionGraph is being reset in order to be rescheduled."));
 			final JobManagerJobMetricGroup newJobManagerJobMetricGroup = jobMetricGroupFactory.create(jobGraph);
@@ -1162,6 +1163,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 				(JobStatus ignored, Throwable throwable) -> {
 					newExecutionGraph.start(getMainThreadExecutor());
 					assignExecutionGraph(newExecutionGraph, newJobManagerJobMetricGroup);
+					jobStateCoordinator.init(getMainThreadExecutor());
 					return null;
 				});
 		}

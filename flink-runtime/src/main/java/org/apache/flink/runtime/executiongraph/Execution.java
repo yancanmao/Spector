@@ -52,6 +52,9 @@ import org.apache.flink.runtime.jobmaster.SlotRequestId;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.StackTraceSampleResponse;
+import org.apache.flink.runtime.spector.reconfig.ReconfigID;
+import org.apache.flink.runtime.spector.reconfig.ReconfigOptions;
+import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
@@ -952,6 +955,52 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	@Override
 	public void fail(Throwable t) {
 		processFail(t, false);
+	}
+
+	public CompletableFuture<Void> scheduleReconfig(
+		ReconfigID reconfigid,
+		ReconfigOptions reconfigOptions,
+		@Nullable KeyGroupRange keyGroupRange) throws ExecutionGraphException {
+
+		getVertex().updateRescaleId(reconfigid);
+		getVertex().assignKeyGroupRange(keyGroupRange);
+
+		assertRunningInJobMasterMainThread();
+
+		final LogicalSlot slot = assignedResource;
+		checkNotNull(slot, "Try to rescale a vertex which isn't assigned slot.");
+
+		if(this.state != RUNNING) {
+			throw new IllegalStateException("The vertex must be in RUNNING state to be rescaled. Found state " + this.state);
+		}
+
+		checkState(isStandby, "++++++ Cannot reconfig standby tasks");
+
+		final TaskDeploymentDescriptor deployment = vertex.createDeploymentDescriptor(
+			attemptId,
+			slot,
+			taskRestore,
+			attemptNumber,
+			false);
+
+		// null taskRestore to let it be GC'ed
+		taskRestore = null;
+
+		final ComponentMainThreadExecutor jobMasterMainThreadExecutor =
+			vertex.getExecutionGraph().getJobMasterMainThreadExecutor();
+
+		final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+
+		return CompletableFuture
+			.supplyAsync(() -> taskManagerGateway.reconfigTask(attemptId, deployment, reconfigOptions, rpcTimeout), executor)
+			.thenCompose(Function.identity())
+			.handleAsync((ack, failure) -> {
+				if (failure != null) {
+					LOG.error("++++++ scheduleRescale err: ", failure);
+					throw new CompletionException(failure);
+				}
+				return null;
+			}, jobMasterMainThreadExecutor);
 	}
 
 	/**

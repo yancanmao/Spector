@@ -27,6 +27,8 @@ public enum CheckpointType {
 	CHECKPOINT,
 
 	/** A savepoint. */
-	SAVEPOINT;
+	SAVEPOINT,
 
+	/** A rescalepoint. */
+	RECONFIGPOINT;
 }

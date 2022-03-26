@@ -174,4 +174,8 @@ public class TaskStateManagerImpl implements TaskStateManager {
 	public long getCurrentCheckpointRestoreID() {
 		return (jobManagerTaskRestore == null ? 0 : jobManagerTaskRestore.getRestoreCheckpointId());
 	}
+
+	public void updateTaskRestore(JobManagerTaskRestore jobManagerTaskRestore) {
+		this.jobManagerTaskRestore = jobManagerTaskRestore;
+	}
 }

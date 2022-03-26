@@ -149,9 +149,11 @@ public class KeyGroupPartitioner<T> {
 		Preconditions.checkState(partitioningSource.length >= numberOfElements);
 
 		for (int i = 0; i < numberOfElements; ++i) {
-			int keyGroup = KeyGroupRangeAssignment.assignToKeyGroup(
+			int hashedKeyGroup = KeyGroupRangeAssignment.assignToKeyGroup(
 				keyExtractorFunction.extractKeyFromElement(partitioningSource[i]), totalKeyGroups);
-			reportKeyGroupOfElementAtIndex(i, keyGroup);
+			int alignedKeyGroup = keyGroupRange.mapFromHashedToAligned(hashedKeyGroup);
+
+			reportKeyGroupOfElementAtIndex(i, alignedKeyGroup);
 		}
 	}
 
@@ -264,8 +266,8 @@ public class KeyGroupPartitioner<T> {
 	}
 
 	public static <T> StateSnapshotKeyGroupReader createKeyGroupPartitionReader(
-			@Nonnull ElementReaderFunction<T> readerFunction,
-			@Nonnull KeyGroupElementsConsumer<T> elementConsumer) {
+		@Nonnull ElementReaderFunction<T> readerFunction,
+		@Nonnull KeyGroupElementsConsumer<T> elementConsumer) {
 		return new PartitioningResultKeyGroupReader<>(readerFunction, elementConsumer);
 	}
 

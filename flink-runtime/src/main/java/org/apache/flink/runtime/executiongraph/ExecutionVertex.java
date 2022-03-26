@@ -46,6 +46,8 @@ import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.runtime.jobmanager.scheduler.LocationPreferenceConstraint;
 import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
+import org.apache.flink.runtime.spector.reconfig.ReconfigID;
+import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.runtime.util.EvictingBoundedList;
@@ -111,6 +113,9 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	 *  In this case the underlying task waits in STANDBY state to maintain replicated running state backend
 	 *  for current execution job vertex on each node */
 	private volatile boolean isStandby;
+
+	private volatile ReconfigID reconfigId;
+	private volatile KeyGroupRange keyGroupRange;
 
 	// --------------------------------------------------------------------------------------------
 
@@ -287,6 +292,14 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	@Override
 	public long getStateTimestamp(ExecutionState state) {
 		return currentExecution.getStateTimestamp(state);
+	}
+
+	public void updateRescaleId(ReconfigID reconfigId) {
+		this.reconfigId = reconfigId;
+	}
+
+	public void assignKeyGroupRange(KeyGroupRange keyGroupRange) {
+		this.keyGroupRange = keyGroupRange;
 	}
 
 	@Override
@@ -863,6 +876,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			InputChannelDeploymentDescriptor[] partitions = InputChannelDeploymentDescriptor.fromEdges(
 				edges,
 				targetSlot.getTaskManagerLocation().getResourceID(),
+				reconfigId,
 				lazyScheduling);
 
 			// If the produced partition has multiple consumers registered, we
@@ -919,6 +933,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			taskRestore,
 			producedPartitions,
 			consumedPartitions,
+			reconfigId,
+			keyGroupRange,
 			isStandby);
 	}
 

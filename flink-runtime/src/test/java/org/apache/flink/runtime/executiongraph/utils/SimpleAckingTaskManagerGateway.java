@@ -30,6 +30,7 @@ import org.apache.flink.runtime.executiongraph.PartitionInfo;
 import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.StackTraceSampleResponse;
+import org.apache.flink.runtime.spector.reconfig.ReconfigOptions;
 
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -82,6 +83,11 @@ public class SimpleAckingTaskManagerGateway implements TaskManagerGateway {
 	public CompletableFuture<Acknowledge> submitTask(TaskDeploymentDescriptor tdd, Time timeout) {
 		submitConsumer.accept(tdd);
 		return CompletableFuture.completedFuture(Acknowledge.get());
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> reconfigTask(ExecutionAttemptID executionAttemptID, TaskDeploymentDescriptor tdd, ReconfigOptions reconfigOptions, Time timeout) {
+		return null;
 	}
 
 	@Override

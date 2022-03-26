@@ -391,6 +391,23 @@ public class CheckpointCoordinator {
 		}
 	}
 
+	public PendingCheckpoint triggerReconfigPoint(long timestamp) throws CheckpointTriggerException {
+		CheckpointProperties props = CheckpointProperties.forRconfigPoint();
+
+		CheckpointTriggerResult triggerResult = triggerCheckpoint(
+			timestamp,
+			props,
+			null,
+			false);
+
+		if (triggerResult.isSuccess()) {
+			return triggerResult.getPendingCheckpoint();
+		} else {
+			throw new CheckpointTriggerException("Failed to trigger rescalepoint.", triggerResult.getFailureReason());
+		}
+	}
+
+
 	/**
 	 * Triggers a new standard checkpoint and uses the given timestamp as the checkpoint
 	 * timestamp.
@@ -761,6 +778,10 @@ public class CheckpointCoordinator {
 					case SUCCESS:
 						LOG.debug("Received acknowledge message for checkpoint {} from task {} of job {}.",
 							checkpointId, message.getTaskExecutionId(), message.getJob());
+
+						if (checkpointProgressListener != null) {
+							checkpointProgressListener.onReceiveRescalepointAcknowledge(message.getTaskExecutionId(), checkpoint);
+						}
 
 						if (checkpoint.isFullyAcknowledged()) {
 							completePendingCheckpoint(checkpoint);

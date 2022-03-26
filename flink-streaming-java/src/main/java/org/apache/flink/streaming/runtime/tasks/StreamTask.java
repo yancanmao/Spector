@@ -19,28 +19,27 @@ package org.apache.flink.streaming.runtime.tasks;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.api.common.TaskInfo;
 import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.fs.FileSystemSafetyNet;
-import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
-import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
-import org.apache.flink.runtime.checkpoint.CheckpointOptions;
-import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
+import org.apache.flink.runtime.checkpoint.*;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
+import org.apache.flink.runtime.io.network.partition.ResultPartition;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
-import org.apache.flink.runtime.state.CheckpointStorage;
-import org.apache.flink.runtime.state.CheckpointStreamFactory;
-import org.apache.flink.runtime.state.StateBackend;
-import org.apache.flink.runtime.state.StateBackendLoader;
-import org.apache.flink.runtime.state.TaskStateManager;
+import org.apache.flink.runtime.spector.reconfig.TaskConfigManager;
+import org.apache.flink.runtime.state.*;
 import org.apache.flink.runtime.taskmanager.DispatcherThreadFactory;
+import org.apache.flink.runtime.taskmanager.RuntimeEnvironment;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.graph.StreamEdge;
@@ -175,12 +174,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	/** Wrapper for synchronousCheckpointExceptionHandler to deal with rethrown exceptions. Used in the async part. */
 	private AsyncCheckpointExceptionHandler asynchronousCheckpointExceptionHandler;
 
-	private final List<RecordWriter<SerializationDelegate<StreamRecord<OUT>>>> recordWriters;
+	private List<RecordWriter<SerializationDelegate<StreamRecord<OUT>>>> recordWriters;
 
 	/**
 	 * Future for standby tasks that completes when they are required to run
 	 */
 	private final CompletableFuture<Void> standbyFuture;
+
+	private final KeyGroupRange assignedKeyGroupRange;
 
 	// ------------------------------------------------------------------------
 
@@ -219,6 +220,15 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		} else {
 			this.standbyFuture = null;
 		}
+
+		KeyGroupRange range = ((RuntimeEnvironment) getEnvironment()).keyGroupRange;
+		TaskInfo taskInfo = getEnvironment().getTaskInfo();
+
+		this.assignedKeyGroupRange = range != null ? range :
+			KeyGroupRangeAssignment.computeKeyGroupRangeForOperatorIndex(
+				taskInfo.getMaxNumberOfParallelSubtasks(),
+				taskInfo.getNumberOfParallelSubtasks(),
+				taskInfo.getIndexOfThisSubtask());
 	}
 
 	// ------------------------------------------------------------------------
@@ -672,6 +682,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				// Step (3): Take the state snapshot. This should be largely asynchronous, to not
 				//           impact progress of the streaming topology
 				checkpointState(checkpointMetaData, checkpointOptions, checkpointMetrics);
+
+				// Step (4): Check whether the checkpoint is rescalepoint type, and do rescaling if it is.
+				checkRescalePoint(checkpointMetaData, checkpointOptions, checkpointMetrics);
 				return true;
 			}
 			else {
@@ -821,6 +834,109 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			// only fail if the task is still running
 			getEnvironment().failExternally(exception);
 		}
+	}
+
+	// ------------------------------------------------------------------------
+	//  Rescale
+	// ------------------------------------------------------------------------
+
+	protected void reconnect() {}
+
+	private void initReconnect() {
+		TaskConfigManager rescaleManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
+
+		if (!rescaleManager.isScalingTarget()) {
+			return;
+		}
+		LOG.info("++++++ trigger target vertex rescaling: " + this.toString());
+		// this line is to record the time to redistribute
+//		long start = System.nanoTime();
+
+		try {
+			// update gate
+			if (rescaleManager.isScalingGates()) {
+				for (InputGate gate : getEnvironment().getAllInputGates()) {
+					rescaleManager.substituteInputGateChannels((SingleInputGate) gate);
+				}
+			}
+
+			// update output (writers)
+			if (rescaleManager.isScalingPartitions()) {
+				ResultPartitionWriter[] oldWriterCopies =
+					rescaleManager.substituteResultPartitions(getEnvironment().getAllWriters());
+
+				recordWriters = createRecordWriters(configuration, getEnvironment());
+
+				RecordWriterOutput[] oldStreamOutputCopies =
+					operatorChain.substituteRecordWriter(this, recordWriters);
+
+				//  close old output and unregister partitions
+				for (RecordWriterOutput<?> streamOutput : oldStreamOutputCopies) {
+					streamOutput.flush();
+					streamOutput.close();
+				}
+
+				rescaleManager.unregisterPartitions((ResultPartition[]) oldWriterCopies);
+			}
+
+			reconnect();
+		} catch (Exception e) {
+			LOG.info("++++++ error", e);
+		} finally {
+			rescaleManager.finish();
+//			System.out.println("redistribute id: " + this.toString() + " time: " + (System.nanoTime() - start));
+			// complete reconnection, then start to process tuple,
+			// the total migration time is T(complete reconnection) - T(receive barrior).
+			System.out.println(this.toString() + " completed reconnection: " + System.currentTimeMillis());
+		}
+	}
+
+	private void checkRescalePoint(
+		CheckpointMetaData checkpointMetaData,
+		CheckpointOptions checkpointOptions,
+		CheckpointMetrics checkpointMetrics) {
+
+		if (checkpointOptions.getCheckpointType() != CheckpointType.RECONFIGPOINT) {
+			return;
+		}
+
+
+		// add a timer for measuring blocking time
+		System.out.println(this.toString() + " received checkpoint: " + System.currentTimeMillis());
+
+		initReconnect();
+	}
+
+	@Override
+	public void reinitializeState(KeyGroupRange keyGroupRange) {
+		LOG.info("++++++ let's reinitialize state: " + this.toString() + "  " + keyGroupRange);
+		try {
+			synchronized (lock) {
+				this.assignedKeyGroupRange.update(keyGroupRange);
+
+				initializeState();
+				openAllOperators();
+
+				initReconnect();
+			}
+		} catch (Exception e) {
+			LOG.info("++++++ error", e);
+			throw new RuntimeException(e);
+		}
+	}
+
+	@Override
+	public void updateKeyGroupRange(KeyGroupRange keyGroupRange) {
+		LOG.info("++++++ updateKeyGroupRange: "  + this.toString() + "  " + keyGroupRange);
+
+		TaskConfigManager rescaleManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
+
+//		synchronized (lock) {
+//			this.assignedKeyGroupRange.update(keyGroupRange);
+//		}
+		this.assignedKeyGroupRange.update(keyGroupRange);
+
+		rescaleManager.finish();
 	}
 
 	// ------------------------------------------------------------------------

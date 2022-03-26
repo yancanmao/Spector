@@ -467,6 +467,11 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		}
 	}
 
+	public void cleanBeforeRescale() {
+		// clear this field to generating updated taskInformation later
+		this.taskInformationOrBlobKey = null;
+	}
+
 	//---------------------------------------------------------------------------------------------
 	//  Actions
 	//---------------------------------------------------------------------------------------------

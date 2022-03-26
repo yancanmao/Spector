@@ -20,18 +20,22 @@ package org.apache.flink.runtime.checkpoint;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.core.fs.FSDataInputStream;
+import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.runtime.executiongraph.Execution;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.ExecutionVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.OperatorInstanceID;
+import org.apache.flink.runtime.spector.reconfig.JobExecutionPlan;
 import org.apache.flink.runtime.state.*;
 import org.apache.flink.util.Preconditions;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -40,6 +44,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -51,7 +56,8 @@ public class StateAssignmentOperation {
 
 	public static enum Operation {
 		RESTORE_STATE,
-		DISPATCH_STATE_TO_STANDBY_TASK
+		REPARTITION_STATE,
+		DISPATCH_STATE_TO_STANDBY_TASK,
 	}
 
 	private static final Logger LOG = LoggerFactory.getLogger(StateAssignmentOperation.class);
@@ -62,6 +68,8 @@ public class StateAssignmentOperation {
 	private final long restoreCheckpointId;
 	private final boolean allowNonRestoredState;
 	public final Operation operation;
+
+	private JobExecutionPlan jobExecutionPlan;
 
 	public StateAssignmentOperation(
 		long restoreCheckpointId,
@@ -117,6 +125,10 @@ public class StateAssignmentOperation {
 
 	}
 
+	public void setRedistributeStrategy(JobExecutionPlan jobExecutionPlan) {
+		this.jobExecutionPlan = jobExecutionPlan;
+	}
+
 	private void assignAttemptState(ExecutionJobVertex executionJobVertex, List<OperatorState> operatorStates) {
 
 		List<OperatorID> operatorIDs = executionJobVertex.getOperatorIDs();
@@ -156,6 +168,11 @@ public class StateAssignmentOperation {
 		Map<OperatorInstanceID, List<OperatorStateHandle>> newRawOperatorStates =
 			new HashMap<>(expectedNumberOfSubTasks);
 
+		Map<OperatorInstanceID, List<KeyedStateHandle>> newManagedKeyedState =
+			new HashMap<>(expectedNumberOfSubTasks);
+		Map<OperatorInstanceID, List<KeyedStateHandle>> newRawKeyedState =
+			new HashMap<>(expectedNumberOfSubTasks);
+
 		if (operation == Operation.RESTORE_STATE) {
 			reDistributePartitionableStates(
 				operatorStates,
@@ -163,20 +180,7 @@ public class StateAssignmentOperation {
 				operatorIDs,
 				newManagedOperatorStates,
 				newRawOperatorStates);
-		} else {
-			reDistributePartitionableStatesToStandbyTasks(
-				operatorStates,
-				operatorIDs,
-				newManagedOperatorStates,
-				newRawOperatorStates);
-		}
 
-		Map<OperatorInstanceID, List<KeyedStateHandle>> newManagedKeyedState =
-			new HashMap<>(expectedNumberOfSubTasks);
-		Map<OperatorInstanceID, List<KeyedStateHandle>> newRawKeyedState =
-			new HashMap<>(expectedNumberOfSubTasks);
-
-		if (operation == Operation.RESTORE_STATE) {
 			reDistributeKeyedStates(
 				operatorStates,
 				newParallelism,
@@ -184,25 +188,16 @@ public class StateAssignmentOperation {
 				keyGroupPartitions,
 				newManagedKeyedState,
 				newRawKeyedState);
-		} else {
-			reDistributeKeyedStatesToStandbyTasks(
-				operatorStates,
-				operatorIDs,
-				newManagedKeyedState,
-				newRawKeyedState);
-		}
-
-		/*
-		 *  An executionJobVertex's all state handles needed to restore are something like a matrix
-		 *
-		 * 		parallelism0 parallelism1 parallelism2 parallelism3
-		 * op0   sh(0,0)     sh(0,1)       sh(0,2)	    sh(0,3)
-		 * op1   sh(1,0)	 sh(1,1)	   sh(1,2)	    sh(1,3)
-		 * op2   sh(2,0)	 sh(2,1)	   sh(2,2)		sh(2,3)
-		 * op3   sh(3,0)	 sh(3,1)	   sh(3,2)		sh(3,3)
-		 *
-		 */
-		if (operation == Operation.RESTORE_STATE) {
+			/*
+			 *  An executionJobVertex's all state handles needed to restore are something like a matrix
+			 *
+			 * 		parallelism0 parallelism1 parallelism2 parallelism3
+			 * op0   sh(0,0)     sh(0,1)       sh(0,2)	    sh(0,3)
+			 * op1   sh(1,0)	 sh(1,1)	   sh(1,2)	    sh(1,3)
+			 * op2   sh(2,0)	 sh(2,1)	   sh(2,2)		sh(2,3)
+			 * op3   sh(3,0)	 sh(3,1)	   sh(3,2)		sh(3,3)
+			 *
+			 */
 			assignTaskStateToExecutionJobVertices(
 				executionJobVertex,
 				newManagedOperatorStates,
@@ -210,7 +205,35 @@ public class StateAssignmentOperation {
 				newManagedKeyedState,
 				newRawKeyedState,
 				newParallelism);
-		} else {
+		} else if (operation == Operation.REPARTITION_STATE) {
+			checkNotNull(jobExecutionPlan, "++++++ JobExecutionPlan Cannot be null for repartition");
+			reDistributePartitionableStates(
+				operatorStates,
+				newParallelism,
+				operatorIDs,
+				newManagedOperatorStates,
+				newRawOperatorStates);
+
+			reDistributeKeyedStatesWithExecutionPlan(
+				operatorStates,
+				newParallelism,
+				operatorIDs,
+				newManagedKeyedState,
+				newRawKeyedState);
+
+		} else if (operation == Operation.DISPATCH_STATE_TO_STANDBY_TASK) {
+			reDistributePartitionableStatesToStandbyTasks(
+				operatorStates,
+				operatorIDs,
+				newManagedOperatorStates,
+				newRawOperatorStates);
+
+			reDistributeKeyedStatesToStandbyTasks(
+				operatorStates,
+				operatorIDs,
+				newManagedKeyedState,
+				newRawKeyedState);
+
 			backupTaskStateToExecutionJobVertices(
 				executionJobVertex,
 				newManagedOperatorStates,
@@ -218,6 +241,8 @@ public class StateAssignmentOperation {
 				newManagedKeyedState,
 				newRawKeyedState
 			);
+		} else {
+			throw new UnsupportedOperationException("++++++ Unrecognized operation type");
 		}
 	}
 
@@ -500,6 +525,111 @@ public class StateAssignmentOperation {
 			newManagedOperatorStates.put(instanceID, managedOpState);
 			newRawOperatorStates.put(instanceID, rawOpState);
 		}
+	}
+
+	private void reDistributeKeyedStatesWithExecutionPlan(
+		List<OperatorState> oldOperatorStates,
+		int newParallelism,
+		List<OperatorID> newOperatorIDs,
+		Map<OperatorInstanceID, List<KeyedStateHandle>> newManagedKeyedState,
+		Map<OperatorInstanceID, List<KeyedStateHandle>> newRawKeyedState) {
+
+		checkState(newOperatorIDs.size() == oldOperatorStates.size(),
+			"This method still depends on the order of the new and old operators");
+
+		for (int operatorIndex = 0; operatorIndex < newOperatorIDs.size(); operatorIndex++) {
+			OperatorState operatorState = oldOperatorStates.get(operatorIndex);
+
+			// For managed state, hashedKeyGroup -> (offset, streamStateHandle)
+			Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToManagedStateHandle =
+				getHashedKeyGroupToHandleFromOperatorState(operatorState, OperatorSubtaskState::getManagedKeyedState);
+
+			Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToRawStateHandle =
+				getHashedKeyGroupToHandleFromOperatorState(operatorState, OperatorSubtaskState::getRawKeyedState);
+
+			Map<Integer, List<Integer>> partitionAssignment = jobExecutionPlan.getPartitionAssignment();
+
+			for (int subTaskIndex = 0; subTaskIndex < newParallelism; subTaskIndex++) {
+				OperatorInstanceID instanceID = OperatorInstanceID.of(subTaskIndex, newOperatorIDs.get(operatorIndex));
+
+				List<KeyedStateHandle> subManagedKeyedStates = new ArrayList<>();
+				List<KeyedStateHandle> subRawKeyedStates = new ArrayList<>();;
+
+				for (int i = 0; i < partitionAssignment.get(subTaskIndex).size(); i++) {
+					// the keyGroup we get from partitionAssignment is the hashed one (most origin without remapping)
+					int assignedKeyGroup = partitionAssignment.get(subTaskIndex).get(i);
+
+					KeyGroupRange alignedKeyGroupRange = jobExecutionPlan.getAlignedKeyGroupRange(subTaskIndex);
+					// keyGroupRange which length is 1
+					KeyGroupRange rangeOfOneKeyGroupRange = KeyGroupRange.of(alignedKeyGroupRange.getKeyGroupId(i), alignedKeyGroupRange.getKeyGroupId(i));
+
+					Tuple2<Long, StreamStateHandle> managedStateTuple = hashedKeyGroupToManagedStateHandle.get(assignedKeyGroup);
+					if (managedStateTuple != null) {
+						subManagedKeyedStates.add(new KeyGroupsStateHandle(
+							new KeyGroupRangeOffsets(rangeOfOneKeyGroupRange, new long[]{managedStateTuple.f0}),
+							managedStateTuple.f1));
+					}
+
+					Tuple2<Long, StreamStateHandle> rawStateTuple = hashedKeyGroupToRawStateHandle.get(assignedKeyGroup);
+					if (rawStateTuple != null) {
+						subRawKeyedStates.add(new KeyGroupsStateHandle(
+							new KeyGroupRangeOffsets(rangeOfOneKeyGroupRange, new long[]{rawStateTuple.f0}),
+							rawStateTuple.f1));
+					}
+				}
+
+				newManagedKeyedState.put(instanceID, subManagedKeyedStates);
+				newRawKeyedState.put(instanceID, subRawKeyedStates);
+			}
+		}
+	}
+
+	private static Map<Integer, Tuple2<Long, StreamStateHandle>> getHashedKeyGroupToHandleFromOperatorState(
+		OperatorState operatorState,
+		Function<OperatorSubtaskState, StateObjectCollection<KeyedStateHandle>> applier) {
+
+		Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle = new HashMap<>();
+
+		for (int i = 0; i < operatorState.getParallelism(); i++) {
+			if (operatorState.getState(i) != null) {
+				for (KeyedStateHandle keyedStateHandle : applier.apply(operatorState.getState(i))) {
+					if (keyedStateHandle != null) {
+						if (keyedStateHandle instanceof KeyGroupsStateHandle) {
+
+							KeyGroupsStateHandle keyGroupsStateHandle = (KeyGroupsStateHandle) keyedStateHandle;
+							KeyGroupRange keyGroupRangeFromOldState = keyGroupsStateHandle.getKeyGroupRange();
+
+							if (keyGroupRangeFromOldState.equals(KeyGroupRange.EMPTY_KEY_GROUP_RANGE)) {
+								continue;
+							}
+
+							int start = keyGroupRangeFromOldState.getStartKeyGroup();
+							int end = keyGroupRangeFromOldState.getEndKeyGroup();
+
+							try (FSDataInputStream fsDataInputStream = keyGroupsStateHandle.openInputStream()) {
+								DataInputViewStreamWrapper inView = new DataInputViewStreamWrapper(fsDataInputStream);
+
+								for (int alignedOldKeyGroup = start; alignedOldKeyGroup <= end; alignedOldKeyGroup++) {
+									long offset = keyGroupsStateHandle.getOffsetForKeyGroup(alignedOldKeyGroup);
+
+									fsDataInputStream.seek(offset);
+									int hashedKeyGroup = inView.readInt();
+
+									hashedKeyGroupToHandle.put(
+										hashedKeyGroup,
+										Tuple2.of(offset, keyGroupsStateHandle.getDelegateStateHandle()));
+								}
+							} catch (IOException err) {
+								throw new RuntimeException(err);
+							}
+						} else {
+							throw new RuntimeException("++++++ unsupported KeyedStateHandle for state migration");
+						}
+					}
+				}
+			}
+		}
+		return hashedKeyGroupToHandle;
 	}
 
 	private static void splitManagedAndRawOperatorStates(

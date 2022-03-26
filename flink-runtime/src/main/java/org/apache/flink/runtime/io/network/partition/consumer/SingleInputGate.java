@@ -126,10 +126,10 @@ public class SingleInputGate implements InputGate {
 	 * The index of the consumed subpartition of each consumed partition. This index depends on the
 	 * {@link DistributionPattern} and the subtask indices of the producing and consuming task.
 	 */
-	private final int consumedSubpartitionIndex;
+	private int consumedSubpartitionIndex;
 
 	/** The number of input channels (equivalent to the number of consumed partitions). */
-	private final int numberOfInputChannels;
+	private int numberOfInputChannels;
 
 	/**
 	 * Input channels. There is a one input channel for each consumed intermediate result partition.
@@ -144,9 +144,9 @@ public class SingleInputGate implements InputGate {
 	 * Field guaranteeing uniqueness for inputChannelsWithData queue. Both of those fields should be unified
 	 * onto one.
 	 */
-	private final BitSet enqueuedInputChannelsWithData;
+	private BitSet enqueuedInputChannelsWithData;
 
-	private final BitSet channelsWithEndOfPartitionEvents;
+	private BitSet channelsWithEndOfPartitionEvents;
 
 	/** The partition state listener listening to failed partition requests. */
 	private final TaskActions taskActions;
@@ -225,6 +225,10 @@ public class SingleInputGate implements InputGate {
 
 	public IntermediateDataSetID getConsumedResultId() {
 		return consumedResultId;
+	}
+
+	public void setConsumedSubpartitionIndex(int consumedSubpartitionIndex) {
+		this.consumedSubpartitionIndex = consumedSubpartitionIndex;
 	}
 
 	/**
@@ -326,7 +330,7 @@ public class SingleInputGate implements InputGate {
 	public void setInputChannel(IntermediateResultPartitionID partitionId, InputChannel inputChannel) {
 		synchronized (requestLock) {
 			if (inputChannels.put(checkNotNull(partitionId), checkNotNull(inputChannel)) == null
-					&& inputChannel instanceof UnknownInputChannel) {
+				&& inputChannel instanceof UnknownInputChannel) {
 
 				numberOfUninitializedChannels++;
 			}
@@ -415,7 +419,7 @@ public class SingleInputGate implements InputGate {
 				}
 				else {
 					throw new IllegalStateException(
-							"Unexpected type of channel to retrigger partition: " + ch.getClass());
+						"Unexpected type of channel to retrigger partition: " + ch.getClass());
 				}
 			}
 		}
@@ -462,6 +466,34 @@ public class SingleInputGate implements InputGate {
 		}
 	}
 
+	public void reset(int numberOfInputChannels) {
+		synchronized (requestLock) {
+			for (InputChannel inputChannel : inputChannels.values()) {
+				try {
+					inputChannel.releaseAllResources();
+				}
+				catch (IOException e) {
+					LOG.warn("{}: Error during release of channel resources: {}.",
+						owningTaskName, e.getMessage(), e);
+				}
+			}
+
+			this.inputChannels.clear();
+		}
+
+		this.numberOfInputChannels = numberOfInputChannels;
+
+//		this.networkBufferPool = null;
+//		this.bufferPool = null;
+
+		this.enqueuedInputChannelsWithData = new BitSet(numberOfInputChannels);
+		this.channelsWithEndOfPartitionEvents = new BitSet(numberOfInputChannels);
+
+		this.requestedPartitionsFlag = false;
+		this.pendingEvents.clear();
+		this.retriggerLocalRequestTimer = null;
+	}
+
 	@Override
 	public boolean isFinished() {
 		synchronized (requestLock) {
@@ -486,8 +518,8 @@ public class SingleInputGate implements InputGate {
 				// Sanity checks
 				if (numberOfInputChannels != inputChannels.size()) {
 					throw new IllegalStateException("Bug in input gate setup logic: mismatch between" +
-							"number of total input channels and the currently set number of input " +
-							"channels.");
+						"number of total input channels and the currently set number of input " +
+						"channels.");
 				}
 
 				for (InputChannel inputChannel : inputChannels.values()) {
@@ -649,7 +681,7 @@ public class SingleInputGate implements InputGate {
 
 	// ------------------------------------------------------------------------
 
-	Map<IntermediateResultPartitionID, InputChannel> getInputChannels() {
+	public Map<IntermediateResultPartitionID, InputChannel> getInputChannels() {
 		return inputChannels;
 	}
 

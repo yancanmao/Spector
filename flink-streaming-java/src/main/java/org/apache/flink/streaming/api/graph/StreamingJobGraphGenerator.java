@@ -56,7 +56,7 @@ import org.apache.flink.streaming.runtime.partitioner.RescalePartitioner;
 import org.apache.flink.streaming.runtime.partitioner.StreamPartitioner;
 import org.apache.flink.streaming.runtime.tasks.StreamIterationHead;
 import org.apache.flink.streaming.runtime.tasks.StreamIterationTail;
-import org.apache.flink.streaming.spector.StreamJobGraphRescaler;
+import org.apache.flink.streaming.spector.StreamJobGraphUpdater;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.SerializedValue;
 
@@ -142,7 +142,7 @@ public class StreamingJobGraphGenerator {
 		jobGraph.setScheduleMode(ScheduleMode.EAGER);
 
 		// set the exact class that used in jobgraph for rescale
-		jobGraph.setJobRescalerClass(StreamJobGraphRescaler.class);
+		jobGraph.setJobRescalerClass(StreamJobGraphUpdater.class);
 
 		// Generate deterministic hashes for the nodes in order to identify them across
 		// submission iff they didn't change.

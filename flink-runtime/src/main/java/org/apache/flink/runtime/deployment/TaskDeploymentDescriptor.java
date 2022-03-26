@@ -26,6 +26,8 @@ import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.JobInformation;
 import org.apache.flink.runtime.executiongraph.TaskInformation;
+import org.apache.flink.runtime.spector.reconfig.ReconfigID;
+import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.util.FileUtils;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
@@ -127,11 +129,17 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	/** The allocation ID of the slot in which the task shall be run. */
 	private final AllocationID allocationId;
 
+	/** The ID referencing the rescale id of the task*/
+	private ReconfigID reconfigId;
+
 	/** The task's index in the subtask group. */
 	private final int subtaskIndex;
 
 	/** Attempt number the task. */
 	private final int attemptNumber;
+
+	/** Assigned keyGroupRange. */
+	private final KeyGroupRange keyGroupRange;
 
 	/** The list of produced intermediate result partition deployment descriptors. */
 	private final Collection<ResultPartitionDeploymentDescriptor> producedPartitions;
@@ -181,6 +189,26 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors, boolean isStandby) {
 
+		this(jobId, serializedJobInformation, serializedTaskInformation,
+			executionAttemptId, allocationId, subtaskIndex, attemptNumber,
+			targetSlotNumber, taskRestore, resultPartitionDeploymentDescriptors,
+			inputGateDeploymentDescriptors, ReconfigID.DEFAULT, null, false);
+	}
+
+	public TaskDeploymentDescriptor(
+		JobID jobId,
+		MaybeOffloaded<JobInformation> serializedJobInformation,
+		MaybeOffloaded<TaskInformation> serializedTaskInformation,
+		ExecutionAttemptID executionAttemptId,
+		AllocationID allocationId,
+		int subtaskIndex,
+		int attemptNumber,
+		int targetSlotNumber,
+		@Nullable JobManagerTaskRestore taskRestore,
+		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
+		ReconfigID reconfigId, KeyGroupRange keyGroupRange, boolean isStandby) {
+
 		this.jobId = Preconditions.checkNotNull(jobId);
 
 		this.serializedJobInformation = Preconditions.checkNotNull(serializedJobInformation);
@@ -188,6 +216,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 		this.executionId = Preconditions.checkNotNull(executionAttemptId);
 		this.allocationId = Preconditions.checkNotNull(allocationId);
+		this.reconfigId = Preconditions.checkNotNull(reconfigId);
 
 		Preconditions.checkArgument(0 <= subtaskIndex, "The subtask index must be positive.");
 		this.subtaskIndex = subtaskIndex;
@@ -199,6 +228,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		this.targetSlotNumber = targetSlotNumber;
 
 		this.taskRestore = taskRestore;
+		this.keyGroupRange = keyGroupRange;
 
 		this.producedPartitions = Preconditions.checkNotNull(resultPartitionDeploymentDescriptors);
 		this.inputGates = Preconditions.checkNotNull(inputGateDeploymentDescriptors);
@@ -295,6 +325,15 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 	public AllocationID getAllocationId() {
 		return allocationId;
+	}
+
+	public ReconfigID getReconfigId() {
+		return reconfigId;
+	}
+
+
+	public KeyGroupRange getKeyGroupRange() {
+		return keyGroupRange;
 	}
 
 	/**

@@ -1,22 +1,27 @@
 package org.apache.flink.runtime.spector;
 
-import org.apache.flink.runtime.checkpoint.CompletedCheckpoint;
-import org.apache.flink.runtime.checkpoint.OperatorState;
-import org.apache.flink.runtime.checkpoint.PendingCheckpoint;
-import org.apache.flink.runtime.checkpoint.StateAssignmentOperation;
+import org.apache.flink.runtime.checkpoint.*;
+import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.*;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
+import org.apache.flink.runtime.jobgraph.jsonplan.JsonPlanGenerator;
+import org.apache.flink.runtime.spector.reconfig.JobExecutionPlan;
+import org.apache.flink.runtime.spector.reconfig.JobReconfigAction;
+import org.apache.flink.runtime.spector.reconfig.ReconfigID;
+import org.apache.flink.runtime.spector.reconfig.ReconfigOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Operation.DISPATCH_STATE_TO_STANDBY_TASK;
+import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Operation.REPARTITION_STATE;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -27,7 +32,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  * 3. implement repartition
  * 4. implement restore
  */
-public class JobStateCoordinator implements CheckpointProgressListener {
+public class JobStateCoordinator implements CheckpointProgressListener, JobReconfigAction {
 
 	static final Logger LOG = LoggerFactory.getLogger(JobStateCoordinator.class);
 
@@ -44,13 +49,35 @@ public class JobStateCoordinator implements CheckpointProgressListener {
 	/**
 	 * For key partitioner update
 	 */
-	private final JobGraphRescaler jobGraphRescaler;
+	private final JobGraphUpdater jobGraphUpdater;
 
 	/**
 	 * standby executions for backup state maintenance of each operator
 	 * Operator -> [BackupTask1, BackTask2, ...]
 	 */
 	private final HashMap<JobVertexID, List<ExecutionVertex>> standbyExecutionVertexs;
+
+
+	// states for reconfiguration
+
+	private final Object lock = new Object();
+
+	// mutable fields
+	private volatile boolean inProcess;
+
+	private volatile long checkpointId;
+
+	private volatile ActionType actionType;
+
+	private volatile ReconfigID reconfigId;
+
+	private volatile JobExecutionPlan jobExecutionPlan;
+
+	private final List<ExecutionAttemptID> notYetAcknowledgedTasks;
+
+	private volatile ExecutionJobVertex targetVertex;
+
+	private ComponentMainThreadExecutor mainThreadExecutor;
 
 	/**
 	 *
@@ -64,8 +91,9 @@ public class JobStateCoordinator implements CheckpointProgressListener {
 		ClassLoader userCodeLoader) {
 		this.jobGraph = jobGraph;
 		this.executionGraph = executionGraph;
-		this.jobGraphRescaler = JobGraphRescaler.instantiate(jobGraph, userCodeLoader);
+		this.jobGraphUpdater = JobGraphUpdater.instantiate(jobGraph, userCodeLoader);
 		this.standbyExecutionVertexs = new HashMap<>();
+		this.notYetAcknowledgedTasks = new ArrayList<>();
 
 		// inject a listener into CheckpointCoordinator to manage received checkpoints
 		checkNotNull(executionGraph.getCheckpointCoordinator());
@@ -185,12 +213,242 @@ public class JobStateCoordinator implements CheckpointProgressListener {
 
 	@Override
 	public void onReceiveRescalepointAcknowledge(ExecutionAttemptID attemptID, PendingCheckpoint checkpoint) {
+		if (inProcess && checkpointId == checkpoint.getCheckpointId()) {
 
+			CompletableFuture.runAsync(() -> {
+				LOG.info("++++++ Received ReconfigPoint Acknowledgement");
+				try {
+					synchronized (lock) {
+						if (inProcess) {
+							if (notYetAcknowledgedTasks.isEmpty()) {
+								// late come in snapshot, ignore it
+								return;
+							}
+
+							notYetAcknowledgedTasks.remove(attemptID);
+
+							if (notYetAcknowledgedTasks.isEmpty()) {
+								// receive all required snapshot, force streamSwitch to update metrices
+//								streamSwitchAdaptor.onForceRetrieveMetrics(targetVertex.getJobVertexId());
+								// only update executor mappings at this time.
+//								streamSwitchAdaptor.onMigrationExecutorsStopped(targetVertex.getJobVertexId());
+
+								LOG.info("++++++ handle operator states");
+								handleCollectedStates(new HashMap<>(checkpoint.getOperatorStates()));
+							}
+						}
+					}
+				} catch (Exception e) {
+					failExecution(e);
+					throw new CompletionException(e);
+				}
+			}, mainThreadExecutor);
+		}
+	}
+
+	// for reconfiguration
+
+	public void init(ComponentMainThreadExecutor mainThreadExecutor) {
+		this.mainThreadExecutor = mainThreadExecutor;
 	}
 
 	@Override
 	public void onCompleteCheckpoint(CompletedCheckpoint checkpoint) {
 		checkNotNull(checkpoint);
 		dispatchLatestCheckpointedStateToStandbyTasks(checkpoint);
+	}
+
+	@Override
+	public JobGraph getJobGraph() {
+		return jobGraph;
+	}
+
+	@Override
+	public void scaleOut(JobVertexID vertexID, int newParallelism, JobExecutionPlan jobExecutionPlan) {
+		throw new UnsupportedOperationException("Scaling is not supported");
+	}
+
+	@Override
+	public void scaleIn(JobVertexID vertexID, int newParallelism, JobExecutionPlan jobExecutionPlan) {
+		throw new UnsupportedOperationException("Scaling is not supported");
+	}
+
+	@Override
+	public void repartition(JobVertexID vertexID, JobExecutionPlan jobExecutionPlan) {
+		checkState(!inProcess, "Current rescaling hasn't finished.");
+		inProcess = true;
+		actionType = ActionType.REPARTITION;
+
+		reconfigId = ReconfigID.generateNextID();
+		this.jobExecutionPlan = jobExecutionPlan;
+
+		LOG.info("++++++ repartition job with reconfigID: " + reconfigId +
+			", taskID" + vertexID +
+			", partitionAssignment: " + jobExecutionPlan);
+
+		List<JobVertexID> involvedUpstream = new ArrayList<>();
+		List<JobVertexID> involvedDownstream = new ArrayList<>();
+		try {
+			jobGraphUpdater.repartition(vertexID,
+				jobExecutionPlan.getPartitionAssignment(),
+				involvedUpstream, involvedDownstream);
+			executionGraph.setJsonPlan(JsonPlanGenerator.generatePlan(jobGraph));
+
+			repartitionVertex(vertexID, involvedUpstream, involvedDownstream);
+		} catch (Exception e) {
+			failExecution(e);
+		}
+	}
+
+	private void repartitionVertex(
+		JobVertexID vertexID,
+		List<JobVertexID> updatedUpstream,
+		List<JobVertexID> updatedDownstream) throws ExecutionGraphException {
+
+		Map<JobVertexID, ExecutionJobVertex> tasks = executionGraph.getAllVertices();
+
+		CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
+
+		checkNotNull(checkpointCoordinator);
+
+		this.targetVertex = tasks.get(vertexID);
+
+		for (ExecutionVertex vertex : this.targetVertex.getTaskVertices()) {
+			notYetAcknowledgedTasks.add(vertex.getCurrentExecutionAttempt().getAttemptId());
+		}
+
+		// state check
+		checkState(targetVertex.getParallelism() == jobExecutionPlan.getNumOpenedSubtask(),
+			String.format("parallelism in targetVertex %d is not equal to number of executors %d",
+				targetVertex.getParallelism(), jobExecutionPlan.getNumOpenedSubtask()));
+
+		// rescale upstream and downstream, TDOO: do not need to update target partition and downstream gates
+		final Collection<CompletableFuture<Void>> afferctedTaskExecutionsFuture = new ArrayList<>();
+
+		for (JobVertexID jobId : updatedUpstream) {
+			tasks.get(jobId).cleanBeforeRescale();
+
+			for (ExecutionVertex vertex : tasks.get(jobId).getTaskVertices()) {
+				Execution execution = vertex.getCurrentExecutionAttempt();
+				afferctedTaskExecutionsFuture.add(execution.scheduleReconfig(reconfigId, ReconfigOptions.RESCALE_PARTITIONS_ONLY, null));
+			}
+		}
+
+		for (JobVertexID jobId : updatedDownstream) {
+			tasks.get(jobId).cleanBeforeRescale();
+
+			for (ExecutionVertex vertex : tasks.get(jobId).getTaskVertices()) {
+				Execution execution = vertex.getCurrentExecutionAttempt();
+				notYetAcknowledgedTasks.add(execution.getAttemptId());
+				afferctedTaskExecutionsFuture.add(execution.scheduleReconfig(reconfigId, ReconfigOptions.RESCALE_GATES_ONLY, null));
+			}
+		}
+
+		for (int subtaskIndex = 0; subtaskIndex < targetVertex.getTaskVertices().length; subtaskIndex++) {
+			// update non-state-migrated targeting tasks
+			if (!jobExecutionPlan.isSubtaskModified(subtaskIndex)) {
+				ExecutionVertex vertex = targetVertex.getTaskVertices()[subtaskIndex];
+				Execution execution = vertex.getCurrentExecutionAttempt();
+
+				afferctedTaskExecutionsFuture.add(
+					execution.scheduleReconfig(reconfigId, ReconfigOptions.RESCALE_BOTH, null));
+			}
+		}
+
+		FutureUtils
+			.combineAll(afferctedTaskExecutionsFuture)
+			.whenComplete((ignored, failure) -> {
+				if (failure != null) {
+					failExecution(failure);
+					throw new CompletionException(failure);
+				}
+				LOG.info("++++++ Task output key mapping update completed");
+			})
+			.thenRunAsync(() -> {
+				try {
+					checkpointCoordinator.stopCheckpointScheduler();
+
+					checkpointId = checkpointCoordinator.triggerReconfigPoint(System.currentTimeMillis()).getCheckpointId();
+					LOG.info("++++++ Make rescalepoint with checkpointId=" + checkpointId);
+				} catch (Exception e) {
+					failExecution(e);
+					throw new CompletionException(e);
+				}
+			}, mainThreadExecutor);
+	}
+
+	private void handleCollectedStates(Map<OperatorID, OperatorState> operatorStates) throws Exception {
+		switch (actionType) {
+			case REPARTITION:
+				assignNewState(operatorStates);
+				break;
+			case SCALE_OUT:
+				throw new UnsupportedOperationException("Scaling out is not supported");
+			case SCALE_IN:
+				throw new UnsupportedOperationException("Scaling in is not supported");
+			default:
+				throw new IllegalStateException("illegal action type");
+		}
+	}
+
+	private void assignNewState(Map<OperatorID, OperatorState> operatorStates) throws ExecutionGraphException {
+		Map<JobVertexID, ExecutionJobVertex> tasks = new HashMap<>();
+		tasks.put(targetVertex.getJobVertexId(), targetVertex);
+
+		StateAssignmentOperation stateAssignmentOperation =
+			new StateAssignmentOperation(checkpointId, tasks, operatorStates, true, REPARTITION_STATE);
+		stateAssignmentOperation.setRedistributeStrategy(jobExecutionPlan);
+
+		LOG.info("++++++ start to assign states");
+		stateAssignmentOperation.assignStates();
+
+		Collection<CompletableFuture<Void>> rescaledFuture = new ArrayList<>(targetVertex.getTaskVertices().length);
+
+		for (int i = 0; i < targetVertex.getTaskVertices().length; i++) {
+			ExecutionVertex vertex  = targetVertex.getTaskVertices()[i];
+			Execution executionAttempt = vertex.getCurrentExecutionAttempt();
+
+			CompletableFuture<Void> scheduledRescale;
+
+			if (jobExecutionPlan.isSubtaskModified(i)) {
+				scheduledRescale = executionAttempt.scheduleReconfig(reconfigId,
+					ReconfigOptions.RESCALE_REDISTRIBUTE,
+					jobExecutionPlan.getAlignedKeyGroupRange(i));
+
+			} else {
+				scheduledRescale = executionAttempt.scheduleReconfig(reconfigId,
+					ReconfigOptions.RESCALE_KEYGROUP_RANGE_ONLY,
+					jobExecutionPlan.getAlignedKeyGroupRange(i));
+			}
+
+			rescaledFuture.add(scheduledRescale);
+		}
+		LOG.info("++++++ Assign new state futures created");
+
+		FutureUtils
+			.combineAll(rescaledFuture)
+			.thenRunAsync(() -> {
+				LOG.info("++++++ Assign new state for repartition Completed");
+				CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
+
+				checkNotNull(checkpointCoordinator);
+				if (checkpointCoordinator.isPeriodicCheckpointingConfigured()) {
+					checkpointCoordinator.startCheckpointScheduler();
+				}
+
+				clean();
+
+				// TODO: add a controller to send reconfig messages.
+			}, mainThreadExecutor);
+	}
+
+	private void failExecution(Throwable throwable) {
+		LOG.info("++++++ Rescale failed with err: ", throwable);
+		clean();
+	}
+
+	private void clean() {
+		inProcess = false;
+		notYetAcknowledgedTasks.clear();
 	}
 }
