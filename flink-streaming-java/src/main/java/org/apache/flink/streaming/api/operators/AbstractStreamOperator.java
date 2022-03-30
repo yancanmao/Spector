@@ -90,7 +90,7 @@ import java.util.Locale;
  */
 @PublicEvolving
 public abstract class AbstractStreamOperator<OUT>
-		implements StreamOperator<OUT>, Serializable {
+	implements StreamOperator<OUT>, Serializable {
 
 	private static final long serialVersionUID = 1L;
 
@@ -173,7 +173,7 @@ public abstract class AbstractStreamOperator<OUT>
 		this.config = config;
 		try {
 			OperatorMetricGroup operatorMetricGroup = environment.getMetricGroup().getOrAddOperator(config.getOperatorID(), config.getOperatorName());
-			this.output = new CountingOutput(output, operatorMetricGroup.getIOMetricGroup().getNumRecordsOutCounter());
+			output = new CountingOutput(output, operatorMetricGroup.getIOMetricGroup().getNumRecordsOutCounter());
 			if (config.isChainStart()) {
 				operatorMetricGroup.getIOMetricGroup().reuseInputMetricsForTask();
 			}
@@ -184,8 +184,8 @@ public abstract class AbstractStreamOperator<OUT>
 		} catch (Exception e) {
 			LOG.warn("An error occurred while instantiating task metrics.", e);
 			this.metrics = UnregisteredMetricGroups.createUnregisteredOperatorMetricGroup();
-			this.output = output;
 		}
+		this.output = new UpdatableOutput<>(output);
 
 		try {
 			Configuration taskManagerConfig = environment.getTaskManagerInfo().getConfiguration();
@@ -245,12 +245,15 @@ public abstract class AbstractStreamOperator<OUT>
 			Preconditions.checkNotNull(containingTask.getCancelables());
 		final StreamTaskStateInitializer streamTaskStateManager =
 			Preconditions.checkNotNull(containingTask.createStreamTaskStateInitializer());
+		final KeyGroupRange assignedKeyGroupRange =
+			containingTask.getAssignedKeyGroupRange();
 
 		final StreamOperatorStateContext context =
 			streamTaskStateManager.streamOperatorStateContext(
 				getOperatorID(),
 				getClass().getSimpleName(),
 				this,
+				assignedKeyGroupRange,
 				keySerializer,
 				streamTaskCloseableRegistry,
 				metrics);
@@ -378,19 +381,19 @@ public abstract class AbstractStreamOperator<OUT>
 
 	@Override
 	public final OperatorSnapshotFutures snapshotState(long checkpointId, long timestamp, CheckpointOptions checkpointOptions,
-			CheckpointStreamFactory factory) throws Exception {
+													   CheckpointStreamFactory factory) throws Exception {
 
 		KeyGroupRange keyGroupRange = null != keyedStateBackend ?
-				keyedStateBackend.getKeyGroupRange() : KeyGroupRange.EMPTY_KEY_GROUP_RANGE;
+			keyedStateBackend.getKeyGroupRange() : KeyGroupRange.EMPTY_KEY_GROUP_RANGE;
 
 		OperatorSnapshotFutures snapshotInProgress = new OperatorSnapshotFutures();
 
 		try (StateSnapshotContextSynchronousImpl snapshotContext = new StateSnapshotContextSynchronousImpl(
-				checkpointId,
-				timestamp,
-				factory,
-				keyGroupRange,
-				getContainingTask().getCancelables())) {
+			checkpointId,
+			timestamp,
+			factory,
+			keyGroupRange,
+			getContainingTask().getCancelables())) {
 
 			snapshotState(snapshotContext);
 
@@ -579,16 +582,16 @@ public abstract class AbstractStreamOperator<OUT>
 	}
 
 	protected <N, S extends State, T> S getOrCreateKeyedState(
-			TypeSerializer<N> namespaceSerializer,
-			StateDescriptor<S, T> stateDescriptor) throws Exception {
+		TypeSerializer<N> namespaceSerializer,
+		StateDescriptor<S, T> stateDescriptor) throws Exception {
 
 		if (keyedStateStore != null) {
 			return keyedStateBackend.getOrCreateKeyedState(namespaceSerializer, stateDescriptor);
 		}
 		else {
 			throw new IllegalStateException("Cannot create partitioned state. " +
-					"The keyed state backend has not been set." +
-					"This indicates that the operator is not partitioned/keyed.");
+				"The keyed state backend has not been set." +
+				"This indicates that the operator is not partitioned/keyed.");
 		}
 	}
 
@@ -599,9 +602,9 @@ public abstract class AbstractStreamOperator<OUT>
 	 * @throws Exception Thrown, if the state backend cannot create the key/value state.
 	 */
 	protected <S extends State, N> S getPartitionedState(
-			N namespace,
-			TypeSerializer<N> namespaceSerializer,
-			StateDescriptor<S, ?> stateDescriptor) throws Exception {
+		N namespace,
+		TypeSerializer<N> namespaceSerializer,
+		StateDescriptor<S, ?> stateDescriptor) throws Exception {
 
 		/*
 	    TODO: NOTE: This method does a lot of work caching / retrieving states just to update the namespace.
@@ -811,9 +814,9 @@ public abstract class AbstractStreamOperator<OUT>
 	 * @param <N> The type of the timer namespace.
 	 */
 	public <K, N> InternalTimerService<N> getInternalTimerService(
-			String name,
-			TypeSerializer<N> namespaceSerializer,
-			Triggerable<K, N> triggerable) {
+		String name,
+		TypeSerializer<N> namespaceSerializer,
+		Triggerable<K, N> triggerable) {
 
 		checkTimerServiceInitialization();
 

@@ -593,8 +593,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	}
 
 	@Nullable
-	@VisibleForTesting
-	AbstractInvokable getInvokable() {
+//	@VisibleForTesting
+	public AbstractInvokable getInvokable() {
 		return invokable;
 	}
 
@@ -1401,8 +1401,12 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		}
 	}
 
+	public TaskStateManager getTaskStateManager() {
+		return taskStateManager;
+	}
+
 	// ------------------------------------------------------------------------
-	//  Actions on rescale
+	//  Actions on reconfig
 	// ------------------------------------------------------------------------
 
 	public void updateTaskConfiguration(TaskInformation newTaskInfo) {
@@ -1424,7 +1428,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 
 	public void assignNewState(KeyGroupRange keyGroupRange, JobManagerTaskRestore taskRestore) {
 		((TaskStateManagerImpl) taskStateManager).updateTaskRestore(taskRestore);
-
 		invokable.reinitializeState(keyGroupRange);
 	}
 

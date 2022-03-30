@@ -592,6 +592,10 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		return operatorChain.getStreamOutputs();
 	}
 
+	public KeyGroupRange getAssignedKeyGroupRange() {
+		return assignedKeyGroupRange;
+	}
+
 	// ------------------------------------------------------------------------
 	//  Checkpoint and Restore
 	// ------------------------------------------------------------------------

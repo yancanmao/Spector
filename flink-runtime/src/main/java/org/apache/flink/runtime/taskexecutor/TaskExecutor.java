@@ -75,11 +75,9 @@ import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils;
+import org.apache.flink.runtime.spector.BackupStateManager;
 import org.apache.flink.runtime.spector.reconfig.ReconfigOptions;
-import org.apache.flink.runtime.state.TaskExecutorLocalStateStoresManager;
-import org.apache.flink.runtime.state.TaskLocalStateStore;
-import org.apache.flink.runtime.state.TaskStateManager;
-import org.apache.flink.runtime.state.TaskStateManagerImpl;
+import org.apache.flink.runtime.state.*;
 import org.apache.flink.runtime.taskexecutor.exceptions.CheckpointException;
 import org.apache.flink.runtime.taskexecutor.exceptions.PartitionException;
 import org.apache.flink.runtime.taskexecutor.exceptions.RegistrationTimeoutException;
@@ -110,6 +108,7 @@ import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Sets;
+import org.apache.flink.util.Preconditions;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -134,8 +133,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
-import static org.apache.flink.util.Preconditions.checkArgument;
-import static org.apache.flink.util.Preconditions.checkNotNull;
+import static org.apache.flink.util.Preconditions.*;
 
 /**
  * TaskExecutor implementation. The task executor is responsible for the execution of multiple
@@ -219,6 +217,11 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 	private final StackTraceSampleService stackTraceSampleService;
 
+	/**
+	 * The component to manage replicated state that stored in standby tasks.
+	 */
+	private final BackupStateManager backupStateManager;
+
 	public TaskExecutor(
 			RpcService rpcService,
 			TaskManagerConfiguration taskManagerConfiguration,
@@ -261,6 +264,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		this.currentRegistrationTimeoutId = null;
 
 		this.stackTraceSampleService = new StackTraceSampleService(rpcService.getScheduledExecutor());
+
+		this.backupStateManager = new BackupStateManager();
 	}
 
 	@Override
@@ -574,6 +579,12 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				getRpcService().getExecutor(),
 				tdd.getIsStandby());
 
+			if (tdd.getIsStandby()) {
+				Preconditions.checkState(!backupStateManager.replicas.containsKey(task.getJobVertexId()),
+					"++++++backupStateManager should only maintain a replica for each jobVertex");
+				backupStateManager.replicas.put(task.getJobVertexId(), task);
+			}
+
 			log.info("Received task {}.", task.getTaskInfo().getTaskNameWithSubtasks());
 
 			boolean taskAdded;
@@ -637,8 +648,12 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				}
 
 				if (reconfigOptions.isRepartition()) {
+					JobManagerTaskRestore taskRestore = getTaskRestoreFromReplica(task);
+					// TODO: jobmaster may also send a task restore to the task because of partial state replication.
+					// TODO: as a result, we have to reconstruct a new state restore for state recovery.
 					log.info("++++++ update task state: " + tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId());
-					task.assignNewState(tdd.getKeyGroupRange(), tdd.getTaskRestore());
+//					task.assignNewState(tdd.getKeyGroupRange(), tdd.getTaskRestore());
+					task.assignNewState(tdd.getKeyGroupRange(), taskRestore);
 				}
 
 				if (reconfigOptions.isUpdateKeyGroupRange()) {
@@ -657,6 +672,18 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			log.debug(message);
 			return FutureUtils.completedExceptionally(new TaskException(message));
 		}
+	}
+
+	/**
+	 * The API to retrieve task restore from the replica tasks.
+	 * @param reconfigTask
+	 * @return
+	 */
+	public JobManagerTaskRestore getTaskRestoreFromReplica(Task reconfigTask) {
+		Task standbyTask = backupStateManager.replicas.get(reconfigTask.getJobVertexId());
+		// directly assign backup taskrestore for the targeting task, and it will be updated in each operator during
+		// state initialization.
+		return ((TaskStateManagerImpl) standbyTask.getTaskStateManager()).getTaskRestore();
 	}
 
 	@Override

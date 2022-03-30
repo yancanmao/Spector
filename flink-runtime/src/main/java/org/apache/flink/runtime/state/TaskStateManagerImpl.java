@@ -178,4 +178,8 @@ public class TaskStateManagerImpl implements TaskStateManager {
 	public void updateTaskRestore(JobManagerTaskRestore jobManagerTaskRestore) {
 		this.jobManagerTaskRestore = jobManagerTaskRestore;
 	}
+
+	public JobManagerTaskRestore getTaskRestore() {
+		return jobManagerTaskRestore;
+	}
 }

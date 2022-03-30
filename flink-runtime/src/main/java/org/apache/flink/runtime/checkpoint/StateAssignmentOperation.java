@@ -214,12 +214,30 @@ public class StateAssignmentOperation {
 				newManagedOperatorStates,
 				newRawOperatorStates);
 
+			// TODO: The state assignment operation is applied on all operators, rather than one operator.
 			reDistributeKeyedStatesWithExecutionPlan(
 				operatorStates,
 				newParallelism,
 				operatorIDs,
 				newManagedKeyedState,
 				newRawKeyedState);
+			/*
+			 *  An executionJobVertex's all state handles needed to restore are something like a matrix
+			 *
+			 * 		parallelism0 parallelism1 parallelism2 parallelism3
+			 * op0   sh(0,0)     sh(0,1)       sh(0,2)	    sh(0,3)
+			 * op1   sh(1,0)	 sh(1,1)	   sh(1,2)	    sh(1,3)
+			 * op2   sh(2,0)	 sh(2,1)	   sh(2,2)		sh(2,3)
+			 * op3   sh(3,0)	 sh(3,1)	   sh(3,2)		sh(3,3)
+			 *
+			 */
+			assignTaskStateToExecutionJobVertices(
+				executionJobVertex,
+				newManagedOperatorStates,
+				newRawOperatorStates,
+				newManagedKeyedState,
+				newRawKeyedState,
+				newParallelism);
 
 		} else if (operation == Operation.DISPATCH_STATE_TO_STANDBY_TASK) {
 			reDistributePartitionableStatesToStandbyTasks(
