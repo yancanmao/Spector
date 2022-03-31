@@ -214,7 +214,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		getExecutionGraph().registerExecution(currentExecution);
 
 		this.timeout = timeout;
-
+		this.reconfigId = ReconfigID.DEFAULT;
 	}
 
 

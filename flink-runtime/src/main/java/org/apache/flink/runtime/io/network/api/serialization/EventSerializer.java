@@ -63,6 +63,8 @@ public class EventSerializer {
 
 	private static final int CHECKPOINT_TYPE_SAVEPOINT = 1;
 
+	private static final int CHECKPOINT_TYPE_RESCALEPOINT = 2;
+
 	// ------------------------------------------------------------------------
 	//  Serialization Logic
 	// ------------------------------------------------------------------------
@@ -178,7 +180,7 @@ public class EventSerializer {
 					}
 					catch (ClassCastException e) {
 						throw new IOException("The class '" + className + "' is not a valid subclass of '"
-								+ AbstractEvent.class.getName() + "'.", e);
+							+ AbstractEvent.class.getName() + "'.", e);
 					}
 
 					final AbstractEvent event = InstantiationUtil.instantiate(clazz, AbstractEvent.class);
@@ -204,7 +206,7 @@ public class EventSerializer {
 		final CheckpointType checkpointType = checkpointOptions.getCheckpointType();
 
 		final byte[] locationBytes = checkpointOptions.getTargetLocation().isDefaultReference() ?
-				null : checkpointOptions.getTargetLocation().getReferenceBytes();
+			null : checkpointOptions.getTargetLocation().getReferenceBytes();
 
 		final ByteBuffer buf = ByteBuffer.allocate(28 + (locationBytes == null ? 0 : locationBytes.length));
 
@@ -215,6 +217,8 @@ public class EventSerializer {
 			typeInt = CHECKPOINT_TYPE_CHECKPOINT;
 		} else if (checkpointType == CheckpointType.SAVEPOINT) {
 			typeInt = CHECKPOINT_TYPE_SAVEPOINT;
+		} else if (checkpointType == CheckpointType.RECONFIGPOINT) {
+			typeInt = CHECKPOINT_TYPE_RESCALEPOINT;
 		} else {
 			throw new IOException("Unknown checkpoint type: " + checkpointType);
 		}
@@ -247,6 +251,8 @@ public class EventSerializer {
 			checkpointType = CheckpointType.CHECKPOINT;
 		} else if (checkpointTypeCode == CHECKPOINT_TYPE_SAVEPOINT) {
 			checkpointType = CheckpointType.SAVEPOINT;
+		} else if (checkpointTypeCode == CHECKPOINT_TYPE_RESCALEPOINT) {
+			checkpointType = CheckpointType.RECONFIGPOINT;
 		} else {
 			throw new IOException("Unknown checkpoint type code: " + checkpointTypeCode);
 		}

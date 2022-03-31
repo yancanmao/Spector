@@ -1,18 +1,17 @@
 package org.apache.flink.runtime.spector;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.checkpoint.*;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.*;
 import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.jsonplan.JsonPlanGenerator;
-import org.apache.flink.runtime.spector.reconfig.JobExecutionPlan;
-import org.apache.flink.runtime.spector.reconfig.JobReconfigAction;
-import org.apache.flink.runtime.spector.reconfig.ReconfigID;
-import org.apache.flink.runtime.spector.reconfig.ReconfigOptions;
+import org.apache.flink.runtime.spector.reconfig.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -79,6 +78,10 @@ public class JobStateCoordinator implements CheckpointProgressListener, JobRecon
 
 	private ComponentMainThreadExecutor mainThreadExecutor;
 
+	private final SimpleController simpleController;
+
+	private JobStatusListener jobStatusListener;
+
 	/**
 	 *
 	 * @param jobGraph
@@ -98,6 +101,8 @@ public class JobStateCoordinator implements CheckpointProgressListener, JobRecon
 		// inject a listener into CheckpointCoordinator to manage received checkpoints
 		checkNotNull(executionGraph.getCheckpointCoordinator());
 		executionGraph.getCheckpointCoordinator().setCheckpointProgressListener(this);
+
+		this.simpleController = new SimpleController(this, executionGraph);
 	}
 
 
@@ -438,7 +443,7 @@ public class JobStateCoordinator implements CheckpointProgressListener, JobRecon
 
 				clean();
 
-				// TODO: add a controller to send reconfig messages.
+				simpleController.onMigrationCompleted();
 			}, mainThreadExecutor);
 	}
 
@@ -450,5 +455,38 @@ public class JobStateCoordinator implements CheckpointProgressListener, JobRecon
 	private void clean() {
 		inProcess = false;
 		notYetAcknowledgedTasks.clear();
+	}
+
+	public void start() {
+		simpleController.start();
+	}
+
+	public void stop() {
+	}
+
+	public JobStatusListener createActivatorDeactivator() {
+		if (jobStatusListener == null) {
+			jobStatusListener = new JobStateCoordinatorDeActivator(this);
+		}
+
+		return jobStatusListener;
+	}
+
+	private static class JobStateCoordinatorDeActivator implements JobStatusListener {
+
+		private final JobStateCoordinator coordinator;
+
+		public JobStateCoordinatorDeActivator(JobStateCoordinator coordinator) {
+			this.coordinator = checkNotNull(coordinator);
+		}
+
+		@Override
+		public void jobStatusChanges(JobID jobId, JobStatus newJobStatus, long timestamp, Throwable error) {
+			if (newJobStatus == JobStatus.RUNNING) {
+				coordinator.start();
+			} else {
+				coordinator.stop();
+			}
+		}
 	}
 }

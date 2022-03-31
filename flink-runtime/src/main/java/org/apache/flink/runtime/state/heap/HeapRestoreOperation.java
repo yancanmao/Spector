@@ -240,7 +240,6 @@ public class HeapRestoreOperation<K> implements RestoreOperation<Void> {
 		for (Tuple2<Integer, Long> groupOffset : keyGroupOffsets) {
 			int alignedKeyGroupIndex = groupOffset.f0;
 			long offset = groupOffset.f1;
-
 			// Check that restored key groups all belong to the backend.
 			if (!keyGroupRange.contains(alignedKeyGroupIndex)) {
 				continue;

@@ -1176,6 +1176,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		// register self as job status change listener
 		jobStatusListener = new JobManagerJobStatusListener();
 		executionGraph.registerJobStatusListener(jobStatusListener);
+		executionGraph.registerJobStatusListener(jobStateCoordinator.createActivatorDeactivator());
 
 		try {
 			executionGraph.scheduleForExecution();

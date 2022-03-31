@@ -369,9 +369,9 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	 * @param taskRestore information to restore the state
 	 */
 	public void setInitialState(@Nullable JobManagerTaskRestore taskRestore) {
-		checkState(state == CREATED || (isStandby && state == STANDBY),
+		checkState(state == CREATED || (isStandby && state == STANDBY) || state == RUNNING,
 			"Can only assign operator state when execution attempt is a) in CREATED state or b) a " +
-				"standby execution attempt in STANDBY state. execution: %s, isStandby: %s, state: %s.",
+				"standby execution attempt in STANDBY state or c) in RUNNING. execution: %s, isStandby: %s, state: %s.",
 			this, isStandby, state);
 		this.taskRestore = taskRestore;
 
@@ -974,7 +974,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			throw new IllegalStateException("The vertex must be in RUNNING state to be rescaled. Found state " + this.state);
 		}
 
-		checkState(isStandby, "++++++ Cannot reconfig standby tasks");
+		checkState(!isStandby, "++++++ Cannot reconfig standby tasks");
 
 		final TaskDeploymentDescriptor deployment = vertex.createDeploymentDescriptor(
 			attemptId,
