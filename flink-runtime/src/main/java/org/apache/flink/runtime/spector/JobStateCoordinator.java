@@ -54,7 +54,7 @@ public class JobStateCoordinator implements CheckpointProgressListener, JobRecon
 	 * standby executions for backup state maintenance of each operator
 	 * Operator -> [BackupTask1, BackTask2, ...]
 	 */
-	private final HashMap<JobVertexID, List<ExecutionVertex>> standbyExecutionVertexs;
+	private final HashMap<JobVertexID, List<ExecutionVertex>> standbyExecutionVertexes;
 
 
 	// states for reconfiguration
@@ -95,7 +95,7 @@ public class JobStateCoordinator implements CheckpointProgressListener, JobRecon
 		this.jobGraph = jobGraph;
 		this.executionGraph = executionGraph;
 		this.jobGraphUpdater = JobGraphUpdater.instantiate(jobGraph, userCodeLoader);
-		this.standbyExecutionVertexs = new HashMap<>();
+		this.standbyExecutionVertexes = new HashMap<>();
 		this.notYetAcknowledgedTasks = new ArrayList<>();
 
 		// inject a listener into CheckpointCoordinator to manage received checkpoints
@@ -147,7 +147,7 @@ public class JobStateCoordinator implements CheckpointProgressListener, JobRecon
 						executionGraph.getGlobalModVersion(),
 						System.currentTimeMillis(),
 						1);
-					standbyExecutionVertexs.put(executionJobVertex.getJobVertexId(), createCandidates); // TODO: need to create number of tasks according to number of nodes in the cluster.
+					standbyExecutionVertexes.put(executionJobVertex.getJobVertexId(), createCandidates); // TODO: need to create number of tasks according to number of nodes in the cluster.
 
 					checkState(createCandidates.size() == numBackupTasks,
 						"Inconsistent number of execution vertices are created");
@@ -185,7 +185,7 @@ public class JobStateCoordinator implements CheckpointProgressListener, JobRecon
 	 * by default, it replicate state to all other backup task
 	 */
 	public void dispatchLatestCheckpointedStateToStandbyTasks(
-															  CompletedCheckpoint checkpoint) {
+		CompletedCheckpoint checkpoint) {
 		Map<JobVertexID, ExecutionJobVertex> tasks = executionGraph.getAllVertices();
 		// re-assign the task states
 		final Map<OperatorID, OperatorState> operatorStates = checkpoint.getOperatorStates();
@@ -199,9 +199,9 @@ public class JobStateCoordinator implements CheckpointProgressListener, JobRecon
 
 	// TODO: see if other place need to add this
 	public CompletableFuture<?> cancelStandbyExecution(ExecutionJobVertex executionJobVertex) {
-		if (!standbyExecutionVertexs.get(executionJobVertex.getJobVertexId()).isEmpty()) {
+		if (!standbyExecutionVertexes.get(executionJobVertex.getJobVertexId()).isEmpty()) {
 			LOG.debug(String.format("Cancelling standby execution %s", this));
-			final ExecutionVertex standbyExecution = standbyExecutionVertexs.get(executionJobVertex.getJobVertexId()).remove(0);
+			final ExecutionVertex standbyExecution = standbyExecutionVertexes.get(executionJobVertex.getJobVertexId()).remove(0);
 			return standbyExecution.cancel();
 		}
 		return null;
@@ -258,9 +258,14 @@ public class JobStateCoordinator implements CheckpointProgressListener, JobRecon
 	}
 
 	@Override
-	public void onCompleteCheckpoint(CompletedCheckpoint checkpoint) {
+	public void onCompleteCheckpoint(CompletedCheckpoint checkpoint) throws Exception {
 		checkNotNull(checkpoint);
+		LOG.info("++++++ checkpoint complete, start to dispatch state to replica");
 		dispatchLatestCheckpointedStateToStandbyTasks(checkpoint);
+		if (checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT) {
+			LOG.info("++++++ redistribute operator states");
+			handleCollectedStates(new HashMap<>(checkpoint.getOperatorStates()));
+		}
 	}
 
 	@Override
@@ -407,44 +412,99 @@ public class JobStateCoordinator implements CheckpointProgressListener, JobRecon
 		LOG.info("++++++ start to assign states");
 		stateAssignmentOperation.assignStates();
 
-		Collection<CompletableFuture<Void>> rescaledFuture = new ArrayList<>(targetVertex.getTaskVertices().length);
+//		// update keygroup range in replicas in advance.
+//		Collection<CompletableFuture<Void>> replicaUpdateFuture = new ArrayList<>(targetVertex.getStandbyExecutionVertexs().size());
+//
+//		for (ExecutionVertex standbyVertex : targetVertex.getStandbyExecutionVertexs()) {
+//			Execution executionAttempt = standbyVertex.getCurrentExecutionAttempt();
+//			CompletableFuture<Void> scheduledUpdate;
+//			scheduledUpdate = executionAttempt.scheduleReconfig(reconfigId,
+//				ReconfigOptions.RESCALE_KEYGROUP_RANGE_ONLY,
+//				jobExecutionPlan.getAlignedKeyGroupRangeForStandby());
+//			replicaUpdateFuture.add(scheduledUpdate);
+//		}
+//
+//		FutureUtils.combineAll(replicaUpdateFuture)
+//			.thenRunAsync(() -> {
+//				// execution state update
+//				try {
+//					Collection<CompletableFuture<Void>> taskUpdateFuture = new ArrayList<>(targetVertex.getTaskVertices().length);
+//
+//					for (int i = 0; i < targetVertex.getTaskVertices().length; i++) {
+//						ExecutionVertex vertex = targetVertex.getTaskVertices()[i];
+//						Execution executionAttempt = vertex.getCurrentExecutionAttempt();
+//
+//						CompletableFuture<Void> scheduledUpdate;
+//
+//						if (jobExecutionPlan.isSubtaskModified(i)) {
+//							scheduledUpdate = executionAttempt.scheduleReconfig(reconfigId,
+//								ReconfigOptions.RESCALE_REDISTRIBUTE,
+//								jobExecutionPlan.getAlignedKeyGroupRange(i));
+//						} else {
+//							scheduledUpdate = executionAttempt.scheduleReconfig(reconfigId,
+//								ReconfigOptions.RESCALE_KEYGROUP_RANGE_ONLY,
+//								jobExecutionPlan.getAlignedKeyGroupRange(i));
+//						}
+//
+//						taskUpdateFuture.add(scheduledUpdate);
+//
+//						FutureUtils
+//							.combineAll(taskUpdateFuture)
+//							.thenRunAsync(() -> {
+//								LOG.info("++++++ Assign new state for repartition Completed");
+//								CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
+//
+//								checkNotNull(checkpointCoordinator);
+//								if (checkpointCoordinator.isPeriodicCheckpointingConfigured()) {
+//									checkpointCoordinator.startCheckpointScheduler();
+//								}
+//
+//								clean();
+//
+//								simpleController.onMigrationCompleted();
+//							}, mainThreadExecutor);
+//					}
+//					LOG.info("++++++ Assign new state futures created");
+//				} catch (Exception e) {
+//					failExecution(e);
+//				}}, mainThreadExecutor);
+		Collection<CompletableFuture<Void>> taskUpdateFuture = new ArrayList<>(targetVertex.getTaskVertices().length);
 
 		for (int i = 0; i < targetVertex.getTaskVertices().length; i++) {
-			ExecutionVertex vertex  = targetVertex.getTaskVertices()[i];
+			ExecutionVertex vertex = targetVertex.getTaskVertices()[i];
 			Execution executionAttempt = vertex.getCurrentExecutionAttempt();
 
-			CompletableFuture<Void> scheduledRescale;
+			CompletableFuture<Void> scheduledUpdate;
 
 			if (jobExecutionPlan.isSubtaskModified(i)) {
-				scheduledRescale = executionAttempt.scheduleReconfig(reconfigId,
+				scheduledUpdate = executionAttempt.scheduleReconfig(reconfigId,
 					ReconfigOptions.RESCALE_REDISTRIBUTE,
 					jobExecutionPlan.getAlignedKeyGroupRange(i));
-
 			} else {
-				scheduledRescale = executionAttempt.scheduleReconfig(reconfigId,
+				scheduledUpdate = executionAttempt.scheduleReconfig(reconfigId,
 					ReconfigOptions.RESCALE_KEYGROUP_RANGE_ONLY,
 					jobExecutionPlan.getAlignedKeyGroupRange(i));
 			}
 
-			rescaledFuture.add(scheduledRescale);
+			taskUpdateFuture.add(scheduledUpdate);
+
+			FutureUtils
+				.combineAll(taskUpdateFuture)
+				.thenRunAsync(() -> {
+					LOG.info("++++++ Assign new state for repartition Completed");
+					CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
+
+					checkNotNull(checkpointCoordinator);
+					if (checkpointCoordinator.isPeriodicCheckpointingConfigured()) {
+						checkpointCoordinator.startCheckpointScheduler();
+					}
+
+					clean();
+
+					simpleController.onMigrationCompleted();
+				}, mainThreadExecutor);
 		}
 		LOG.info("++++++ Assign new state futures created");
-
-		FutureUtils
-			.combineAll(rescaledFuture)
-			.thenRunAsync(() -> {
-				LOG.info("++++++ Assign new state for repartition Completed");
-				CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
-
-				checkNotNull(checkpointCoordinator);
-				if (checkpointCoordinator.isPeriodicCheckpointingConfigured()) {
-					checkpointCoordinator.startCheckpointScheduler();
-				}
-
-				clean();
-
-				simpleController.onMigrationCompleted();
-			}, mainThreadExecutor);
 	}
 
 	private void failExecution(Throwable throwable) {

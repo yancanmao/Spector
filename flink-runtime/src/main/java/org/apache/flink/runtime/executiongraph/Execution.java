@@ -970,7 +970,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		final LogicalSlot slot = assignedResource;
 		checkNotNull(slot, "Try to rescale a vertex which isn't assigned slot.");
 
-		if(this.state != RUNNING) {
+		if (this.state != RUNNING && this.state != STANDBY) {
 			throw new IllegalStateException("The vertex must be in RUNNING state to be rescaled. Found state " + this.state);
 		}
 

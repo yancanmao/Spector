@@ -1239,7 +1239,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		}
 
 		taskStateManager.setTaskRestore(taskRestore);
-		LOG.info("Standby task " + taskNameWithSubtask + " received state snapshot of checkpoint " +
+		LOG.info("++++++ Standby task " + taskNameWithSubtask + " received state snapshot of checkpoint " +
 			taskRestore.getRestoreCheckpointId() + ".");
 
 		long checkpointId = taskRestore.getRestoreCheckpointId();
@@ -1533,7 +1533,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				}
 			}
 
-			LOG.debug("Invoking async call {} on task {}", callName, taskNameWithSubtask);
+			LOG.info("++++++ Invoking async call {} on task {}", callName, taskNameWithSubtask);
 
 			try {
 				executor.submit(runnable);

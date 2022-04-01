@@ -2,6 +2,7 @@ package org.apache.flink.runtime.spector.reconfig;
 
 import org.apache.flink.runtime.state.KeyGroupRange;
 
+import java.security.Key;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -29,6 +30,8 @@ public class JobExecutionPlan {
 	private final Map<Integer, Integer> executorIdMapping;
 
 	private final List<KeyGroupRange> alignedKeyGroupRanges;
+
+	private KeyGroupRange keyGroupRangeForStandby;
 
 	private final Map<Integer, Boolean> modifiedSubtaskMap;
 
@@ -252,6 +255,7 @@ public class JobExecutionPlan {
 
 	private void generateAlignedKeyGroupRanges() {
 		int keyGroupStart = 0;
+		List<Integer> integratedPartitionAssignment = new ArrayList<>();
 		for (int subTaskIndex = 0; subTaskIndex < partitionAssignment.keySet().size(); subTaskIndex++) {
 			int rangeSize = partitionAssignment.get(subTaskIndex).size();
 
@@ -264,7 +268,15 @@ public class JobExecutionPlan {
 
 			alignedKeyGroupRanges.add(keyGroupRange);
 			keyGroupStart += rangeSize;
+			integratedPartitionAssignment.addAll(partitionAssignment.get(subTaskIndex));
 		}
+
+		keyGroupRangeForStandby = integratedPartitionAssignment.isEmpty() ?
+			KeyGroupRange.EMPTY_KEY_GROUP_RANGE :
+			new KeyGroupRange(
+				keyGroupStart,
+				keyGroupStart + integratedPartitionAssignment.size() - 1,
+				integratedPartitionAssignment);
 	}
 
 	private void generateExecutorIdMapping() {
@@ -293,6 +305,10 @@ public class JobExecutionPlan {
 
 	public List<KeyGroupRange> getAlignedKeyGroupRanges() {
 		return alignedKeyGroupRanges;
+	}
+
+	public KeyGroupRange getAlignedKeyGroupRangeForStandby() {
+		return keyGroupRangeForStandby;
 	}
 
 	public KeyGroupRange getAlignedKeyGroupRange(int subTaskIndex) {

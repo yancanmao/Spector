@@ -242,6 +242,9 @@ public class HeapRestoreOperation<K> implements RestoreOperation<Void> {
 			long offset = groupOffset.f1;
 			// Check that restored key groups all belong to the backend.
 			if (!keyGroupRange.contains(alignedKeyGroupIndex)) {
+				LOG.info("++++++ Skipped keyGroupRange: " + keyGroupRange +
+					", alignedKeyGroupIndex: " + alignedKeyGroupIndex +
+						", offset: " + offset);
 				continue;
 			}
 			Preconditions.checkState(keyGroupRange.contains(alignedKeyGroupIndex), "The key group must belong to the backend.");

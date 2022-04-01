@@ -24,5 +24,5 @@ import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 
 public interface CheckpointProgressListener {
 	void onReceiveRescalepointAcknowledge(ExecutionAttemptID attemptID, PendingCheckpoint checkpoint);
-	void onCompleteCheckpoint(CompletedCheckpoint checkpoint);
+	void onCompleteCheckpoint(CompletedCheckpoint checkpoint) throws Exception;
 }

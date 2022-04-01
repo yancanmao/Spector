@@ -72,7 +72,8 @@ public class SimpleController extends Thread {
 			// cool down time, wait for fully deployment
 			Thread.sleep(5 * 1000);
 
-			testCaseOneToOneChange();
+//			testCaseOneToOneChange();
+			testRepartition();
 
 			LOG.info("------ " + name + " finished");
 		} catch (Exception e) {
