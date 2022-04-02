@@ -276,24 +276,73 @@ public class StateAssignmentOperation {
 		for (int operatorIndex = 0; operatorIndex < newOperatorIDs.size(); operatorIndex++) {
 			OperatorState operatorState = oldOperatorStates.get(operatorIndex);
 
-			int subTaskIndex = 0; // default subtaskindex for standby task
-			OperatorInstanceID instanceID = OperatorInstanceID.of(subTaskIndex, newOperatorIDs.get(operatorIndex));
+			// For managed state, hashedKeyGroup -> (offset, streamStateHandle)
+			Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToManagedStateHandle =
+				getHashedKeyGroupToHandleFromOperatorState(operatorState, OperatorSubtaskState::getManagedKeyedState);
+
+			Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToRawStateHandle =
+				getHashedKeyGroupToHandleFromOperatorState(operatorState, OperatorSubtaskState::getRawKeyedState);
+
+			// TODO: job execution plan is incorrect because it only targeting on a operator but is used in multiple operator.
+			Map<Integer, List<Integer>> partitionAssignment = jobExecutionPlan.getPartitionAssignment();
+
+			int backupSubTaskIndex = 0; // default subtaskindex for standby task
+			OperatorInstanceID backupInstanceID = OperatorInstanceID.of(backupSubTaskIndex, newOperatorIDs.get(operatorIndex));
 
 			List<KeyedStateHandle> subManagedKeyedStates = new ArrayList<>();
 			List<KeyedStateHandle> subRawKeyedStates = new ArrayList<>();
 
-			// TODO: we hard code that all standby task to backup all state of the operator
-			// TODO: we will find a policy to make the replication more flexible
-			for (int i = 0; i < operatorState.getParallelism(); i++) {
-				if (operatorState.getState(i) != null) {
-					subManagedKeyedStates.addAll(operatorState.getState(i).getManagedKeyedState());
-					subRawKeyedStates.addAll(operatorState.getState(i).getRawKeyedState());
+			for (int subTaskIndex = 0; subTaskIndex < operatorState.getParallelism(); subTaskIndex++) {
+				OperatorInstanceID instanceID = OperatorInstanceID.of(subTaskIndex, newOperatorIDs.get(operatorIndex));
+
+				for (int i = 0; i < partitionAssignment.get(subTaskIndex).size(); i++) {
+					// the keyGroup we get from partitionAssignment is the hashed one (most origin without remapping)
+					int assignedKeyGroup = partitionAssignment.get(subTaskIndex).get(i);
+
+					KeyGroupRange alignedKeyGroupRange = jobExecutionPlan.getAlignedKeyGroupRange(subTaskIndex);
+					// keyGroupRange which length is 1
+					KeyGroupRange rangeOfOneKeyGroupRange = KeyGroupRange.of(alignedKeyGroupRange.getKeyGroupId(i), alignedKeyGroupRange.getKeyGroupId(i));
+
+					Tuple2<Long, StreamStateHandle> managedStateTuple = hashedKeyGroupToManagedStateHandle.get(assignedKeyGroup);
+					if (managedStateTuple != null) {
+						subManagedKeyedStates.add(new KeyGroupsStateHandle(
+							new KeyGroupRangeOffsets(rangeOfOneKeyGroupRange, new long[]{managedStateTuple.f0}),
+							managedStateTuple.f1));
+					}
+
+					Tuple2<Long, StreamStateHandle> rawStateTuple = hashedKeyGroupToRawStateHandle.get(assignedKeyGroup);
+					if (rawStateTuple != null) {
+						subRawKeyedStates.add(new KeyGroupsStateHandle(
+							new KeyGroupRangeOffsets(rangeOfOneKeyGroupRange, new long[]{rawStateTuple.f0}),
+							rawStateTuple.f1));
+					}
 				}
 			}
-
-			newManagedKeyedState.put(instanceID, subManagedKeyedStates);
-			newRawKeyedState.put(instanceID, subRawKeyedStates);
+			newManagedKeyedState.put(backupInstanceID, subManagedKeyedStates);
+			newRawKeyedState.put(backupInstanceID, subRawKeyedStates);
 		}
+
+//		for (int operatorIndex = 0; operatorIndex < newOperatorIDs.size(); operatorIndex++) {
+//			OperatorState operatorState = oldOperatorStates.get(operatorIndex);
+//
+//			int subTaskIndex = 0; // default subtaskindex for standby task
+//			OperatorInstanceID instanceID = OperatorInstanceID.of(subTaskIndex, newOperatorIDs.get(operatorIndex));
+//
+//			List<KeyedStateHandle> subManagedKeyedStates = new ArrayList<>();
+//			List<KeyedStateHandle> subRawKeyedStates = new ArrayList<>();
+//
+//			// TODO: we hard code that all standby task to backup all state of the operator
+//			// TODO: we will find a policy to make the replication more flexible
+//			for (int i = 0; i < operatorState.getParallelism(); i++) {
+//				if (operatorState.getState(i) != null) {
+//					subManagedKeyedStates.addAll(operatorState.getState(i).getManagedKeyedState());
+//					subRawKeyedStates.addAll(operatorState.getState(i).getRawKeyedState());
+//				}
+//			}
+//
+//			newManagedKeyedState.put(instanceID, subManagedKeyedStates);
+//			newRawKeyedState.put(instanceID, subRawKeyedStates);
+//		}
 	}
 
 
@@ -545,6 +594,7 @@ public class StateAssignmentOperation {
 		}
 	}
 
+
 	private void reDistributeKeyedStatesWithExecutionPlan(
 		List<OperatorState> oldOperatorStates,
 		int newParallelism,
@@ -565,6 +615,7 @@ public class StateAssignmentOperation {
 			Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToRawStateHandle =
 				getHashedKeyGroupToHandleFromOperatorState(operatorState, OperatorSubtaskState::getRawKeyedState);
 
+			// TODO: job execution plan is incorrect because it only targeting on a operator but is used in multiple operator.
 			Map<Integer, List<Integer>> partitionAssignment = jobExecutionPlan.getPartitionAssignment();
 
 			for (int subTaskIndex = 0; subTaskIndex < newParallelism; subTaskIndex++) {

@@ -7,6 +7,8 @@ public interface JobReconfigAction {
 
 	JobGraph getJobGraph();
 
+	void setInitialJobExecutionPlan(JobVertexID vertexID, JobExecutionPlan JobExecutionPlan);
+
 	void repartition(JobVertexID vertexID, JobExecutionPlan JobExecutionPlan);
 
 	void scaleOut(JobVertexID vertexID, int newParallelism, JobExecutionPlan JobExecutionPlan);

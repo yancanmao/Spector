@@ -18,15 +18,13 @@ public class SimpleController extends Thread {
 
 	private final String name;
 
-	Map<String, List<String>> executorMapping;
+	private final Map<String, List<String>> executorMapping;
 
 	private volatile boolean waitForMigrationDeployed;
 
-	private Random random;
+	private final Random random;
 
 	private ExecutionPlanConstructor executionPlanConstructor;
-
-	private final Configuration config;
 
 	public SimpleController(JobReconfigAction jobReconfigAction, ExecutionGraph executionGraph) {
 		this("DummyStreamSwitch", jobReconfigAction, executionGraph);
@@ -35,7 +33,7 @@ public class SimpleController extends Thread {
 	public SimpleController(String name, JobReconfigAction jobReconfigAction, ExecutionGraph executionGraph) {
 		this.name = name;
 		this.executorMapping = new HashMap<>();
-		this.config = executionGraph.getJobConfiguration();
+		Configuration config = executionGraph.getJobConfiguration();
 
 		this.random = new Random();
 		this.random.setSeed(System.currentTimeMillis());

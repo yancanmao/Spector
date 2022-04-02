@@ -193,6 +193,7 @@ public class JobStateCoordinator implements CheckpointProgressListener, JobRecon
 		StateAssignmentOperation stateAssignmentOperation =
 			new StateAssignmentOperation(checkpoint.getCheckpointID(), tasks, operatorStates,
 				true, DISPATCH_STATE_TO_STANDBY_TASK);
+		stateAssignmentOperation.setRedistributeStrategy(jobExecutionPlan);
 
 		stateAssignmentOperation.assignStates();
 	}
@@ -281,6 +282,12 @@ public class JobStateCoordinator implements CheckpointProgressListener, JobRecon
 	@Override
 	public void scaleIn(JobVertexID vertexID, int newParallelism, JobExecutionPlan jobExecutionPlan) {
 		throw new UnsupportedOperationException("Scaling is not supported");
+	}
+
+	@Override
+	public void setInitialJobExecutionPlan(JobVertexID vertexID, JobExecutionPlan jobExecutionPlan) {
+		// TODO: by far, we only need to a single operator, but we need to have multiple operator remapping
+		this.jobExecutionPlan = jobExecutionPlan;
 	}
 
 	@Override
