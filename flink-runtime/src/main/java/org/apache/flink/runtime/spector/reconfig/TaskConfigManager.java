@@ -229,7 +229,7 @@ public class TaskConfigManager {
 
 	private static class TaskRescaleMeta {
 		private final ReconfigID reconfigId;
-		private final ReconfigOptions ReconfigOptions;
+		private final ReconfigOptions reconfigOptions;
 
 		private final Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors;
 		private final Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors;
@@ -243,7 +243,7 @@ public class TaskConfigManager {
 				Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors) {
 
 			this.reconfigId = checkNotNull(ReconfigID);
-			this.ReconfigOptions = checkNotNull(ReconfigOptions);
+			this.reconfigOptions = checkNotNull(ReconfigOptions);
 
 			this.resultPartitionDeploymentDescriptors = checkNotNull(resultPartitionDeploymentDescriptors);
 			this.inputGateDeploymentDescriptors = checkNotNull(inputGateDeploymentDescriptors);
@@ -256,7 +256,7 @@ public class TaskConfigManager {
 		}
 
 		public ReconfigOptions getReconfigOptions() {
-			return ReconfigOptions;
+			return reconfigOptions;
 		}
 
 		public Collection<ResultPartitionDeploymentDescriptor> getResultPartitionDeploymentDescriptors() {
@@ -308,5 +308,14 @@ public class TaskConfigManager {
 			gate.setConsumedSubpartitionIndex(igdds.get(0).getConsumedSubpartitionIndex());
 			return igdds.get(0);
 		}
+//		public InputGateDeploymentDescriptor getMatchedInputGateDescriptor(SingleInputGate gate) {
+//			for (InputGateDeploymentDescriptor igdd : inputGateDeploymentDescriptors) {
+//				if (gate.getConsumedResultId().equals(igdd.getConsumedResultId())
+//					&& gate.getConsumedSubpartitionIndex() == igdd.getConsumedSubpartitionIndex()) {
+//					return igdd;
+//				}
+//			}
+//			throw new IllegalStateException("Cannot find matched InputGateDeploymentDescriptor");
+//		}
 	}
 }

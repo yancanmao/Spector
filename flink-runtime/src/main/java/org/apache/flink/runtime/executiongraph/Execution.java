@@ -383,7 +383,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			} catch (InterruptedException | ExecutionException e) {
 				e.printStackTrace();
 			}
-			LOG.info("++++++ Dispatch state snapshot {} to standby task {}.", taskRestore, vertex.getTaskNameWithSubtaskIndex());
+//			LOG.info("++++++ Dispatch state snapshot {} to standby task {}.", taskRestore, vertex.getTaskNameWithSubtaskIndex());
+			LOG.info("++++++ Dispatch state snapshot to standby task {}.", vertex.getTaskNameWithSubtaskIndex());
 		}
 	}
 

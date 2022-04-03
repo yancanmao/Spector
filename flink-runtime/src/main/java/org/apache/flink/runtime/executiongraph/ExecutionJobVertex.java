@@ -755,6 +755,9 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		long initialGlobalModVersion,
 		long createTimestamp,
 		int numBackupTasks) {
+
+		LOG.info("++++++ Creating standby task for: " + this.getJobVertexId());
+
 //		int defaultBackupId = Integer.MAX_VALUE / 2;
 		int defaultBackupId = 0;
 

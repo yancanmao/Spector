@@ -11,7 +11,7 @@ public class ExecutionPlanConstructor {
 
 	private int numOpenedSubtask;
 
-	private JobExecutionPlan oldRescalePA;
+	private JobExecutionPlan oldExecutionPlan;
 
 	private Map<String, List<String>> oldExecutorMapping;
 
@@ -22,7 +22,8 @@ public class ExecutionPlanConstructor {
 		this.numOpenedSubtask = parallelism;
 		this.reconfigAction = reconfigAction;
 
-		this.oldRescalePA = new JobExecutionPlan(executorMapping, numOpenedSubtask);
+		this.oldExecutionPlan = new JobExecutionPlan(executorMapping, numOpenedSubtask);
+		this.reconfigAction.setInitialJobExecutionPlan(jobVertexID, oldExecutionPlan);
 		this.oldExecutorMapping = new HashMap<>(executorMapping);
 	}
 
@@ -42,19 +43,19 @@ public class ExecutionPlanConstructor {
 		if (numOpenedSubtask >= newParallelism) {
 			// repartition
 			jobExecutionPlan = new JobExecutionPlan(
-				executorMapping, oldExecutorMapping, oldRescalePA, numOpenedSubtask);
+				executorMapping, oldExecutorMapping, oldExecutionPlan, numOpenedSubtask);
 
 			reconfigAction.repartition(jobVertexID, jobExecutionPlan);
 		} else {
 			// scale out
 			jobExecutionPlan = new JobExecutionPlan(
-				executorMapping, oldExecutorMapping, oldRescalePA, newParallelism);
+				executorMapping, oldExecutorMapping, oldExecutionPlan, newParallelism);
 
 			reconfigAction.scaleOut(jobVertexID, newParallelism, jobExecutionPlan);
 			numOpenedSubtask = newParallelism;
 		}
 
-		this.oldRescalePA = jobExecutionPlan;
+		this.oldExecutionPlan = jobExecutionPlan;
 		this.oldExecutorMapping = new HashMap<>(executorMapping);
 	}
 }

@@ -182,13 +182,19 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 		this.resultPartitions = new LinkedHashMap<>(producedDataSets.length, 1);
 
-		for (IntermediateResult result : producedDataSets) {
-			IntermediateResultPartition irp = new IntermediateResultPartition(result, this, subTaskIndex);
-			result.setPartition(subTaskIndex, irp);
+		if (!isStandby) {
+			for (IntermediateResult result : producedDataSets) {
+				IntermediateResultPartition irp = new IntermediateResultPartition(result, this, subTaskIndex);
+				result.setPartition(subTaskIndex, irp);
 
-			resultPartitions.put(irp.getPartitionId(), irp);
+				resultPartitions.put(irp.getPartitionId(), irp);
+			}
+		} else {
+			for (IntermediateResult result : producedDataSets) {
+				IntermediateResultPartition irp = new IntermediateResultPartition(result, this, subTaskIndex);
+				resultPartitions.put(irp.getPartitionId(), irp);
+			}
 		}
-
 		this.inputEdges = new ExecutionEdge[jobVertex.getJobVertex().getInputs().size()][];
 
 		this.priorExecutions = new EvictingBoundedList<>(maxPriorExecutionHistoryLength);

@@ -921,7 +921,7 @@ public class CheckpointCoordinator {
 				checkpointProgressListener.onCompleteCheckpoint(latest);
 			}
 		} catch (Exception e) {
-			e.printStackTrace();
+			LOG.error("Error while processing JobStateCoordinator Logic: {}.", job, e);
 		}
 
 		if (LOG.isDebugEnabled()) {

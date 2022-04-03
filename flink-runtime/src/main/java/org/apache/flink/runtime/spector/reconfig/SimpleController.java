@@ -42,7 +42,7 @@ public class SimpleController extends Thread {
 			JobVertexID vertexID = entry.getKey();
 			int numExecutors = entry.getValue().getParallelism();
 			int numPartitions = entry.getValue().getMaxParallelism();
-			if (entry.getValue().getName().toLowerCase().contains("map")) {
+			if (entry.getValue().getName().toLowerCase().contains("flatmap")) {
 				for (int executorId = 0; executorId < numExecutors; executorId++) {
 					List<String> executorPartitions = new ArrayList<>();
 					executorMapping.put(String.valueOf(executorId), executorPartitions);

@@ -240,8 +240,14 @@ public class StateAssignmentOperation {
 				newParallelism);
 
 		} else if (operation == Operation.DISPATCH_STATE_TO_STANDBY_TASK) {
-			reDistributePartitionableStatesToStandbyTasks(
+//			reDistributePartitionableStatesToStandbyTasks(
+//				operatorStates,
+//				operatorIDs,
+//				newManagedOperatorStates,
+//				newRawOperatorStates);
+			reDistributePartitionableStates(
 				operatorStates,
+				newParallelism,
 				operatorIDs,
 				newManagedOperatorStates,
 				newRawOperatorStates);

@@ -227,6 +227,10 @@ public class SingleInputGate implements InputGate {
 		return consumedResultId;
 	}
 
+	public int getConsumedSubpartitionIndex() {
+		return consumedSubpartitionIndex;
+	}
+
 	public void setConsumedSubpartitionIndex(int consumedSubpartitionIndex) {
 		this.consumedSubpartitionIndex = consumedSubpartitionIndex;
 	}

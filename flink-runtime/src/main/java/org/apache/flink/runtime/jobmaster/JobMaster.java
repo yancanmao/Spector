@@ -300,7 +300,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 		this.jobStateCoordinator = new JobStateCoordinator(
 			jobGraph, executionGraph, userCodeLoader);
-		jobStateCoordinator.notifyNewVertices(executionGraph.getExecutionJobVertices());
+//		jobStateCoordinator.notifyNewVertices(executionGraph.getExecutionJobVertices());
 	}
 
 	//----------------------------------------------------------------------------------------------
