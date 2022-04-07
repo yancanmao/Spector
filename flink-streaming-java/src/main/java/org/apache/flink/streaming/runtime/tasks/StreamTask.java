@@ -688,7 +688,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				checkpointState(checkpointMetaData, checkpointOptions, checkpointMetrics);
 
 				// Step (4): Check whether the checkpoint is rescalepoint type, and do rescaling if it is.
-				checkRescalePoint(checkpointMetaData, checkpointOptions, checkpointMetrics);
+				checkReconfigPoint(checkpointMetaData, checkpointOptions, checkpointMetrics);
 				return true;
 			}
 			else {
@@ -844,12 +844,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	//  Rescale
 	// ------------------------------------------------------------------------
 
-	protected void reconnect() {}
+	protected void reconnect() {
+		throw new UnsupportedOperationException("Unsupport for this task");
+	}
 
 	private void initReconnect() {
-		TaskConfigManager rescaleManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
+		TaskConfigManager configManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
 
-		if (!rescaleManager.isScalingTarget()) {
+		if (!configManager.isScalingTarget()) {
 			return;
 		}
 		LOG.info("++++++ trigger target vertex rescaling: " + this.toString());
@@ -858,16 +860,16 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		try {
 			// update gate
-			if (rescaleManager.isScalingGates()) {
+			if (configManager.isScalingGates()) {
 				for (InputGate gate : getEnvironment().getAllInputGates()) {
-					rescaleManager.substituteInputGateChannels((SingleInputGate) gate);
+					configManager.substituteInputGateChannels((SingleInputGate) gate);
 				}
 			}
 
 			// update output (writers)
-			if (rescaleManager.isScalingPartitions()) {
+			if (configManager.isScalingPartitions()) {
 				ResultPartitionWriter[] oldWriterCopies =
-					rescaleManager.substituteResultPartitions(getEnvironment().getAllWriters());
+					configManager.substituteResultPartitions(getEnvironment().getAllWriters());
 
 				recordWriters = createRecordWriters(configuration, getEnvironment());
 
@@ -880,14 +882,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					streamOutput.close();
 				}
 
-				rescaleManager.unregisterPartitions((ResultPartition[]) oldWriterCopies);
+				configManager.unregisterPartitions((ResultPartition[]) oldWriterCopies);
 			}
 
 			reconnect();
 		} catch (Exception e) {
 			LOG.info("++++++ error", e);
 		} finally {
-			rescaleManager.finish();
+			configManager.finish();
 //			System.out.println("redistribute id: " + this.toString() + " time: " + (System.nanoTime() - start));
 			// complete reconnection, then start to process tuple,
 			// the total migration time is T(complete reconnection) - T(receive barrior).
@@ -895,7 +897,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		}
 	}
 
-	private void checkRescalePoint(
+	private void checkReconfigPoint(
 		CheckpointMetaData checkpointMetaData,
 		CheckpointOptions checkpointOptions,
 		CheckpointMetrics checkpointMetrics) {

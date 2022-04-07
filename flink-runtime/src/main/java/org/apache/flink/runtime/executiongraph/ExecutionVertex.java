@@ -208,6 +208,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			timeout,
 			isStandby);
 
+
 		// create a co-location scheduling hint, if necessary
 		CoLocationGroup clg = jobVertex.getCoLocationGroup();
 		if (clg != null) {

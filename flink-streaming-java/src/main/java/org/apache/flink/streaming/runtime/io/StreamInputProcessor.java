@@ -52,6 +52,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -74,13 +75,17 @@ public class StreamInputProcessor<IN> {
 
 	private static final Logger LOG = LoggerFactory.getLogger(StreamInputProcessor.class);
 
-	private final RecordDeserializer<DeserializationDelegate<StreamElement>>[] recordDeserializers;
+	private volatile RecordDeserializer<DeserializationDelegate<StreamElement>>[] recordDeserializers;
 
 	private RecordDeserializer<DeserializationDelegate<StreamElement>> currentRecordDeserializer;
 
 	private final DeserializationDelegate<StreamElement> deserializationDelegate;
 
 	private final CheckpointBarrierHandler barrierHandler;
+
+	private final InputGate inputGate;
+
+	private final IOManager ioManager;
 
 	private final Object lock;
 
@@ -90,7 +95,7 @@ public class StreamInputProcessor<IN> {
 	private StatusWatermarkValve statusWatermarkValve;
 
 	/** Number of input channels the valve needs to handle. */
-	private final int numInputChannels;
+	private volatile int numInputChannels;
 
 	/**
 	 * The channel from which a buffer came, tracked so that we can appropriately map
@@ -111,19 +116,20 @@ public class StreamInputProcessor<IN> {
 
 	@SuppressWarnings("unchecked")
 	public StreamInputProcessor(
-			InputGate[] inputGates,
-			TypeSerializer<IN> inputSerializer,
-			StreamTask<?, ?> checkpointedTask,
-			CheckpointingMode checkpointMode,
-			Object lock,
-			IOManager ioManager,
-			Configuration taskManagerConfig,
-			StreamStatusMaintainer streamStatusMaintainer,
-			OneInputStreamOperator<IN, ?> streamOperator,
-			TaskIOMetricGroup metrics,
-			WatermarkGauge watermarkGauge) throws IOException {
+		InputGate[] inputGates,
+		TypeSerializer<IN> inputSerializer,
+		StreamTask<?, ?> checkpointedTask,
+		CheckpointingMode checkpointMode,
+		Object lock,
+		IOManager ioManager,
+		Configuration taskManagerConfig,
+		StreamStatusMaintainer streamStatusMaintainer,
+		OneInputStreamOperator<IN, ?> streamOperator,
+		TaskIOMetricGroup metrics,
+		WatermarkGauge watermarkGauge) throws IOException {
 
-		InputGate inputGate = InputGateUtil.createInputGate(inputGates);
+		this.inputGate = InputGateUtil.createInputGate(inputGates);
+		this.ioManager = ioManager;
 
 		this.barrierHandler = InputProcessorUtil.createCheckpointBarrierHandler(
 			checkpointedTask, checkpointMode, ioManager, inputGate, taskManagerConfig);
@@ -147,8 +153,8 @@ public class StreamInputProcessor<IN> {
 		this.streamOperator = checkNotNull(streamOperator);
 
 		this.statusWatermarkValve = new StatusWatermarkValve(
-				numInputChannels,
-				new ForwardingValveOutputHandler(streamOperator, lock));
+			numInputChannels,
+			new ForwardingValveOutputHandler(streamOperator, lock));
 
 		this.watermarkGauge = watermarkGauge;
 		metrics.gauge("checkpointAlignmentTime", barrierHandler::getAlignmentDurationNanos);
@@ -169,6 +175,8 @@ public class StreamInputProcessor<IN> {
 
 		while (true) {
 			if (currentRecordDeserializer != null) {
+				long start = System.nanoTime();
+
 				DeserializationResult result = currentRecordDeserializer.getNextRecord(deserializationDelegate);
 
 				if (result.isBufferConsumed()) {
@@ -180,8 +188,11 @@ public class StreamInputProcessor<IN> {
 					StreamElement recordOrMark = deserializationDelegate.getInstance();
 
 					if (recordOrMark.isWatermark()) {
+						long processingStart = System.nanoTime();
+
 						// handle watermark
 						statusWatermarkValve.inputWatermark(recordOrMark.asWatermark(), currentChannel);
+
 						continue;
 					} else if (recordOrMark.isStreamStatus()) {
 						// handle stream status
@@ -199,7 +210,6 @@ public class StreamInputProcessor<IN> {
 						synchronized (lock) {
 							numRecordsIn.inc();
 							streamOperator.setKeyContextElement1(record);
-							streamOperator.processElement(record);
 						}
 						return true;
 					}
@@ -245,6 +255,29 @@ public class StreamInputProcessor<IN> {
 		barrierHandler.cleanup();
 	}
 
+	@SuppressWarnings("unchecked")
+	public void reconnect() {
+		numInputChannels = inputGate.getNumberOfInputChannels();
+
+//		System.out.println(this.metricsManager.getJobVertexId() + ": " + numInputChannels);
+
+		RecordDeserializer<DeserializationDelegate<StreamElement>>[] oldDeserializer =
+			Arrays.copyOf(recordDeserializers, recordDeserializers.length);
+		recordDeserializers = new SpillingAdaptiveSpanningRecordDeserializer[numInputChannels];
+
+		for (int i = 0; i < recordDeserializers.length; i++) {
+			if (i < oldDeserializer.length) {
+				recordDeserializers[i] = oldDeserializer[i];
+			} else {
+				recordDeserializers[i] = new SpillingAdaptiveSpanningRecordDeserializer<>(
+					ioManager.getSpillingDirectoriesPaths());
+			}
+		}
+
+		statusWatermarkValve.rescale(numInputChannels);
+		barrierHandler.updateTotalNumberOfInputChannels(numInputChannels);
+	}
+
 	private class ForwardingValveOutputHandler implements StatusWatermarkValve.ValveOutputHandler {
 		private final OneInputStreamOperator<IN, ?> operator;
 		private final Object lock;
@@ -278,5 +311,4 @@ public class StreamInputProcessor<IN> {
 			}
 		}
 	}
-
 }

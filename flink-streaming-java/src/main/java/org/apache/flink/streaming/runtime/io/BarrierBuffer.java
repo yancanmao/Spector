@@ -59,10 +59,10 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 	private final InputGate inputGate;
 
 	/** Flags that indicate whether a channel is currently blocked/buffered. */
-	private final boolean[] blockedChannels;
+	private volatile boolean[] blockedChannels;
 
 	/** The total number of channels that this buffer handles data from. */
-	private final int totalNumberOfInputChannels;
+	private volatile int totalNumberOfInputChannels;
 
 	/** To utility to write blocked data to a file channel. */
 	private final BufferBlocker bufferBlocker;
@@ -140,7 +140,7 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 	 * @throws IOException Thrown, when the spilling to temp files cannot be initialized.
 	 */
 	public BarrierBuffer(InputGate inputGate, BufferBlocker bufferBlocker, long maxBufferedBytes)
-			throws IOException {
+		throws IOException {
 		checkArgument(maxBufferedBytes == -1 || maxBufferedBytes > 0);
 
 		this.inputGate = inputGate;
@@ -385,13 +385,13 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 	private void notifyCheckpoint(CheckpointBarrier checkpointBarrier) throws Exception {
 		if (toNotifyOnCheckpoint != null) {
 			CheckpointMetaData checkpointMetaData =
-					new CheckpointMetaData(checkpointBarrier.getId(), checkpointBarrier.getTimestamp());
+				new CheckpointMetaData(checkpointBarrier.getId(), checkpointBarrier.getTimestamp());
 
 			long bytesBuffered = currentBuffered != null ? currentBuffered.size() : 0L;
 
 			CheckpointMetrics checkpointMetrics = new CheckpointMetrics()
-					.setBytesBufferedInAlignment(bytesBuffered)
-					.setAlignmentDurationNanos(latestAlignmentDurationNanos);
+				.setBytesBufferedInAlignment(bytesBuffered)
+				.setAlignmentDurationNanos(latestAlignmentDurationNanos);
 
 			toNotifyOnCheckpoint.triggerCheckpointOnBarrier(
 				checkpointMetaData,
@@ -568,6 +568,18 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 		} else {
 			return System.nanoTime() - start;
 		}
+	}
+
+	@Override
+	public void updateTotalNumberOfInputChannels(int newNumberOfInputChannels) {
+		for (boolean blocked : blockedChannels) {
+			if (blocked) {
+				LOG.info("++++++ Some channels are blocked, cannot do rescaling");
+				throw new RuntimeException("Some channels are blocked, cannot do rescaling");
+			}
+		}
+		totalNumberOfInputChannels = newNumberOfInputChannels;
+		blockedChannels = new boolean[newNumberOfInputChannels];
 	}
 
 	// ------------------------------------------------------------------------
