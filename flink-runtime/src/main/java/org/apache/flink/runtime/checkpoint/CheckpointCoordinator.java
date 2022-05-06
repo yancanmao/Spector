@@ -779,9 +779,9 @@ public class CheckpointCoordinator {
 						LOG.debug("Received acknowledge message for checkpoint {} from task {} of job {}.",
 							checkpointId, message.getTaskExecutionId(), message.getJob());
 
-//						if (checkpointProgressListener != null) {
-//							checkpointProgressListener.onReceiveRescalepointAcknowledge(message.getTaskExecutionId(), checkpoint);
-//						}
+						if (checkpointProgressListener != null) {
+							checkpointProgressListener.onReceiveRescalepointAcknowledge(message.getTaskExecutionId(), checkpoint);
+						}
 
 						if (checkpoint.isFullyAcknowledged()) {
 							completePendingCheckpoint(checkpoint);

@@ -266,10 +266,10 @@ public class JobStateCoordinator implements CheckpointProgressListener, JobRecon
 		checkNotNull(checkpoint);
 		LOG.info("++++++ checkpoint complete, start to dispatch state to replica");
 		dispatchLatestCheckpointedStateToStandbyTasks(checkpoint);
-		if (checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT) {
-			LOG.info("++++++ redistribute operator states");
-			handleCollectedStates(new HashMap<>(checkpoint.getOperatorStates()));
-		}
+//		if (checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT) {
+//			LOG.info("++++++ redistribute operator states");
+//			handleCollectedStates(new HashMap<>(checkpoint.getOperatorStates()));
+//		}
 	}
 
 	@Override
@@ -472,7 +472,7 @@ public class JobStateCoordinator implements CheckpointProgressListener, JobRecon
 	}
 
 	public void start() {
-		notifyNewVertices(executionGraph.getExecutionJobVertices());
+//		notifyNewVertices(executionGraph.getExecutionJobVertices());
 		simpleController.start();
 	}
 

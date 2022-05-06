@@ -70,8 +70,8 @@ public class SimpleController extends Thread {
 			// cool down time, wait for fully deployment
 			Thread.sleep(5 * 1000);
 
-//			testCaseOneToOneChange();
-			testRepartition();
+			testCaseOneToOneChange();
+//			testRepartition();
 
 			LOG.info("------ " + name + " finished");
 		} catch (Exception e) {
@@ -257,123 +257,123 @@ public class SimpleController extends Thread {
 			executorMapping);
 //		sleep(10000);
 
-		/*
-		 * scale in to parallelism 1
-		 *   1: [0, 127]
-		 */
-		preparePartitionAssignment("1");
-		for (int i = 0; i < 128; i++) {
-			executorMapping.get("1").add(i + "");
-		}
-		triggerAction(
-			"trigger 2 scale in",
-			() -> executionPlanConstructor.scale(1, executorMapping),
-			executorMapping);
-//		sleep(10000);
-
-		/*
-		 * scale out to parallelism 2
-		 *   1: [0, 50]
-		 *   2: [51, 127]
-		 */
-		preparePartitionAssignment("1", "2");
-		for (int i = 0; i < 128; i++) {
-			if (i <= 50)
-				executorMapping.get("1").add(i + "");
-			else
-				executorMapping.get("2").add(i + "");
-		}
-		triggerAction(
-			"trigger 3 scale out",
-			() -> executionPlanConstructor.scale(2, executorMapping),
-			executorMapping);
-//		sleep(10000);
-
-		/*
-		 * scale out to parallelism 3
-		 *   1: [0, 50]
-		 *   2: [51, 90]
-		 *   3: [91, 127]
-		 */
-		preparePartitionAssignment("1", "2", "3");
-		for (int i = 0; i < 128; i++) {
-			if (i <= 50)
-				executorMapping.get("1").add(i + "");
-			else if (i <= 90)
-				executorMapping.get("2").add(i + "");
-			else
-				executorMapping.get("3").add(i + "");
-		}
-		triggerAction(
-			"trigger 4 scale out",
-			() -> executionPlanConstructor.scale(3, executorMapping),
-			executorMapping);
-//		sleep(10000);
-
-		/*
-		 * scale in to parallelism 2
-		 *   1: [0, 90]
-		 *   3: [91, 127]
-		 */
-		preparePartitionAssignment("1", "3");
-		for (int i = 0; i < 128; i++) {
-			if (i <= 90)
-				executorMapping.get("1").add(i + "");
-			else
-				executorMapping.get("3").add(i + "");
-		}
-		triggerAction(
-			"trigger 5 scale in",
-			() -> executionPlanConstructor.scale(2, executorMapping),
-			executorMapping);
-//		sleep(10000);
-
-		/*
-		 * scale out to parallelism 3
-		 *   1: even in [0, 90]
-		 *   3: [91, 127]
-		 *   4: odd in [0, 90]
-		 */
-		preparePartitionAssignment("1", "3", "4");
-		for (int i = 0; i < 128; i++) {
-			if (i <= 90)
-				if (i % 2 == 0)
-					executorMapping.get("1").add(i + "");
-				else
-					executorMapping.get("4").add(i + "");
-			else
-				executorMapping.get("3").add(i + "");
-		}
-		triggerAction(
-			"trigger 6 scale out",
-			() -> executionPlanConstructor.scale(3, executorMapping),
-			executorMapping);
-//		sleep(10000);
-
-		/*
-		 * scale out to parallelism 4
-		 *   1: even in [0, 90]
-		 *   3: even in [91, 127]
-		 *   4: odd in [0, 90]
-		 *   5: odd in [91, 127]
-		 */
-		preparePartitionAssignment("1", "3", "4", "5");
-		for (int i = 0; i < 128; i++) {
-			if (i <= 90)
-				if (i % 2 == 0)
-					executorMapping.get("1").add(i + "");
-				else
-					executorMapping.get("4").add(i + "");
-			else
-				if (i % 2 == 0)
-					executorMapping.get("3").add(i + "");
-				else
-					executorMapping.get("5").add(i + "");
-		}
-		triggerAction(
-			"trigger 7 scale out",
-			() -> executionPlanConstructor.scale(4, executorMapping),
-			executorMapping);
+//		/*
+//		 * scale in to parallelism 1
+//		 *   1: [0, 127]
+//		 */
+//		preparePartitionAssignment("1");
+//		for (int i = 0; i < 128; i++) {
+//			executorMapping.get("1").add(i + "");
+//		}
+//		triggerAction(
+//			"trigger 2 scale in",
+//			() -> executionPlanConstructor.scale(1, executorMapping),
+//			executorMapping);
+////		sleep(10000);
+//
+//		/*
+//		 * scale out to parallelism 2
+//		 *   1: [0, 50]
+//		 *   2: [51, 127]
+//		 */
+//		preparePartitionAssignment("1", "2");
+//		for (int i = 0; i < 128; i++) {
+//			if (i <= 50)
+//				executorMapping.get("1").add(i + "");
+//			else
+//				executorMapping.get("2").add(i + "");
+//		}
+//		triggerAction(
+//			"trigger 3 scale out",
+//			() -> executionPlanConstructor.scale(2, executorMapping),
+//			executorMapping);
+////		sleep(10000);
+//
+//		/*
+//		 * scale out to parallelism 3
+//		 *   1: [0, 50]
+//		 *   2: [51, 90]
+//		 *   3: [91, 127]
+//		 */
+//		preparePartitionAssignment("1", "2", "3");
+//		for (int i = 0; i < 128; i++) {
+//			if (i <= 50)
+//				executorMapping.get("1").add(i + "");
+//			else if (i <= 90)
+//				executorMapping.get("2").add(i + "");
+//			else
+//				executorMapping.get("3").add(i + "");
+//		}
+//		triggerAction(
+//			"trigger 4 scale out",
+//			() -> executionPlanConstructor.scale(3, executorMapping),
+//			executorMapping);
+////		sleep(10000);
+//
+//		/*
+//		 * scale in to parallelism 2
+//		 *   1: [0, 90]
+//		 *   3: [91, 127]
+//		 */
+//		preparePartitionAssignment("1", "3");
+//		for (int i = 0; i < 128; i++) {
+//			if (i <= 90)
+//				executorMapping.get("1").add(i + "");
+//			else
+//				executorMapping.get("3").add(i + "");
+//		}
+//		triggerAction(
+//			"trigger 5 scale in",
+//			() -> executionPlanConstructor.scale(2, executorMapping),
+//			executorMapping);
+////		sleep(10000);
+//
+//		/*
+//		 * scale out to parallelism 3
+//		 *   1: even in [0, 90]
+//		 *   3: [91, 127]
+//		 *   4: odd in [0, 90]
+//		 */
+//		preparePartitionAssignment("1", "3", "4");
+//		for (int i = 0; i < 128; i++) {
+//			if (i <= 90)
+//				if (i % 2 == 0)
+//					executorMapping.get("1").add(i + "");
+//				else
+//					executorMapping.get("4").add(i + "");
+//			else
+//				executorMapping.get("3").add(i + "");
+//		}
+//		triggerAction(
+//			"trigger 6 scale out",
+//			() -> executionPlanConstructor.scale(3, executorMapping),
+//			executorMapping);
+////		sleep(10000);
+//
+//		/*
+//		 * scale out to parallelism 4
+//		 *   1: even in [0, 90]
+//		 *   3: even in [91, 127]
+//		 *   4: odd in [0, 90]
+//		 *   5: odd in [91, 127]
+//		 */
+//		preparePartitionAssignment("1", "3", "4", "5");
+//		for (int i = 0; i < 128; i++) {
+//			if (i <= 90)
+//				if (i % 2 == 0)
+//					executorMapping.get("1").add(i + "");
+//				else
+//					executorMapping.get("4").add(i + "");
+//			else
+//				if (i % 2 == 0)
+//					executorMapping.get("3").add(i + "");
+//				else
+//					executorMapping.get("5").add(i + "");
+//		}
+//		triggerAction(
+//			"trigger 7 scale out",
+//			() -> executionPlanConstructor.scale(4, executorMapping),
+//			executorMapping);
 	}
 
 	private void testJoin() throws InterruptedException {

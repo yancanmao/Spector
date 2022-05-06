@@ -648,11 +648,11 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				}
 
 				if (reconfigOptions.isRepartition()) {
-					JobManagerTaskRestore taskRestore = getTaskRestoreFromReplica(task);
+//					JobManagerTaskRestore taskRestore = getTaskRestoreFromReplica(task);
+					JobManagerTaskRestore taskRestore = tdd.getTaskRestore();
 					// TODO: jobmaster may also send a task restore to the task because of partial state replication.
 					// TODO: as a result, we have to reconstruct a new state restore for state recovery.
 					log.info("++++++ update task state: " + tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId());
-//					task.assignNewState(tdd.getKeyGroupRange(), tdd.getTaskRestore());
 					task.assignNewState(tdd.getKeyGroupRange(), taskRestore);
 				}
 
