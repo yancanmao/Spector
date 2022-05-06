@@ -31,12 +31,13 @@ import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
+import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobmaster.AllocatedSlotReport;
 import org.apache.flink.runtime.jobmaster.JobMasterId;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.StackTraceSampleResponse;
+import org.apache.flink.runtime.spector.ReconfigOptions;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
-import org.apache.flink.runtime.spector.reconfig.ReconfigOptions;
 import org.apache.flink.types.SerializableOptional;
 import org.apache.flink.util.Preconditions;
 
@@ -122,7 +123,7 @@ public class TestingTaskExecutorGateway implements TaskExecutorGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> reconfigTask(ExecutionAttemptID executionAttemptID, TaskDeploymentDescriptor tdd, JobMasterId jobMasterId, ReconfigOptions reconfigOptions, Time timeout) {
-		return null;
+		return CompletableFuture.completedFuture(Acknowledge.get());
 	}
 
 	@Override
@@ -196,7 +197,7 @@ public class TestingTaskExecutorGateway implements TaskExecutorGateway {
 	}
 
 	@Override
-	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobManagerTaskRestore taskRestore, Time timeout) {
+	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, JobManagerTaskRestore taskRestore, Time timeout) {
 		return null;
 	}
 

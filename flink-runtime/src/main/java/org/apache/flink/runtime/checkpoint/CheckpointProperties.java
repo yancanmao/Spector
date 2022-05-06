@@ -288,7 +288,8 @@ public class CheckpointProperties implements Serializable {
 		return SAVEPOINT;
 	}
 
-	public static CheckpointProperties forRconfigPoint() {
+
+	public static CheckpointProperties forReconfigPoint() {
 		return RECONFIGPOINT;
 	}
 

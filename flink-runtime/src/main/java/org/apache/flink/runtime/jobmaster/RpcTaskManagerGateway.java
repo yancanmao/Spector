@@ -26,10 +26,11 @@ import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
+import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.StackTraceSampleResponse;
-import org.apache.flink.runtime.spector.reconfig.ReconfigOptions;
+import org.apache.flink.runtime.spector.ReconfigOptions;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.util.Preconditions;
 
@@ -125,7 +126,7 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
-	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobManagerTaskRestore taskRestore, Time timeout) {
-		return taskExecutorGateway.dispatchStateToStandbyTask(executionAttemptID, taskRestore, timeout);
+	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, JobManagerTaskRestore taskRestore, Time timeout) {
+		return taskExecutorGateway.dispatchStateToStandbyTask(executionAttemptID, jobvertexId, taskRestore, timeout);
 	}
 }

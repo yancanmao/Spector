@@ -48,13 +48,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.RunnableFuture;
 
@@ -201,6 +198,152 @@ class HeapSnapshotStrategy<K>
 								kgCompressionView.writeShort(stateNamesToId.get(stateSnapshot.getKey()));
 								partitionedSnapshot.writeStateInKeyGroup(kgCompressionView, alignedKeyGroupId);
 							} // this will just close the outer compression stream
+						}
+					}
+
+					if (snapshotCloseableRegistry.unregisterCloseable(streamWithResultProvider)) {
+						KeyGroupRangeOffsets kgOffs = new KeyGroupRangeOffsets(keyGroupRange, keyGroupRangeOffsets);
+						SnapshotResult<StreamStateHandle> result =
+							streamWithResultProvider.closeAndFinalizeCheckpointStreamResult();
+						return CheckpointStreamWithResultProvider.toKeyedStateHandleSnapshotResult(result, kgOffs);
+					} else {
+						throw new IOException("Stream already unregistered.");
+					}
+				}
+
+				@Override
+				protected void cleanupProvidedResources() {
+					for (StateSnapshot tableSnapshot : cowStateStableSnapshots.values()) {
+						tableSnapshot.release();
+					}
+				}
+
+				@Override
+				protected void logAsyncSnapshotComplete(long startTime) {
+					if (snapshotStrategySynchronicityTrait.isAsynchronous()) {
+						logAsyncCompleted(primaryStreamFactory, startTime);
+					}
+				}
+			};
+
+		final FutureTask<SnapshotResult<KeyedStateHandle>> task =
+			asyncSnapshotCallable.toAsyncSnapshotFutureTask(cancelStreamRegistry);
+		finalizeSnapshotBeforeReturnHook(task);
+
+		return task;
+	}
+
+
+	@Nonnull
+	public RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshotAffectedKeygroups(
+		long checkpointId,
+		long timestamp,
+		@Nonnull CheckpointStreamFactory primaryStreamFactory,
+		@Nonnull CheckpointOptions checkpointOptions,
+		@Nullable Collection<Integer> affectedKeygroups) throws IOException {
+
+		if (!hasRegisteredState()) {
+			return DoneFuture.of(SnapshotResult.empty());
+		}
+
+		int numStates = registeredKVStates.size() + registeredPQStates.size();
+
+		Preconditions.checkState(numStates <= Short.MAX_VALUE,
+			"Too many states: " + numStates +
+				". Currently at most " + Short.MAX_VALUE + " states are supported");
+
+		final List<StateMetaInfoSnapshot> metaInfoSnapshots = new ArrayList<>(numStates);
+		final Map<StateUID, Integer> stateNamesToId =
+			new HashMap<>(numStates);
+		final Map<StateUID, StateSnapshot> cowStateStableSnapshots =
+			new HashMap<>(numStates);
+
+		processSnapshotMetaInfoForAllStates(
+			metaInfoSnapshots,
+			cowStateStableSnapshots,
+			stateNamesToId,
+			registeredKVStates,
+			StateMetaInfoSnapshot.BackendStateType.KEY_VALUE);
+
+		processSnapshotMetaInfoForAllStates(
+			metaInfoSnapshots,
+			cowStateStableSnapshots,
+			stateNamesToId,
+			registeredPQStates,
+			StateMetaInfoSnapshot.BackendStateType.PRIORITY_QUEUE);
+
+		final KeyedBackendSerializationProxy<K> serializationProxy =
+			new KeyedBackendSerializationProxy<>(
+				// TODO: this code assumes that writing a serializer is threadsafe, we should support to
+				// get a serialized form already at state registration time in the future
+				getKeySerializer(),
+				metaInfoSnapshots,
+				!Objects.equals(UncompressedStreamCompressionDecorator.INSTANCE, keyGroupCompressionDecorator));
+
+		final SupplierWithException<CheckpointStreamWithResultProvider, Exception> checkpointStreamSupplier =
+
+			localRecoveryConfig.isLocalRecoveryEnabled() ?
+
+				() -> CheckpointStreamWithResultProvider.createDuplicatingStream(
+					checkpointId,
+					CheckpointedStateScope.EXCLUSIVE,
+					primaryStreamFactory,
+					localRecoveryConfig.getLocalStateDirectoryProvider()) :
+
+				() -> CheckpointStreamWithResultProvider.createSimpleStream(
+					CheckpointedStateScope.EXCLUSIVE,
+					primaryStreamFactory);
+
+		//--------------------------------------------------- this becomes the end of sync part
+
+		final AsyncSnapshotCallable<SnapshotResult<KeyedStateHandle>> asyncSnapshotCallable =
+			new AsyncSnapshotCallable<SnapshotResult<KeyedStateHandle>>() {
+				@Override
+				protected SnapshotResult<KeyedStateHandle> callInternal() throws Exception {
+
+					final CheckpointStreamWithResultProvider streamWithResultProvider =
+						checkpointStreamSupplier.get();
+
+					snapshotCloseableRegistry.registerCloseable(streamWithResultProvider);
+
+					final CheckpointStreamFactory.CheckpointStateOutputStream localStream =
+						streamWithResultProvider.getCheckpointOutputStream();
+
+					final DataOutputViewStreamWrapper outView = new DataOutputViewStreamWrapper(localStream);
+					serializationProxy.write(outView);
+
+					final long[] keyGroupRangeOffsets = new long[keyGroupRange.getNumberOfKeyGroups()];
+
+					Preconditions.checkState(affectedKeygroups != null,
+						"++++++ Need to provide an affected keygroup list ");
+
+					for (int keyGroupPos = 0; keyGroupPos < keyGroupRange.getNumberOfKeyGroups(); ++keyGroupPos) {
+						// TODO: hard code this part to test effectiveness
+						int alignedKeyGroupId = keyGroupRange.getKeyGroupId(keyGroupPos);
+						keyGroupRangeOffsets[keyGroupPos] = localStream.getPos();
+						int hashedKeyGroup = keyGroupRange.mapFromAlignedToHashed(alignedKeyGroupId);
+						if (affectedKeygroups.contains(hashedKeyGroup)) {
+							outView.writeInt(hashedKeyGroup);
+
+							LOG.info("+++++--- keyGroupRange: " + keyGroupRange +
+								", alignedKeyGroupIndex: " + alignedKeyGroupId +
+								", offset: " + keyGroupRangeOffsets[keyGroupPos] +
+								", hashedKeyGroup: " + hashedKeyGroup);
+
+							for (Map.Entry<StateUID, StateSnapshot> stateSnapshot :
+								cowStateStableSnapshots.entrySet()) {
+								StateSnapshot.StateKeyGroupWriter partitionedSnapshot =
+
+									stateSnapshot.getValue().getKeyGroupWriter();
+								try (
+									OutputStream kgCompressionOut =
+										keyGroupCompressionDecorator.decorateWithCompression(localStream)) {
+									DataOutputViewStreamWrapper kgCompressionView =
+										new DataOutputViewStreamWrapper(kgCompressionOut);
+									kgCompressionView.writeShort(stateNamesToId.get(stateSnapshot.getKey()));
+									partitionedSnapshot.writeStateInKeyGroup(kgCompressionView, alignedKeyGroupId);
+								} // this will just close the outer compression stream
+							}
 						}
 					}
 

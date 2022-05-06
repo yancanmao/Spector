@@ -126,7 +126,7 @@ public class SingleInputGate implements InputGate {
 	 * The index of the consumed subpartition of each consumed partition. This index depends on the
 	 * {@link DistributionPattern} and the subtask indices of the producing and consuming task.
 	 */
-	private int consumedSubpartitionIndex;
+	private final int consumedSubpartitionIndex;
 
 	/** The number of input channels (equivalent to the number of consumed partitions). */
 	private int numberOfInputChannels;
@@ -231,10 +231,6 @@ public class SingleInputGate implements InputGate {
 		return consumedSubpartitionIndex;
 	}
 
-	public void setConsumedSubpartitionIndex(int consumedSubpartitionIndex) {
-		this.consumedSubpartitionIndex = consumedSubpartitionIndex;
-	}
-
 	/**
 	 * Returns the type of this input channel's consumed result partition.
 	 *
@@ -334,7 +330,7 @@ public class SingleInputGate implements InputGate {
 	public void setInputChannel(IntermediateResultPartitionID partitionId, InputChannel inputChannel) {
 		synchronized (requestLock) {
 			if (inputChannels.put(checkNotNull(partitionId), checkNotNull(inputChannel)) == null
-				&& inputChannel instanceof UnknownInputChannel) {
+					&& inputChannel instanceof UnknownInputChannel) {
 
 				numberOfUninitializedChannels++;
 			}
@@ -423,7 +419,7 @@ public class SingleInputGate implements InputGate {
 				}
 				else {
 					throw new IllegalStateException(
-						"Unexpected type of channel to retrigger partition: " + ch.getClass());
+							"Unexpected type of channel to retrigger partition: " + ch.getClass());
 				}
 			}
 		}
@@ -522,8 +518,8 @@ public class SingleInputGate implements InputGate {
 				// Sanity checks
 				if (numberOfInputChannels != inputChannels.size()) {
 					throw new IllegalStateException("Bug in input gate setup logic: mismatch between" +
-						"number of total input channels and the currently set number of input " +
-						"channels.");
+							"number of total input channels and the currently set number of input " +
+							"channels.");
 				}
 
 				for (InputChannel inputChannel : inputChannels.values()) {

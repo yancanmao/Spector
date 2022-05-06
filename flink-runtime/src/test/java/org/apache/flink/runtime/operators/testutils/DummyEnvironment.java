@@ -47,6 +47,7 @@ import org.apache.flink.runtime.taskexecutor.TestGlobalAggregateManager;
 import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
 import org.apache.flink.runtime.util.TestingTaskManagerRuntimeInfo;
+import org.apache.flink.runtime.util.profiling.MetricsManager;
 
 import java.util.Collections;
 import java.util.Map;
@@ -233,13 +234,17 @@ public class DummyEnvironment implements Environment {
 	public TaskEventDispatcher getTaskEventDispatcher() {
 		throw new UnsupportedOperationException();
 	}
+	public void setTaskStateManager(TaskStateManager taskStateManager) {
+		this.taskStateManager = taskStateManager;
+	}
+
+	@Override
+	public MetricsManager getMetricsManager() {
+		return null;
+	}
 
 	@Override
 	public Task getContainingTask() {
 		return null;
-	}
-
-	public void setTaskStateManager(TaskStateManager taskStateManager) {
-		this.taskStateManager = taskStateManager;
 	}
 }

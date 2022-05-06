@@ -51,12 +51,12 @@ import org.apache.flink.streaming.api.environment.CheckpointConfig;
 import org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.StreamOperator;
+import org.apache.flink.streaming.api.rescale.StreamJobGraphUpdater;
 import org.apache.flink.streaming.runtime.partitioner.ForwardPartitioner;
 import org.apache.flink.streaming.runtime.partitioner.RescalePartitioner;
 import org.apache.flink.streaming.runtime.partitioner.StreamPartitioner;
 import org.apache.flink.streaming.runtime.tasks.StreamIterationHead;
 import org.apache.flink.streaming.runtime.tasks.StreamIterationTail;
-import org.apache.flink.streaming.spector.StreamJobGraphUpdater;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.SerializedValue;
 
@@ -141,7 +141,6 @@ public class StreamingJobGraphGenerator {
 		// make sure that all vertices start immediately
 		jobGraph.setScheduleMode(ScheduleMode.EAGER);
 
-		// set the exact class that used in jobgraph for rescale
 		jobGraph.setJobRescalerClass(StreamJobGraphUpdater.class);
 
 		// Generate deterministic hashes for the nodes in order to identify them across

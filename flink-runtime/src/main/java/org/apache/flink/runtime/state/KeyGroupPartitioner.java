@@ -266,8 +266,8 @@ public class KeyGroupPartitioner<T> {
 	}
 
 	public static <T> StateSnapshotKeyGroupReader createKeyGroupPartitionReader(
-		@Nonnull ElementReaderFunction<T> readerFunction,
-		@Nonnull KeyGroupElementsConsumer<T> elementConsumer) {
+			@Nonnull ElementReaderFunction<T> readerFunction,
+			@Nonnull KeyGroupElementsConsumer<T> elementConsumer) {
 		return new PartitioningResultKeyGroupReader<>(readerFunction, elementConsumer);
 	}
 

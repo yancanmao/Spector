@@ -33,20 +33,21 @@ import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
-import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
-import org.apache.flink.runtime.spector.reconfig.TaskConfigManager;
+import org.apache.flink.runtime.spector.TaskConfigManager;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.TaskStateManager;
 
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Future;
 import org.apache.flink.runtime.taskexecutor.GlobalAggregateManager;
+import org.apache.flink.runtime.util.profiling.FSMetricsManager;
+import org.apache.flink.runtime.util.profiling.NoopMetricsManager;
+import org.apache.flink.runtime.util.profiling.MetricsManager;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -88,43 +89,47 @@ public class RuntimeEnvironment implements Environment {
 	private final TaskKvStateRegistry kvStateRegistry;
 
 	private final TaskManagerRuntimeInfo taskManagerInfo;
-	private final TaskMetricGroup metrics;
 
-	private final Task containingTask;
-
+	// TODO scaling : pls update here
 	public final TaskConfigManager taskConfigManager;
 
 	public final KeyGroupRange keyGroupRange;
 
+	private final TaskMetricGroup metrics;
+
+	private final Task containingTask;
+
+	private final MetricsManager metricsManager;
+
 	// ------------------------------------------------------------------------
 
 	public RuntimeEnvironment(
-		JobID jobId,
-		JobVertexID jobVertexId,
-		ExecutionAttemptID executionId,
-		ExecutionConfig executionConfig,
-		TaskInfo taskInfo,
-		Configuration jobConfiguration,
-		Configuration taskConfiguration,
-		ClassLoader userCodeClassLoader,
-		MemoryManager memManager,
-		IOManager ioManager,
-		BroadcastVariableManager bcVarManager,
-		TaskStateManager taskStateManager,
-		GlobalAggregateManager aggregateManager,
-		AccumulatorRegistry accumulatorRegistry,
-		TaskKvStateRegistry kvStateRegistry,
-		InputSplitProvider splitProvider,
-		Map<String, Future<Path>> distCacheEntries,
-		ResultPartitionWriter[] writers,
-		InputGate[] inputGates,
-		TaskEventDispatcher taskEventDispatcher,
-		CheckpointResponder checkpointResponder,
-		TaskManagerRuntimeInfo taskManagerInfo,
-		TaskMetricGroup metrics,
-		Task containingTask,
-		TaskConfigManager taskConfigManager,
-		KeyGroupRange keyGroupRange) {
+			JobID jobId,
+			JobVertexID jobVertexId,
+			ExecutionAttemptID executionId,
+			ExecutionConfig executionConfig,
+			TaskInfo taskInfo,
+			Configuration jobConfiguration,
+			Configuration taskConfiguration,
+			ClassLoader userCodeClassLoader,
+			MemoryManager memManager,
+			IOManager ioManager,
+			BroadcastVariableManager bcVarManager,
+			TaskStateManager taskStateManager,
+			GlobalAggregateManager aggregateManager,
+			AccumulatorRegistry accumulatorRegistry,
+			TaskKvStateRegistry kvStateRegistry,
+			InputSplitProvider splitProvider,
+			Map<String, Future<Path>> distCacheEntries,
+			ResultPartitionWriter[] writers,
+			InputGate[] inputGates,
+			TaskEventDispatcher taskEventDispatcher,
+			CheckpointResponder checkpointResponder,
+			TaskManagerRuntimeInfo taskManagerInfo,
+			TaskConfigManager taskConfigManager,
+			KeyGroupRange keyGroupRange,
+			TaskMetricGroup metrics,
+			Task containingTask) {
 
 		this.jobId = checkNotNull(jobId);
 		this.jobVertexId = checkNotNull(jobVertexId);
@@ -148,11 +153,25 @@ public class RuntimeEnvironment implements Environment {
 		this.taskEventDispatcher = checkNotNull(taskEventDispatcher);
 		this.checkpointResponder = checkNotNull(checkpointResponder);
 		this.taskManagerInfo = checkNotNull(taskManagerInfo);
-		this.containingTask = containingTask;
-		this.metrics = metrics;
-
 		this.taskConfigManager = checkNotNull(taskConfigManager);
 		this.keyGroupRange = keyGroupRange;
+		this.containingTask = containingTask;
+		this.metrics = metrics;
+		if (taskInfo.getTaskNameWithSubtasks().contains("Sink")) {
+			this.metricsManager = new NoopMetricsManager(
+				taskInfo.getTaskNameWithSubtasks(),
+				this.jobVertexId,
+				jobConfiguration,
+				taskInfo.getIdInModel(),
+				taskInfo.getMaxNumberOfParallelSubtasks());
+		} else {
+			this.metricsManager = new FSMetricsManager(
+				taskInfo.getTaskNameWithSubtasks(),
+				this.jobVertexId,
+				jobConfiguration,
+				taskInfo.getIdInModel(),
+				taskInfo.getMaxNumberOfParallelSubtasks());
+		}
 	}
 
 	// ------------------------------------------------------------------------
@@ -306,5 +325,10 @@ public class RuntimeEnvironment implements Environment {
 	@Override
 	public void failExternally(Throwable cause) {
 		this.containingTask.failExternally(cause);
+	}
+
+	@Override
+	public MetricsManager getMetricsManager() {
+		return metricsManager;
 	}
 }

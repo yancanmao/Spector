@@ -1,10 +1,9 @@
-package org.apache.flink.streaming.spector.partitioner;
+package org.apache.flink.streaming.runtime.partitioner;
 
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
-import org.apache.flink.streaming.runtime.partitioner.ConfigurableStreamPartitioner;
-import org.apache.flink.streaming.runtime.partitioner.StreamPartitioner;
+import org.apache.flink.runtime.util.profiling.MetricsManager;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.Preconditions;
 
@@ -22,7 +21,7 @@ public class AssignedKeyGroupStreamPartitioner<T, K> extends StreamPartitioner<T
 	// map of (keyGroupId, subTaskIndex)
 	private Map<Integer, Integer> assignKeyToOperator;
 
-//	private MetricsManager metricsManager;
+	private MetricsManager metricsManager;
 
 	public AssignedKeyGroupStreamPartitioner(KeySelector<T, K> keySelector, int maxParallelism, Map<Integer, List<Integer>> partitionAssignment) {
 		Preconditions.checkArgument(maxParallelism > 0, "Number of key-groups must be > 0!");
@@ -42,18 +41,19 @@ public class AssignedKeyGroupStreamPartitioner<T, K> extends StreamPartitioner<T
 
 		int keyGroup = KeyGroupRangeAssignment.assignToKeyGroup(key, maxParallelism);
 		int selectedChannel = assignKeyToOperator.get(keyGroup);
-//		Preconditions.checkState(selectedChannel >= 0 && selectedChannel < numberOfChannels, "selected channel out of range , "
-//			+ metricsManager.getJobVertexId() + ": " + selectedChannel + " / " + numberOfChannels);
-//
-//		record.getInstance().setKeyGroup(keyGroup);
+		Preconditions.checkState(selectedChannel >= 0 && selectedChannel < numberOfChannels, "selected channel out of range , "
+			+ metricsManager.getJobVertexId() + ": " + selectedChannel + " / " + numberOfChannels);
+
+		record.getInstance().setKeyGroup(keyGroup);
+		metricsManager.incRecordsOutKeyGroup(record.getInstance().getKeyGroup());
 
 		return selectedChannel;
 	}
 
-//	@Override
-//	public void setMetricsManager(MetricsManager metricsManager) {
-//		this.metricsManager = metricsManager;
-//	}
+	@Override
+	public void setMetricsManager(MetricsManager metricsManager) {
+		this.metricsManager = metricsManager;
+	}
 
 	@Override
 	public StreamPartitioner<T> copy() {

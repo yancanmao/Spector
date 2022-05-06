@@ -42,6 +42,7 @@ import org.apache.flink.runtime.state.internal.InternalKvState;
 import org.apache.flink.runtime.taskexecutor.GlobalAggregateManager;
 import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
+import org.apache.flink.runtime.util.profiling.MetricsManager;
 
 import java.util.Map;
 import java.util.concurrent.Future;
@@ -220,5 +221,7 @@ public interface Environment {
 
 	TaskEventDispatcher getTaskEventDispatcher();
 
-    Task getContainingTask();
+	MetricsManager getMetricsManager();
+
+	Task getContainingTask();
 }

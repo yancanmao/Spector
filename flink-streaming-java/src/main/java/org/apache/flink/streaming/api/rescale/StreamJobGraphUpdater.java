@@ -15,18 +15,23 @@
  * limitations under the License.
  */
 
-package org.apache.flink.streaming.spector;
+package org.apache.flink.streaming.api.rescale;
 
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.runtime.jobgraph.*;
+import org.apache.flink.runtime.jobgraph.DistributionPattern;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSet;
+import org.apache.flink.runtime.jobgraph.JobEdge;
+import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.spector.JobGraphUpdater;
+import org.apache.flink.runtime.jobgraph.JobVertex;
+import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.graph.StreamEdge;
+import org.apache.flink.streaming.runtime.partitioner.AssignedKeyGroupStreamPartitioner;
 import org.apache.flink.streaming.runtime.partitioner.ForwardPartitioner;
 import org.apache.flink.streaming.runtime.partitioner.KeyGroupStreamPartitioner;
 import org.apache.flink.streaming.runtime.partitioner.RebalancePartitioner;
 import org.apache.flink.streaming.runtime.partitioner.StreamPartitioner;
-import org.apache.flink.streaming.spector.partitioner.AssignedKeyGroupStreamPartitioner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,12 +61,6 @@ public class StreamJobGraphUpdater extends JobGraphUpdater {
 
 		StreamConfig config = new StreamConfig(vertex.getConfiguration());
 
-		updateUpstream(partitionAssignment, involvedUpstream, vertex, config);
-		// TODO: do not need to update downstream for rebalancing
-		updateDownstream(involvedDownstream, vertex, config);
-	}
-
-	private void updateUpstream(Map<Integer, List<Integer>> partitionAssignment, List<JobVertexID> involvedUpstream, JobVertex vertex, StreamConfig config) {
 		// update upstream vertices and edges
 		List<StreamEdge> targetInEdges = config.getInPhysicalEdges(userCodeLoader);
 
@@ -79,9 +78,7 @@ public class StreamJobGraphUpdater extends JobGraphUpdater {
 			updateAllOperatorsConfig(upstreamConfig, updatedEdges);
 		}
 		config.setInPhysicalEdges(targetInEdges);
-	}
 
-	private void updateDownstream(List<JobVertexID> involvedDownstream, JobVertex vertex, StreamConfig config) {
 		// update downstream vertices and edges
 		List<StreamEdge> targetOutEdges = config.getOutEdgesInOrder(userCodeLoader);
 
@@ -112,10 +109,10 @@ public class StreamJobGraphUpdater extends JobGraphUpdater {
 	}
 
 	private Map<String, StreamEdge> updateEdgePartition(
-		JobEdge jobEdge,
-		Map<Integer, List<Integer>> partitionAssignment,
-		List<StreamEdge> upstreamOutEdges,
-		List<StreamEdge> downstreamInEdges) {
+			JobEdge jobEdge,
+			Map<Integer, List<Integer>> partitionAssignment,
+			List<StreamEdge> upstreamOutEdges,
+			List<StreamEdge> downstreamInEdges) {
 
 		Map<String, StreamEdge> updatedEdges = new HashMap<>();
 
@@ -184,5 +181,4 @@ public class StreamJobGraphUpdater extends JobGraphUpdater {
 		}
 		operatorConfig.setNonChainedOutputs(nonChainedOutputs);
 	}
-
 }

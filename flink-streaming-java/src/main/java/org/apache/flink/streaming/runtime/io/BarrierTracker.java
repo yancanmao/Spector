@@ -279,7 +279,7 @@ public class BarrierTracker implements CheckpointBarrierHandler {
 	private void notifyAbort(long checkpointId) throws Exception {
 		if (toNotifyOnCheckpoint != null) {
 			toNotifyOnCheckpoint.abortCheckpointOnBarrier(
-				checkpointId, new CheckpointDeclineOnCancellationBarrierException());
+					checkpointId, new CheckpointDeclineOnCancellationBarrierException());
 		}
 	}
 

@@ -26,10 +26,11 @@ import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
+import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.StackTraceSampleResponse;
+import org.apache.flink.runtime.spector.ReconfigOptions;
 import org.apache.flink.runtime.rpc.RpcTimeout;
-import org.apache.flink.runtime.spector.reconfig.ReconfigOptions;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -170,12 +171,13 @@ public interface TaskManagerGateway {
 	 * Dispatch the latest checkpointed state of running task to its standby.
 	 *
 	 * @param executionAttemptID identifying the standby task
+	 * @param jobvertexId
 	 * @param taskRestore identifying the task state snapshot
 	 * @param timeout for the cancel operation
 	 * @return Future acknowledge if the task is successfully canceled
 	 */
 	CompletableFuture<Acknowledge> dispatchStateToStandbyTask(
 		ExecutionAttemptID executionAttemptID,
-		JobManagerTaskRestore taskRestore,
+		JobVertexID jobvertexId, JobManagerTaskRestore taskRestore,
 		Time timeout);
 }

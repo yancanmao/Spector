@@ -120,4 +120,13 @@ public class SourceStreamTask<OUT, SRC extends SourceFunction<OUT>, OP extends S
 			}
 		}
 	}
+
+	@Override
+	protected void reconnect() { // reconnect to upstream and downstream
+	}
+
+	@Override
+	protected void resume() { // resume processing of updated keys
+		throw new UnsupportedOperationException("++++++ resume not supported for current extension");
+	}
 }

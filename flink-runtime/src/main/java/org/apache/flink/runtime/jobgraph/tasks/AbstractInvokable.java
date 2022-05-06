@@ -250,18 +250,7 @@ public abstract class AbstractInvokable {
 		throw new UnsupportedOperationException(String.format("notifyCheckpointComplete not supported by %s", this.getClass().getName()));
 	}
 
-	public void initializeState() throws Exception {
-
-	}
-
-	public void notifyStartedRestoringCheckpoint(long checkpointId){
-
-	}
-	public void notifyCompletedRestoringCheckpoint(long checkpointId){
-
-	}
-
-	public void reinitializeState(KeyGroupRange keyGroupRange) {
+	public void reinitializeState(KeyGroupRange keyGroupRange, int idInModel) {
 		throw new UnsupportedOperationException(String.format("reinitializeState not supported by %s", this.getClass().getName()));
 	}
 

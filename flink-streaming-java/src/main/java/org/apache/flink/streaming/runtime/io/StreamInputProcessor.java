@@ -36,6 +36,7 @@ import org.apache.flink.runtime.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.runtime.plugable.DeserializationDelegate;
 import org.apache.flink.runtime.plugable.NonReusingDeserializationDelegate;
+import org.apache.flink.runtime.util.profiling.MetricsManager;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
@@ -47,12 +48,11 @@ import org.apache.flink.streaming.runtime.streamstatus.StatusWatermarkValve;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.Arrays;
+import java.util.*;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -114,19 +114,32 @@ public class StreamInputProcessor<IN> {
 
 	private boolean isFinished;
 
+	private final ArrayDeque<StreamRecord<IN>> bufferedRecord;
+
+	/**
+	 * Future for standby tasks that completes when they are required to run
+	 */
+	private final HashSet<Integer> migratingKeys;
+
+	private MetricsManager metricsManager;
+	private long deserializationDuration = 0;
+	private long processingDuration = 0;
+	private long recordsProcessed = 0;
+	private long endToEndLatency = 0;
+
 	@SuppressWarnings("unchecked")
 	public StreamInputProcessor(
-		InputGate[] inputGates,
-		TypeSerializer<IN> inputSerializer,
-		StreamTask<?, ?> checkpointedTask,
-		CheckpointingMode checkpointMode,
-		Object lock,
-		IOManager ioManager,
-		Configuration taskManagerConfig,
-		StreamStatusMaintainer streamStatusMaintainer,
-		OneInputStreamOperator<IN, ?> streamOperator,
-		TaskIOMetricGroup metrics,
-		WatermarkGauge watermarkGauge) throws IOException {
+			InputGate[] inputGates,
+			TypeSerializer<IN> inputSerializer,
+			StreamTask<?, ?> checkpointedTask,
+			CheckpointingMode checkpointMode,
+			Object lock,
+			IOManager ioManager,
+			Configuration taskManagerConfig,
+			StreamStatusMaintainer streamStatusMaintainer,
+			OneInputStreamOperator<IN, ?> streamOperator,
+			TaskIOMetricGroup metrics,
+			WatermarkGauge watermarkGauge) throws IOException {
 
 		this.inputGate = InputGateUtil.createInputGate(inputGates);
 		this.ioManager = ioManager;
@@ -153,11 +166,14 @@ public class StreamInputProcessor<IN> {
 		this.streamOperator = checkNotNull(streamOperator);
 
 		this.statusWatermarkValve = new StatusWatermarkValve(
-			numInputChannels,
-			new ForwardingValveOutputHandler(streamOperator, lock));
+				numInputChannels,
+				new ForwardingValveOutputHandler(streamOperator, lock));
 
 		this.watermarkGauge = watermarkGauge;
 		metrics.gauge("checkpointAlignmentTime", barrierHandler::getAlignmentDurationNanos);
+
+		this.bufferedRecord = new ArrayDeque<>();
+		this.migratingKeys = new HashSet<>();
 	}
 
 	public boolean processInput() throws Exception {
@@ -174,10 +190,38 @@ public class StreamInputProcessor<IN> {
 		}
 
 		while (true) {
-			if (currentRecordDeserializer != null) {
+			if (migratingKeys.isEmpty() && !bufferedRecord.isEmpty()) {
+				// process buffered state when the migrating keys are empty
+				synchronized (lock) {
+					LOG.info("++++++ Consuming buffered records: " + bufferedRecord.size());
+					StreamRecord<IN> record = bufferedRecord.poll();
+					while (record != null) {
+						numRecordsIn.inc();
+						streamOperator.setKeyContextElement1(record);
+
+						long processingStart = System.nanoTime();
+
+						streamOperator.processElement(record);
+
+						metricsManager.incRecordIn(record.getKeyGroup());
+
+						processingDuration += System.nanoTime() - processingStart;
+						recordsProcessed++;
+						metricsManager.groundTruth(record.getKeyGroup(), record.getLatenyTimestamp(), System.currentTimeMillis());
+						processingDuration = 0;
+						recordsProcessed = 0;
+						deserializationDuration = 0;
+						record = bufferedRecord.poll();
+					}
+				}
+				return true;
+			}
+			else if (currentRecordDeserializer != null) {
 				long start = System.nanoTime();
 
 				DeserializationResult result = currentRecordDeserializer.getNextRecord(deserializationDelegate);
+
+				deserializationDuration += System.nanoTime() - start;
 
 				if (result.isBufferConsumed()) {
 					currentRecordDeserializer.getCurrentBuffer().recycleBuffer();
@@ -193,6 +237,9 @@ public class StreamInputProcessor<IN> {
 						// handle watermark
 						statusWatermarkValve.inputWatermark(recordOrMark.asWatermark(), currentChannel);
 
+						processingDuration += System.nanoTime() - processingStart;
+						recordsProcessed++;
+
 						continue;
 					} else if (recordOrMark.isStreamStatus()) {
 						// handle stream status
@@ -207,14 +254,52 @@ public class StreamInputProcessor<IN> {
 					} else {
 						// now we can do the actual processing
 						StreamRecord<IN> record = recordOrMark.asRecord();
-						synchronized (lock) {
-							numRecordsIn.inc();
-							streamOperator.setKeyContextElement1(record);
+						int keyGroup = record.getKeyGroup();
+						if (migratingKeys.contains(keyGroup)) {
+							// buffer the records for migrating keys
+							bufferedRecord.add(record);
+							return true;
+						} else {
+							synchronized (lock) {
+								numRecordsIn.inc();
+								streamOperator.setKeyContextElement1(record);
+
+								long processingStart = System.nanoTime();
+
+								streamOperator.processElement(record);
+//							long delayStart = System.nanoTime();
+//							while (System.nanoTime() - delayStart < 100000) {}
+
+								metricsManager.incRecordIn(record.getKeyGroup());
+//							System.out.println("key group is: " + record.getKeyGroup());
+
+								processingDuration += System.nanoTime() - processingStart;
+								recordsProcessed++;
+//							endToEndLatency += System.currentTimeMillis() - record.getLatenyTimestamp();
+//							metricsManager.inputBufferConsumed(System.nanoTime(), deserializationDuration, processingDuration, recordsProcessed, endToEndLatency);
+								metricsManager.groundTruth(record.getKeyGroup(), record.getLatenyTimestamp(), System.currentTimeMillis());
+//
+								processingDuration = 0;
+								recordsProcessed = 0;
+//							endToEndLatency = 0;
+								deserializationDuration = 0;
+							}
+							return true;
 						}
-						return true;
 					}
 				}
 			}
+
+//			// the buffer got empty
+//			if (deserializationDuration > 0) {
+//				// inform the MetricsManager that the buffer is consumed
+//				metricsManager.inputBufferConsumed(System.nanoTime(), deserializationDuration, processingDuration, recordsProcessed, endToEndLatency);
+//
+//				deserializationDuration = 0;
+//				processingDuration = 0;
+//				recordsProcessed = 0;
+//				endToEndLatency = 0;
+//			}
 
 			final BufferOrEvent bufferOrEvent = barrierHandler.getNextNonBlocked();
 			if (bufferOrEvent != null) {
@@ -222,6 +307,9 @@ public class StreamInputProcessor<IN> {
 					currentChannel = bufferOrEvent.getChannelIndex();
 					currentRecordDeserializer = recordDeserializers[currentChannel];
 					currentRecordDeserializer.setNextBuffer(bufferOrEvent.getBuffer());
+
+					// inform the MetricsManager that we got a new input buffer
+					metricsManager.newInputBuffer(System.nanoTime());
 				}
 				else {
 					// Event received
@@ -262,7 +350,7 @@ public class StreamInputProcessor<IN> {
 //		System.out.println(this.metricsManager.getJobVertexId() + ": " + numInputChannels);
 
 		RecordDeserializer<DeserializationDelegate<StreamElement>>[] oldDeserializer =
-			Arrays.copyOf(recordDeserializers, recordDeserializers.length);
+				Arrays.copyOf(recordDeserializers, recordDeserializers.length);
 		recordDeserializers = new SpillingAdaptiveSpanningRecordDeserializer[numInputChannels];
 
 		for (int i = 0; i < recordDeserializers.length; i++) {
@@ -276,6 +364,16 @@ public class StreamInputProcessor<IN> {
 
 		statusWatermarkValve.rescale(numInputChannels);
 		barrierHandler.updateTotalNumberOfInputChannels(numInputChannels);
+	}
+
+	public void setMigratingKeys(Collection<Integer> affectedKeygroups) {
+		LOG.info("++++++ Add affected keygroup: " + affectedKeygroups);
+		migratingKeys.addAll(affectedKeygroups);
+	}
+
+	public void completeMigration() {
+		LOG.info("++++++ Complete migrating affected keygroup: " + migratingKeys);
+		migratingKeys.clear();
 	}
 
 	private class ForwardingValveOutputHandler implements StatusWatermarkValve.ValveOutputHandler {
@@ -310,5 +408,9 @@ public class StreamInputProcessor<IN> {
 				throw new RuntimeException("Exception occurred while processing valve output stream status: ", e);
 			}
 		}
+	}
+
+	public void setMetricsManager(MetricsManager metricsManager) {
+		this.metricsManager = metricsManager;
 	}
 }

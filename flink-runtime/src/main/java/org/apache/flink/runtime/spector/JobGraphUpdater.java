@@ -45,7 +45,7 @@ public abstract class JobGraphUpdater {
 	public static JobGraphUpdater instantiate(JobGraph jobGraph, ClassLoader userCodeLoader) {
 		try {
 			Class<? extends JobGraphUpdater> jobRescaleClass = Class
-				.forName(jobGraph.getJobRescalerClassName(), true, userCodeLoader).asSubclass(JobGraphUpdater.class);
+				.forName(jobGraph.getJobUpdaterClassName(), true, userCodeLoader).asSubclass(JobGraphUpdater.class);
 
 			Constructor<? extends JobGraphUpdater> statelessCtor = jobRescaleClass.getConstructor(JobGraph.class, ClassLoader.class);
 
@@ -54,4 +54,13 @@ public abstract class JobGraphUpdater {
 			throw new RuntimeException(e);
 		}
 	}
+
+//	public static JobGraphUpdater instantiate(ClassLoader userCodeLoader) throws Exception {
+//		Class<? extends JobGraphUpdater> jobRescaleClass = Class
+//			.forName("org.apache.flink.streaming.api.graph.StreamJobRescale", true, userCodeLoader).asSubclass(JobGraphUpdater.class);
+//
+//		Constructor<? extends JobGraphUpdater> statelessCtor = jobRescaleClass.getConstructor(JobGraph.class, ClassLoader.class);
+//
+//		return statelessCtor.newInstance(null, userCodeLoader);
+//	}
 }

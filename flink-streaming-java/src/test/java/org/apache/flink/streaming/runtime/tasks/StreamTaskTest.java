@@ -31,7 +31,13 @@ import org.apache.flink.runtime.blob.BlobCacheService;
 import org.apache.flink.runtime.blob.PermanentBlobCache;
 import org.apache.flink.runtime.blob.TransientBlobCache;
 import org.apache.flink.runtime.broadcast.BroadcastVariableManager;
-import org.apache.flink.runtime.checkpoint.*;
+import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
+import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
+import org.apache.flink.runtime.checkpoint.CheckpointOptions;
+import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
+import org.apache.flink.runtime.checkpoint.StateObjectCollection;
+import org.apache.flink.runtime.checkpoint.SubtaskState;
+import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
@@ -59,23 +65,53 @@ import org.apache.flink.runtime.operators.testutils.MockEnvironment;
 import org.apache.flink.runtime.operators.testutils.MockEnvironmentBuilder;
 import org.apache.flink.runtime.operators.testutils.MockInputSplitProvider;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
-import org.apache.flink.runtime.spector.reconfig.ReconfigID;
-import org.apache.flink.runtime.state.*;
+import org.apache.flink.runtime.spector.ReconfigID;
+import org.apache.flink.runtime.state.AbstractKeyedStateBackend;
+import org.apache.flink.runtime.state.AbstractStateBackend;
+import org.apache.flink.runtime.state.CheckpointStorage;
+import org.apache.flink.runtime.state.CheckpointStreamFactory;
+import org.apache.flink.runtime.state.DoneFuture;
+import org.apache.flink.runtime.state.KeyGroupStatePartitionStreamProvider;
+import org.apache.flink.runtime.state.KeyedStateHandle;
+import org.apache.flink.runtime.state.OperatorStateBackend;
+import org.apache.flink.runtime.state.OperatorStateHandle;
+import org.apache.flink.runtime.state.OperatorStreamStateHandle;
+import org.apache.flink.runtime.state.SnapshotResult;
+import org.apache.flink.runtime.state.StateBackendFactory;
+import org.apache.flink.runtime.state.StateInitializationContext;
+import org.apache.flink.runtime.state.StatePartitionStreamProvider;
+import org.apache.flink.runtime.state.TaskLocalStateStoreImpl;
+import org.apache.flink.runtime.state.TaskStateManager;
+import org.apache.flink.runtime.state.TaskStateManagerImpl;
+import org.apache.flink.runtime.state.TestTaskStateManager;
 import org.apache.flink.runtime.state.memory.MemoryBackendCheckpointStorage;
 import org.apache.flink.runtime.state.memory.MemoryStateBackend;
 import org.apache.flink.runtime.taskexecutor.TestGlobalAggregateManager;
-import org.apache.flink.runtime.taskmanager.*;
+import org.apache.flink.runtime.taskmanager.CheckpointResponder;
+import org.apache.flink.runtime.taskmanager.NoOpTaskManagerActions;
+import org.apache.flink.runtime.taskmanager.Task;
+import org.apache.flink.runtime.taskmanager.TaskExecutionState;
+import org.apache.flink.runtime.taskmanager.TaskManagerActions;
 import org.apache.flink.runtime.testingUtils.TestingUtils;
 import org.apache.flink.runtime.util.TestingTaskManagerRuntimeInfo;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.graph.StreamConfig;
-import org.apache.flink.streaming.api.operators.*;
+import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
+import org.apache.flink.streaming.api.operators.InternalTimeServiceManager;
+import org.apache.flink.streaming.api.operators.OperatorSnapshotFinalizer;
+import org.apache.flink.streaming.api.operators.OperatorSnapshotFutures;
+import org.apache.flink.streaming.api.operators.Output;
+import org.apache.flink.streaming.api.operators.StreamOperator;
+import org.apache.flink.streaming.api.operators.StreamOperatorStateContext;
+import org.apache.flink.streaming.api.operators.StreamSource;
+import org.apache.flink.streaming.api.operators.StreamTaskStateInitializer;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.apache.flink.util.CloseableIterable;
 import org.apache.flink.util.SerializedValue;
 import org.apache.flink.util.TestLogger;
+
 import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -92,18 +128,38 @@ import java.io.ObjectInputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RunnableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.apache.flink.runtime.concurrent.Executors.newDirectExecutorService;
-import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.*;
+import static org.hamcrest.Matchers.everyItem;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.instanceOf;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyLong;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.powermock.api.mockito.PowerMockito.whenNew;
 
 /**
@@ -651,7 +707,7 @@ public class StreamTaskTest extends TestLogger {
 
 		// mock the operators
 		StreamOperator<?> statelessOperator =
-			mock(StreamOperator.class);
+				mock(StreamOperator.class);
 
 		final OperatorID operatorID = new OperatorID();
 		when(statelessOperator.getOperatorID()).thenReturn(operatorID);
@@ -659,7 +715,7 @@ public class StreamTaskTest extends TestLogger {
 		// mock the returned empty snapshot result (all state handles are null)
 		OperatorSnapshotFutures statelessOperatorSnapshotResult = new OperatorSnapshotFutures();
 		when(statelessOperator.snapshotState(anyLong(), anyLong(), any(CheckpointOptions.class), any(CheckpointStreamFactory.class)))
-			.thenReturn(statelessOperatorSnapshotResult);
+				.thenReturn(statelessOperatorSnapshotResult);
 
 		// set up the task
 		StreamOperator<?>[] streamOperators = {statelessOperator};
@@ -696,13 +752,13 @@ public class StreamTaskTest extends TestLogger {
 		streamConfig.setOperatorID(new OperatorID());
 
 		try (MockEnvironment mockEnvironment =
-				 new MockEnvironmentBuilder()
-					 .setTaskName("Test Task")
-					 .setMemorySize(32L * 1024L)
-					 .setInputSplitProvider(new MockInputSplitProvider())
-					 .setBufferSize(1)
-					 .setTaskConfiguration(taskConfiguration)
-					 .build()) {
+				new MockEnvironmentBuilder()
+					.setTaskName("Test Task")
+					.setMemorySize(32L * 1024L)
+					.setInputSplitProvider(new MockInputSplitProvider())
+					.setBufferSize(1)
+					.setTaskConfiguration(taskConfiguration)
+					.build()) {
 			StreamTask<Void, BlockingCloseStreamOperator> streamTask = new NoOpStreamTask<>(mockEnvironment);
 			final AtomicReference<Throwable> atomicThrowable = new AtomicReference<>(null);
 
@@ -745,9 +801,9 @@ public class StreamTaskTest extends TestLogger {
 		syncLatch = new OneShotLatch();
 
 		try (MockEnvironment mockEnvironment =
-				 new MockEnvironmentBuilder()
-					 .setUserCodeClassLoader(new TestUserCodeClassLoader())
-					 .build()) {
+			new MockEnvironmentBuilder()
+				.setUserCodeClassLoader(new TestUserCodeClassLoader())
+				.build()) {
 			TimeServiceTask timerServiceTask = new TimeServiceTask(mockEnvironment);
 
 			CompletableFuture<Void> invokeFuture = CompletableFuture.runAsync(
@@ -826,11 +882,11 @@ public class StreamTaskTest extends TestLogger {
 	}
 
 	public static Task createTask(
-		Class<? extends AbstractInvokable> invokable,
-		StreamConfig taskConfig,
-		Configuration taskManagerConfig,
-		TestTaskStateManager taskStateManager,
-		TaskManagerActions taskManagerActions) throws Exception {
+			Class<? extends AbstractInvokable> invokable,
+			StreamConfig taskConfig,
+			Configuration taskManagerConfig,
+			TestTaskStateManager taskStateManager,
+			TaskManagerActions taskManagerActions) throws Exception {
 
 		BlobCacheService blobService =
 			new BlobCacheService(mock(PermanentBlobCache.class), mock(TransientBlobCache.class));
@@ -848,7 +904,7 @@ public class StreamTaskTest extends TestLogger {
 		when(network.getResultPartitionManager()).thenReturn(partitionManager);
 		when(network.getDefaultIOMode()).thenReturn(IOManager.IOMode.SYNC);
 		when(network.createKvStateTaskRegistry(any(JobID.class), any(JobVertexID.class)))
-			.thenReturn(mock(TaskKvStateRegistry.class));
+				.thenReturn(mock(TaskKvStateRegistry.class));
 		when(network.getTaskEventDispatcher()).thenReturn(taskEventDispatcher);
 
 		JobInformation jobInformation = new JobInformation(

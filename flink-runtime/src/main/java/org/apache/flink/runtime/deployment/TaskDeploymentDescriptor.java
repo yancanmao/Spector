@@ -26,7 +26,7 @@ import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.JobInformation;
 import org.apache.flink.runtime.executiongraph.TaskInformation;
-import org.apache.flink.runtime.spector.reconfig.ReconfigID;
+import org.apache.flink.runtime.spector.ReconfigID;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.util.FileUtils;
 import org.apache.flink.util.Preconditions;
@@ -141,6 +141,9 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	/** Assigned keyGroupRange. */
 	private final KeyGroupRange keyGroupRange;
 
+	/** The id in Streamswitch. */
+	private final int idInModel;
+
 	/** The list of produced intermediate result partition deployment descriptors. */
 	private final Collection<ResultPartitionDeploymentDescriptor> producedPartitions;
 
@@ -156,6 +159,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 	/** Whether the deployment concerns a standby task. */
 	private final boolean isStandby;
+	private final Collection<Integer> affectedKeygroups;
 
 	public TaskDeploymentDescriptor(
 		JobID jobId,
@@ -163,17 +167,20 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		MaybeOffloaded<TaskInformation> serializedTaskInformation,
 		ExecutionAttemptID executionAttemptId,
 		AllocationID allocationId,
+		ReconfigID reconfigId,
 		int subtaskIndex,
 		int attemptNumber,
 		int targetSlotNumber,
 		@Nullable JobManagerTaskRestore taskRestore,
+		@Nullable KeyGroupRange keyGroupRange,
+		int idInModel,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors) {
 
 		this(jobId, serializedJobInformation, serializedTaskInformation,
-			executionAttemptId, allocationId, subtaskIndex, attemptNumber,
-			targetSlotNumber, taskRestore, resultPartitionDeploymentDescriptors,
-			inputGateDeploymentDescriptors, false);
+			executionAttemptId, allocationId, reconfigId, subtaskIndex, attemptNumber,
+			targetSlotNumber, taskRestore, keyGroupRange, idInModel, resultPartitionDeploymentDescriptors,
+			inputGateDeploymentDescriptors, null, false);
 	}
 
 	public TaskDeploymentDescriptor(
@@ -182,32 +189,16 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		MaybeOffloaded<TaskInformation> serializedTaskInformation,
 		ExecutionAttemptID executionAttemptId,
 		AllocationID allocationId,
+		ReconfigID reconfigId,
 		int subtaskIndex,
 		int attemptNumber,
 		int targetSlotNumber,
 		@Nullable JobManagerTaskRestore taskRestore,
-		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
-		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors, boolean isStandby) {
-
-		this(jobId, serializedJobInformation, serializedTaskInformation,
-			executionAttemptId, allocationId, subtaskIndex, attemptNumber,
-			targetSlotNumber, taskRestore, resultPartitionDeploymentDescriptors,
-			inputGateDeploymentDescriptors, ReconfigID.DEFAULT, null, false);
-	}
-
-	public TaskDeploymentDescriptor(
-		JobID jobId,
-		MaybeOffloaded<JobInformation> serializedJobInformation,
-		MaybeOffloaded<TaskInformation> serializedTaskInformation,
-		ExecutionAttemptID executionAttemptId,
-		AllocationID allocationId,
-		int subtaskIndex,
-		int attemptNumber,
-		int targetSlotNumber,
-		@Nullable JobManagerTaskRestore taskRestore,
+		@Nullable KeyGroupRange keyGroupRange,
+		int idInModel,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
-		ReconfigID reconfigId, KeyGroupRange keyGroupRange, boolean isStandby) {
+		@Nullable Collection<Integer> affectedKeygroups, boolean isStandby) {
 
 		this.jobId = Preconditions.checkNotNull(jobId);
 
@@ -230,10 +221,14 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		this.taskRestore = taskRestore;
 		this.keyGroupRange = keyGroupRange;
 
+		this.idInModel = idInModel;
+
 		this.producedPartitions = Preconditions.checkNotNull(resultPartitionDeploymentDescriptors);
 		this.inputGates = Preconditions.checkNotNull(inputGateDeploymentDescriptors);
 
 		this.isStandby = isStandby;
+
+		this.affectedKeygroups = affectedKeygroups;
 	}
 
 	/**
@@ -331,9 +326,12 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		return reconfigId;
 	}
 
-
 	public KeyGroupRange getKeyGroupRange() {
 		return keyGroupRange;
+	}
+
+	public int getIdInModel() {
+		return idInModel;
 	}
 
 	/**
@@ -413,5 +411,9 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 	public boolean getIsStandby() {
 		return isStandby;
+	}
+
+	public Collection<Integer> getAffectedKeygroups() {
+		return affectedKeygroups;
 	}
 }

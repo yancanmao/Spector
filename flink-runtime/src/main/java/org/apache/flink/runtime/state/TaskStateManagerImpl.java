@@ -161,6 +161,10 @@ public class TaskStateManagerImpl implements TaskStateManager {
 		localStateStore.confirmCheckpoint(checkpointId);
 	}
 
+	public void updateTaskRestore(JobManagerTaskRestore jobManagerTaskRestore) {
+		this.jobManagerTaskRestore = jobManagerTaskRestore;
+	}
+
 	/**
 	 * Receive the latest checkpointed state of running task.
 	 * Only applies to a standby task in STANDBY state.
@@ -173,10 +177,6 @@ public class TaskStateManagerImpl implements TaskStateManager {
 	@Override
 	public long getCurrentCheckpointRestoreID() {
 		return (jobManagerTaskRestore == null ? 0 : jobManagerTaskRestore.getRestoreCheckpointId());
-	}
-
-	public void updateTaskRestore(JobManagerTaskRestore jobManagerTaskRestore) {
-		this.jobManagerTaskRestore = jobManagerTaskRestore;
 	}
 
 	public JobManagerTaskRestore getTaskRestore() {

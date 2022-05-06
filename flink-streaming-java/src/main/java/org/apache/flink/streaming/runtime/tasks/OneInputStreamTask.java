@@ -21,11 +21,10 @@ package org.apache.flink.streaming.runtime.tasks;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.runtime.checkpoint.TaskState;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.metrics.MetricNames;
-import org.apache.flink.runtime.spector.reconfig.TaskConfigManager;
+import org.apache.flink.runtime.spector.TaskConfigManager;
 import org.apache.flink.runtime.taskmanager.RuntimeEnvironment;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
@@ -98,6 +97,9 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 		headOperator.getMetricGroup().gauge(MetricNames.IO_CURRENT_INPUT_WATERMARK, this.inputWatermarkGauge);
 		// wrap watermark gauge since registered metrics must be unique
 		getEnvironment().getMetricGroup().gauge(MetricNames.IO_CURRENT_INPUT_WATERMARK, this.inputWatermarkGauge::getValue);
+
+		// pass on the MetricsManager
+		inputProcessor.setMetricsManager(getMetricsManager());
 	}
 
 	@Override
@@ -124,14 +126,27 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 
 	@Override
 	public void reconnect() {
-		TaskConfigManager reconfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
+		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
 
-		if (!reconfigManager.isScalingTarget()) {
+		if (taskConfigManager.isSourceOrDestination()) {
+			inputProcessor.setMigratingKeys(taskConfigManager.getAffectedKeygroups());
+		}
+
+		if (!taskConfigManager.isReconfigTarget()) {
 			return;
 		}
 
-		if (reconfigManager.isScalingGates()) {
+		if (taskConfigManager.isUpdateGates()) {
 			inputProcessor.reconnect();
+		}
+	}
+
+	@Override
+	public void resume() {
+		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
+
+		if (taskConfigManager.isSourceOrDestination()) {
+			inputProcessor.completeMigration();
 		}
 	}
 }

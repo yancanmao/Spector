@@ -37,6 +37,7 @@ import org.apache.flink.runtime.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.runtime.plugable.DeserializationDelegate;
 import org.apache.flink.runtime.plugable.NonReusingDeserializationDelegate;
+import org.apache.flink.runtime.util.profiling.MetricsManager;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
@@ -132,6 +133,8 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 
 	private Counter numRecordsIn;
 
+	private MetricsManager metricsManager;
+
 	private long deserializationDuration = 0;
 	private long processingDuration = 0;
 	private long recordsProcessed = 0;
@@ -141,20 +144,20 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 
 	@SuppressWarnings("unchecked")
 	public StreamTwoInputProcessor(
-		Collection<InputGate> inputGates1,
-		Collection<InputGate> inputGates2,
-		TypeSerializer<IN1> inputSerializer1,
-		TypeSerializer<IN2> inputSerializer2,
-		TwoInputStreamTask<IN1, IN2, ?> checkpointedTask,
-		CheckpointingMode checkpointMode,
-		Object lock,
-		IOManager ioManager,
-		Configuration taskManagerConfig,
-		StreamStatusMaintainer streamStatusMaintainer,
-		TwoInputStreamOperator<IN1, IN2, ?> streamOperator,
-		TaskIOMetricGroup metrics,
-		WatermarkGauge input1WatermarkGauge,
-		WatermarkGauge input2WatermarkGauge) throws IOException {
+			Collection<InputGate> inputGates1,
+			Collection<InputGate> inputGates2,
+			TypeSerializer<IN1> inputSerializer1,
+			TypeSerializer<IN2> inputSerializer2,
+			TwoInputStreamTask<IN1, IN2, ?> checkpointedTask,
+			CheckpointingMode checkpointMode,
+			Object lock,
+			IOManager ioManager,
+			Configuration taskManagerConfig,
+			StreamStatusMaintainer streamStatusMaintainer,
+			TwoInputStreamOperator<IN1, IN2, ?> streamOperator,
+			TaskIOMetricGroup metrics,
+			WatermarkGauge input1WatermarkGauge,
+			WatermarkGauge input2WatermarkGauge) throws IOException {
 
 		this.inputGates1 = inputGates1;
 		this.inputGates2 = inputGates2;
@@ -253,10 +256,20 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 						else {
 							StreamRecord<IN1> record = recordOrWatermark.asRecord();
 							synchronized (lock) {
+								numRecordsIn.inc();
 								streamOperator.setKeyContextElement1(record);
 //								streamOperator.processElement1(record);
+								long processingStart = System.nanoTime();
 								streamOperator.processElement1(recordOrWatermark.<IN1>asRecord());
+								long curTime = System.nanoTime();
 
+								metricsManager.incRecordIn(record.getKeyGroup());
+//								System.out.println("key group is: " + record.getKeyGroup());
+
+								processingDuration += curTime - processingStart;
+								recordsProcessed++;
+								endToEndLatency += System.currentTimeMillis() - record.getLatenyTimestamp();
+								recordsProcessed++;
 							}
 							return true;
 
@@ -284,13 +297,46 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 								numRecordsIn.inc();
 								streamOperator.setKeyContextElement2(record);
 //								streamOperator.processElement2(record);
+								long processingStart = System.nanoTime();
 								streamOperator.processElement2(recordOrWatermark.<IN2>asRecord());
+
+								long curTime = System.nanoTime();
+
+								metricsManager.incRecordIn(record.getKeyGroup());
+//								System.out.println("key group is: " + record.getKeyGroup());
+
+								processingDuration += curTime - processingStart;
+								recordsProcessed++;
+								long curMsTime = System.currentTimeMillis();
+								endToEndLatency += curMsTime - record.getLatenyTimestamp();
+
+								// ground truth dump
+								System.out.println("keygroup: " + record.getKeyGroup() + " arrival_ts: " + record.getLatenyTimestamp() + " completion_ts: " + curMsTime);
+
+								// inform the MetricsManager that the buffer is consumed
+								metricsManager.inputBufferConsumed(System.nanoTime(), deserializationDuration, processingDuration, recordsProcessed, endToEndLatency);
+
+								processingDuration = 0;
+								recordsProcessed = 0;
+								endToEndLatency = 0;
+								deserializationDuration = 0;
 							}
 							return true;
 						}
 					}
 				}
 			}
+
+//			// the buffer got empty
+//			if (deserializationDuration > 0) {
+//				// inform the MetricsManager that the buffer is consumed
+//				metricsManager.inputBufferConsumed(System.nanoTime(), deserializationDuration, processingDuration, recordsProcessed, endToEndLatency);
+//
+//				deserializationDuration = 0;
+//				processingDuration = 0;
+//				recordsProcessed = 0;
+//				endToEndLatency = 0;
+//			}
 
 			final BufferOrEvent bufferOrEvent = barrierHandler.getNextNonBlocked();
 			if (bufferOrEvent != null) {
@@ -299,6 +345,9 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 					currentChannel = bufferOrEvent.getChannelIndex();
 					currentRecordDeserializer = recordDeserializers[currentChannel];
 					currentRecordDeserializer.setNextBuffer(bufferOrEvent.getBuffer());
+
+					// inform the MetricsManager that we got a new input buffer
+					metricsManager.newInputBuffer(System.nanoTime());
 				} else {
 					// Event received
 					final AbstractEvent event = bufferOrEvent.getEvent();
@@ -455,5 +504,9 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 				throw new RuntimeException("Exception occurred while processing valve output stream status: ", e);
 			}
 		}
+	}
+
+	public void setMetricsManager(MetricsManager metricsManager) {
+		this.metricsManager = metricsManager;
 	}
 }

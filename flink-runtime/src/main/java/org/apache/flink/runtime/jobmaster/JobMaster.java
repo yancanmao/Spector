@@ -89,6 +89,7 @@ import org.apache.flink.runtime.query.UnknownKvStateLocation;
 import org.apache.flink.runtime.registration.RegisteredRpcConnection;
 import org.apache.flink.runtime.registration.RegistrationResponse;
 import org.apache.flink.runtime.registration.RetryingRegistration;
+import org.apache.flink.runtime.spector.JobStateCoordinator;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.BackPressureStatsTracker;
@@ -99,7 +100,6 @@ import org.apache.flink.runtime.rpc.FencedRpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.RpcUtils;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils;
-import org.apache.flink.runtime.spector.JobStateCoordinator;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.taskexecutor.AccumulatorReport;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
@@ -122,6 +122,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -185,6 +187,8 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 	private final RestartStrategy restartStrategy;
 
+	private final JobStateCoordinator jobStateCoordinator;
+
 	// --------- BackPressure --------
 
 	private final BackPressureStatsTracker backPressureStatsTracker;
@@ -224,11 +228,6 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 	private EstablishedResourceManagerConnection establishedResourceManagerConnection;
 
 	private Map<String, Object> accumulators;
-
-	/**
-	 * For fine-grained state management
-	 */
-	private final JobStateCoordinator jobStateCoordinator;
 
 	// ------------------------------------------------------------------------
 
@@ -300,7 +299,6 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 		this.jobStateCoordinator = new JobStateCoordinator(
 			jobGraph, executionGraph, userCodeLoader);
-//		jobStateCoordinator.notifyNewVertices(executionGraph.getExecutionJobVertices());
 	}
 
 	//----------------------------------------------------------------------------------------------
@@ -400,13 +398,41 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 			int newParallelism,
 			RescalingBehaviour rescalingBehaviour,
 			Time timeout) {
-		final ArrayList<JobVertexID> allOperators = new ArrayList<>(jobGraph.getNumberOfVertices());
+//		final ArrayList<JobVertexID> allOperators = new ArrayList<>(jobGraph.getNumberOfVertices());
+//
+//		for (JobVertex jobVertex : jobGraph.getVertices()) {
+//			allOperators.add(jobVertex.getID());
+//		}
+//
+//		return rescaleOperators(allOperators, newParallelism, rescalingBehaviour, timeout);
 
-		for (JobVertex jobVertex : jobGraph.getVertices()) {
-			allOperators.add(jobVertex.getID());
+		Iterator<ExecutionJobVertex> iterator = executionGraph.getVerticesTopologically().iterator();
+
+		for (int i = 0; i < newParallelism; i++) {
+			iterator.next();
+		}
+		ExecutionJobVertex targetEjv = iterator.next();
+
+		Map<Integer, List<Integer>> partitionAssignment = new HashMap<>();
+		partitionAssignment.put(0, new ArrayList<>());
+		partitionAssignment.put(1, new ArrayList<>());
+
+		for (int i = 0; i < 128; i++) {
+			if (i % 2 == 0) {
+				partitionAssignment.get(0).add(i);
+			} else {
+				partitionAssignment.get(1).add(i);
+			}
+//			partitionAssignment.get(0).add(i);
 		}
 
-		return rescaleOperators(allOperators, newParallelism, rescalingBehaviour, timeout);
+//		jobStateCoordinator.repartition(targetEjv.getJobVertexId(), partitionAssignment);
+
+//		jobStateCoordinator.scaleOut(targetEjv.getJobVertexId(), targetEjv.getParallelism() + 1, partitionAssignment);
+
+//		jobStateCoordinator.scaleIn(targetEjv.getJobVertexId(), targetEjv.getParallelism() - 1, partitionAssignment);
+
+		return CompletableFuture.completedFuture(Acknowledge.get());
 	}
 
 	@Override
@@ -494,6 +520,9 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 				if (executionGraph == currentExecutionGraph) {
 					clearExecutionGraphFields();
 					assignExecutionGraph(restoredExecutionGraph, newJobManagerJobMetricGroup);
+
+					executionGraph.start(getMainThreadExecutor());
+					jobStateCoordinator.init(getMainThreadExecutor());
 					scheduleExecutionGraph();
 
 					return Acknowledge.get();
@@ -1143,6 +1172,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 		executionGraph = newExecutionGraph;
 		jobManagerJobMetricGroup = newJobManagerJobMetricGroup;
+		jobStateCoordinator.assignExecutionGraph(newExecutionGraph);
 	}
 
 	private void resetAndScheduleExecutionGraph() throws Exception {

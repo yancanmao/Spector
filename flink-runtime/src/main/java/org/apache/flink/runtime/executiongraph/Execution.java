@@ -52,8 +52,8 @@ import org.apache.flink.runtime.jobmaster.SlotRequestId;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.StackTraceSampleResponse;
-import org.apache.flink.runtime.spector.reconfig.ReconfigID;
-import org.apache.flink.runtime.spector.reconfig.ReconfigOptions;
+import org.apache.flink.runtime.spector.ReconfigID;
+import org.apache.flink.runtime.spector.ReconfigOptions;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.util.ExceptionUtils;
@@ -79,6 +79,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static org.apache.flink.runtime.execution.ExecutionState.*;
+import static org.apache.flink.runtime.execution.ExecutionState.STANDBY;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -265,7 +266,6 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	public boolean getIsStandby() {
 		return isStandby;
 	}
-
 	/**
 	 * Gets the global modification version of the execution graph when this execution was created.
 	 *
@@ -400,7 +400,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
 
 		CompletableFuture<Acknowledge> dispatchStateResultFuture = FutureUtils.retry(
-			() -> taskManagerGateway.dispatchStateToStandbyTask(attemptId, taskRestore, rpcTimeout),
+			() -> taskManagerGateway.dispatchStateToStandbyTask(attemptId, vertex.getJobvertexId(), taskRestore, rpcTimeout),
 			NUM_CANCEL_CALL_TRIES,
 			executor);
 
@@ -516,6 +516,19 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		}
 	}
 
+	public CompletableFuture<Execution> allocateAndAssignSlotForExecution(ReconfigID reconfigId) {
+		final ExecutionGraph executionGraph = getVertex().getExecutionGraph();
+		getVertex().updateReconfigId(reconfigId);
+
+		return allocateAndAssignSlotForExecution(
+			executionGraph.getSlotProvider(),
+			executionGraph.isQueuedSchedulingAllowed(),
+			LocationPreferenceConstraint.ANY,
+			Collections.emptySet(),
+			executionGraph.getAllocationTimeout()
+		);
+	}
+
 	/**
 	 * Allocates and assigns a slot obtained from the slot provider to the execution.
 	 *
@@ -624,8 +637,9 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	 * Deploys the execution to the previously assigned resource.
 	 *
 	 * @throws JobException if the execution cannot be deployed to the assigned resource
+	 * @return Acknowledge
 	 */
-	public void deploy() throws JobException {
+	public CompletableFuture<Acknowledge> deploy() throws JobException {
 		assertRunningInJobMasterMainThread();
 
 		final LogicalSlot slot  = assignedResource;
@@ -664,24 +678,20 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			// race double check, did we fail/cancel and do we need to release the slot?
 			if (this.state != DEPLOYING) {
 				slot.releaseSlot(new FlinkException("Actual state of execution " + this + " (" + state + ") does not match expected state DEPLOYING."));
-				return;
+				return null;
 			}
 
 			if (LOG.isInfoEnabled()) {
-				LOG.info(String.format("Deploying %s to %s (TaskManager location: %s)", this,
-					getAssignedResourceLocation().getHostname(),
-					slot.getTaskManagerLocation()
-				));
+				LOG.info(String.format("Deploying %s (attempt #%d) to %s", vertex.getTaskNameWithSubtaskIndex(),
+						attemptNumber, getAssignedResourceLocation()));
 			}
-
-			LOG.info("Creating deployment descriptor for {}", this.getVertex().getVertexId());
 
 			final TaskDeploymentDescriptor deployment = vertex.createDeploymentDescriptor(
 				attemptId,
 				slot,
 				taskRestore,
 				attemptNumber,
-				isStandby);
+				isStandby, null);
 
 			// null taskRestore to let it be GC'ed
 			taskRestore = null;
@@ -694,7 +704,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 			// We run the submission in the future executor so that the serialization of large TDDs does not block
 			// the main thread and sync back to the main thread once submission is completed.
-			CompletableFuture.supplyAsync(() -> taskManagerGateway.submitTask(deployment, rpcTimeout), executor)
+			return CompletableFuture.supplyAsync(() -> taskManagerGateway.submitTask(deployment, rpcTimeout), executor)
 				.thenCompose(Function.identity())
 				.whenCompleteAsync(
 					(ack, failure) -> {
@@ -718,6 +728,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			markFailed(t);
 			ExceptionUtils.rethrow(t);
 		}
+		return null;
 	}
 
 	/**
@@ -759,6 +770,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				return;
 			}
 
+			// these two are the common cases where we need to send a cancel call
 			// these two are the common cases where we need to send a cancel call
 			else if (current == RUNNING || current == STANDBY || current == DEPLOYING) {
 				// try to transition to canceling, if successful, send the cancel call
@@ -884,7 +896,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				}
 			}
 			// ----------------------------------------------------------------
-			// Consumer is running (or a standby task called to run) => send update message now
+			// Consumer is running => send update message now
 			// ----------------------------------------------------------------
 			else {
 				if (consumerState == RUNNING || consumerState == STANDBY) {
@@ -959,30 +971,30 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	}
 
 	public CompletableFuture<Void> scheduleReconfig(
-		ReconfigID reconfigid,
+		ReconfigID reconfigId,
 		ReconfigOptions reconfigOptions,
-		@Nullable KeyGroupRange keyGroupRange) throws ExecutionGraphException {
+		@Nullable KeyGroupRange keyGroupRange,
+		@Nullable List<Integer> affectedKeygroups) throws ExecutionGraphException {
 
-		getVertex().updateRescaleId(reconfigid);
+		getVertex().updateReconfigId(reconfigId);
 		getVertex().assignKeyGroupRange(keyGroupRange);
 
 		assertRunningInJobMasterMainThread();
 
 		final LogicalSlot slot = assignedResource;
-		checkNotNull(slot, "Try to rescale a vertex which isn't assigned slot.");
+		checkNotNull(slot, "Try to reconfig a vertex which isn't assigned slot.");
 
 		if (this.state != RUNNING && this.state != STANDBY) {
-			throw new IllegalStateException("The vertex must be in RUNNING state to be rescaled. Found state " + this.state);
+			throw new IllegalStateException("The vertex must be in RUNNING state to be reconfiged. Found state " + this.state);
 		}
-
-		checkState(!isStandby, "++++++ Cannot reconfig standby tasks");
 
 		final TaskDeploymentDescriptor deployment = vertex.createDeploymentDescriptor(
 			attemptId,
 			slot,
 			taskRestore,
 			attemptNumber,
-			false);
+			isStandby,
+			affectedKeygroups);
 
 		// null taskRestore to let it be GC'ed
 		taskRestore = null;
@@ -993,15 +1005,34 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
 
 		return CompletableFuture
-			.supplyAsync(() -> taskManagerGateway.reconfigTask(attemptId, deployment, reconfigOptions, rpcTimeout), executor)
-			.thenCompose(Function.identity())
-			.handleAsync((ack, failure) -> {
-				if (failure != null) {
-					LOG.error("++++++ scheduleRescale err: ", failure);
-					throw new CompletionException(failure);
-				}
-				return null;
-			}, jobMasterMainThreadExecutor);
+				.supplyAsync(() -> taskManagerGateway.reconfigTask(attemptId, deployment, reconfigOptions, rpcTimeout), executor)
+				.thenCompose(Function.identity())
+				.handleAsync((ack, failure) -> {
+					if (failure != null) {
+						LOG.error("++++++ scheduleReconfig err: ", failure);
+						throw new CompletionException(failure);
+					}
+					return null;
+				}, jobMasterMainThreadExecutor);
+	}
+
+	public CompletableFuture<Void> scheduleReconfig(
+		ReconfigID reconfigId,
+		ReconfigOptions reconfigOptions,
+		@Nullable KeyGroupRange keyGroupRange,
+		int idInModel) throws ExecutionGraphException {
+
+		getVertex().setIdInModel(idInModel);
+
+		return scheduleReconfig(reconfigId, reconfigOptions, keyGroupRange, null);
+	}
+
+	public CompletableFuture<Void> deploy(KeyGroupRange keyGroupRange, int idInModel) throws JobException {
+		getVertex().assignKeyGroupRange(keyGroupRange);
+		getVertex().setIdInModel(idInModel);
+
+		return this.deploy()
+			.handle((ack, failure) -> null);
 	}
 
 	/**

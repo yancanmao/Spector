@@ -169,16 +169,16 @@ object TaskMessages {
   }
 
   /**
-    * Dispatches a checkpointed state snapshot of a running task to its
-    * standby task associated with [[attemptID]].
-    * The result is sent back to the sender as a
-    * [[TaskOperationResult]] message.
-    *
-    * @param attemptID The standby task's execution attempt ID.
-    * @param taskRestore The task's latest checkpointed state snapshot.
-    */
+   * Dispatches a checkpointed state snapshot of a running task to its
+   * standby task associated with [[attemptID]].
+   * The result is sent back to the sender as a
+   * [[TaskOperationResult]] message.
+   *
+   * @param attemptID The standby task's execution attempt ID.
+   * @param taskRestore The task's latest checkpointed state snapshot.
+   */
   case class dispatchStateToStandbyTask(
-     attemptID: ExecutionAttemptID,
-     taskRestore: JobManagerTaskRestore)
+                                         attemptID: ExecutionAttemptID,
+                                         taskRestore: JobManagerTaskRestore)
     extends TaskMessage with RequiresLeaderSessionID
 }

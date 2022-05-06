@@ -180,7 +180,7 @@ public class EventSerializer {
 					}
 					catch (ClassCastException e) {
 						throw new IOException("The class '" + className + "' is not a valid subclass of '"
-							+ AbstractEvent.class.getName() + "'.", e);
+								+ AbstractEvent.class.getName() + "'.", e);
 					}
 
 					final AbstractEvent event = InstantiationUtil.instantiate(clazz, AbstractEvent.class);
@@ -206,7 +206,7 @@ public class EventSerializer {
 		final CheckpointType checkpointType = checkpointOptions.getCheckpointType();
 
 		final byte[] locationBytes = checkpointOptions.getTargetLocation().isDefaultReference() ?
-			null : checkpointOptions.getTargetLocation().getReferenceBytes();
+				null : checkpointOptions.getTargetLocation().getReferenceBytes();
 
 		final ByteBuffer buf = ByteBuffer.allocate(28 + (locationBytes == null ? 0 : locationBytes.length));
 

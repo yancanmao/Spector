@@ -55,6 +55,7 @@ import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
+import org.apache.flink.runtime.spector.ReconfigID;
 import org.apache.flink.runtime.state.TaskLocalStateStore;
 import org.apache.flink.runtime.state.TaskLocalStateStoreImpl;
 import org.apache.flink.runtime.state.TaskStateManager;
@@ -200,6 +201,8 @@ public class JvmExitOnFatalErrorTest {
 						taskInformation,
 						executionAttemptID,
 						slotAllocationId,
+						ReconfigID.DEFAULT,
+						null,
 						0,       // subtaskIndex
 						0,       // attemptNumber
 						Collections.<ResultPartitionDeploymentDescriptor>emptyList(),

@@ -1,4 +1,4 @@
-package org.apache.flink.runtime.spector.reconfig;
+package org.apache.flink.runtime.spector;
 
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 
@@ -8,21 +8,21 @@ public class ReconfigID implements Serializable {
 
 	private static final long serialVersionUID = -1588738478594839245L;
 
-	private final long ReconfigID;
+	private final long reconfigId;
 
 	private static long counter;
 
 	private ReconfigID(long id) {
-		ReconfigID = id;
+		reconfigId = id;
 	}
 
 	public void writeTo(ByteBuf buf) {
-		buf.writeLong(ReconfigID);
+		buf.writeLong(reconfigId);
 	}
 
 	public static ReconfigID fromByteBuf(ByteBuf buf) {
-		long ReconfigID = buf.readLong();
-		return new ReconfigID(ReconfigID);
+		long reconfigId = buf.readLong();
+		return new ReconfigID(reconfigId);
 	}
 
 	@Override
@@ -31,7 +31,7 @@ public class ReconfigID implements Serializable {
 			return true;
 		} else if (obj != null && obj.getClass() == getClass()) {
 			ReconfigID other = (ReconfigID) obj;
-			return this.ReconfigID == other.ReconfigID;
+			return this.reconfigId == other.reconfigId;
 		} else {
 			return false;
 		}
@@ -39,12 +39,12 @@ public class ReconfigID implements Serializable {
 
 	@Override
 	public int hashCode() {
-		return (int) (this.ReconfigID + 1);
+		return (int) (this.reconfigId + 1);
 	}
 
 	@Override
 	public String toString() {
-		return String.valueOf(ReconfigID);
+		return String.valueOf(reconfigId);
 	}
 
 	// next ID start from 1

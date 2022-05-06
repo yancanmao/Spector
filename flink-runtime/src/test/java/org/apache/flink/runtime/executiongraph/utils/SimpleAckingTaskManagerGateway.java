@@ -27,10 +27,11 @@ import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
+import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.StackTraceSampleResponse;
-import org.apache.flink.runtime.spector.reconfig.ReconfigOptions;
+import org.apache.flink.runtime.spector.ReconfigOptions;
 
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -87,7 +88,7 @@ public class SimpleAckingTaskManagerGateway implements TaskManagerGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> reconfigTask(ExecutionAttemptID executionAttemptID, TaskDeploymentDescriptor tdd, ReconfigOptions reconfigOptions, Time timeout) {
-		return null;
+		return CompletableFuture.completedFuture(Acknowledge.get());
 	}
 
 	@Override
@@ -136,7 +137,7 @@ public class SimpleAckingTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
-	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobManagerTaskRestore taskRestore, Time timeout) {
-		return CompletableFuture.completedFuture(Acknowledge.get());
+	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, JobManagerTaskRestore taskRestore, Time timeout) {
+		return null;
 	}
 }

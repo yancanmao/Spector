@@ -29,6 +29,7 @@ import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
 import org.apache.flink.runtime.instance.ActorGateway;
+import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.StackTraceSampleMessages;
 import org.apache.flink.runtime.messages.StackTraceSampleResponse;
@@ -36,8 +37,7 @@ import org.apache.flink.runtime.messages.TaskManagerMessages;
 import org.apache.flink.runtime.messages.TaskMessages;
 import org.apache.flink.runtime.messages.checkpoint.NotifyCheckpointComplete;
 import org.apache.flink.runtime.messages.checkpoint.TriggerCheckpoint;
-import org.apache.flink.runtime.spector.reconfig.ReconfigID;
-import org.apache.flink.runtime.spector.reconfig.ReconfigOptions;
+import org.apache.flink.runtime.spector.ReconfigOptions;
 import org.apache.flink.util.Preconditions;
 
 import java.util.concurrent.CompletableFuture;
@@ -210,7 +210,7 @@ public class ActorTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
-	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobManagerTaskRestore taskRestore, Time timeout) {
+	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, JobManagerTaskRestore taskRestore, Time timeout) {
 		Preconditions.checkNotNull(executionAttemptID);
 		Preconditions.checkNotNull(taskRestore);
 		Preconditions.checkNotNull(timeout);

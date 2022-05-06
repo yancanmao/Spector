@@ -30,14 +30,15 @@ import org.apache.flink.runtime.clusterframework.types.SlotID;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
+import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobmaster.AllocatedSlotReport;
 import org.apache.flink.runtime.jobmaster.JobMasterId;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.StackTraceSampleResponse;
+import org.apache.flink.runtime.spector.ReconfigOptions;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rpc.RpcGateway;
 import org.apache.flink.runtime.rpc.RpcTimeout;
-import org.apache.flink.runtime.spector.reconfig.ReconfigOptions;
 import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.types.SerializableOptional;
 
@@ -225,9 +226,10 @@ public interface TaskExecutorGateway extends RpcGateway {
 	 * Dispatch a checkpointed state snapshot of a running task to its standby task.
 	 *
 	 * @param executionAttemptID identifying the standby task
+	 * @param jobvertexId
 	 * @param taskRestore identifying the state snapshot that is dispatchred
 	 * @param timeout for the cancel operation
 	 * @return Future acknowledge if the task is successfully canceled
 	 */
-	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobManagerTaskRestore taskRestore, Time timeout);
+	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, JobManagerTaskRestore taskRestore, Time timeout);
 }

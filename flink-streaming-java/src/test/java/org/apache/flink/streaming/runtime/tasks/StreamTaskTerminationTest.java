@@ -53,6 +53,7 @@ import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
+import org.apache.flink.runtime.spector.ReconfigID;
 import org.apache.flink.runtime.state.AbstractKeyedStateBackend;
 import org.apache.flink.runtime.state.CheckpointStorage;
 import org.apache.flink.runtime.state.CheckpointStreamFactory;
@@ -160,6 +161,8 @@ public class StreamTaskTerminationTest extends TestLogger {
 			taskInformation,
 			new ExecutionAttemptID(),
 			new AllocationID(),
+			ReconfigID.DEFAULT,
+			null,
 			0,
 			0,
 			Collections.<ResultPartitionDeploymentDescriptor>emptyList(),

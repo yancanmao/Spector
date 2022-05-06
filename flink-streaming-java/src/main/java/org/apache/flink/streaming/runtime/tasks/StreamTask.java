@@ -24,7 +24,10 @@ import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.fs.FileSystemSafetyNet;
-import org.apache.flink.runtime.checkpoint.*;
+import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
+import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
+import org.apache.flink.runtime.checkpoint.CheckpointOptions;
+import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
@@ -36,10 +39,17 @@ import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
-import org.apache.flink.runtime.spector.reconfig.TaskConfigManager;
-import org.apache.flink.runtime.state.*;
+import org.apache.flink.runtime.spector.TaskConfigManager;
+import org.apache.flink.runtime.state.CheckpointStorage;
+import org.apache.flink.runtime.state.CheckpointStreamFactory;
+import org.apache.flink.runtime.state.KeyGroupRange;
+import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
+import org.apache.flink.runtime.state.StateBackend;
+import org.apache.flink.runtime.state.StateBackendLoader;
+import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.taskmanager.DispatcherThreadFactory;
 import org.apache.flink.runtime.taskmanager.RuntimeEnvironment;
+import org.apache.flink.runtime.util.profiling.MetricsManager;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.graph.StreamEdge;
@@ -62,12 +72,11 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 
 import java.io.Closeable;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
+
+import static org.apache.flink.runtime.checkpoint.CheckpointType.RECONFIGPOINT;
 
 /**
  * Base class for all streaming tasks. A task is the unit of local processing that is deployed
@@ -176,12 +185,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	private List<RecordWriter<SerializationDelegate<StreamRecord<OUT>>>> recordWriters;
 
+	private final KeyGroupRange assignedKeyGroupRange;
+
+	private volatile int idInModel;
+
 	/**
 	 * Future for standby tasks that completes when they are required to run
 	 */
 	private final CompletableFuture<Void> standbyFuture;
-
-	private final KeyGroupRange assignedKeyGroupRange;
 
 	// ------------------------------------------------------------------------
 
@@ -213,12 +224,12 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		this.timerService = timeProvider;
 		this.configuration = new StreamConfig(getTaskConfiguration());
 		this.accumulatorMap = getEnvironment().getAccumulatorRegistry().getUserMap();
-		this.recordWriters = createRecordWriters(configuration, environment);
 
 		if (isStandby()) {
 			this.standbyFuture = new CompletableFuture<>();
 		} else {
 			this.standbyFuture = null;
+			this.recordWriters = createRecordWriters(configuration, environment);
 		}
 
 		KeyGroupRange range = ((RuntimeEnvironment) getEnvironment()).keyGroupRange;
@@ -229,6 +240,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				taskInfo.getMaxNumberOfParallelSubtasks(),
 				taskInfo.getNumberOfParallelSubtasks(),
 				taskInfo.getIndexOfThisSubtask());
+
+		this.idInModel = getEnvironment().getTaskInfo().getIndexOfThisSubtask();
 	}
 
 	// ------------------------------------------------------------------------
@@ -259,6 +272,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		boolean disposed = false;
 		try {
+			// Block until the standby task is requested to run.
+			// In the meantime checkpointed state snapshots of the running task mirrored by the
+			// standby task are dispatched to the standby task. See Task.dispatchStateToStandbyTask().
+			// Also block until input channel connections are ready, determinants have arrived and we are ready to
+			// replay.
+			if (isStandby())
+				blockStandbyTask();
+
 			// -------- Initialize ---------
 			LOG.debug("Initializing {}.", getName());
 
@@ -307,14 +328,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 				initializeState();
 			}
-
-			// Block until the standby task is requested to run.
-			// In the meantime checkpointed state snapshots of the running task mirrored by the
-			// standby task are dispatched to the standby task. See Task.dispatchStateToStandbyTask().
-			// Also block until input channel connections are ready, determinants have arrived and we are ready to
-			// replay.
-			if (isStandby())
-				blockStandbyTask();
 
 			// we need to make sure that any triggers scheduled in open() cannot be
 			// executed before all operators are opened
@@ -427,6 +440,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		// TODO: By far, we do not need to make standby tasks to replay/switch to running
 		LOG.debug("Task {} starts recovery after standbyFuture {}.", getName(), standbyFuture);
 	}
+
 
 	@Override
 	public final void cancel() throws Exception {
@@ -564,6 +578,10 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		return getEnvironment().getTaskInfo().getTaskNameWithSubtasks();
 	}
 
+	public MetricsManager getMetricsManager() {
+		return getEnvironment().getMetricsManager();
+	}
+
 	/**
 	 * Gets the lock object on which all operations that involve data and state mutation have to lock.
 	 * @return The checkpoint lock object.
@@ -683,12 +701,26 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 						checkpointMetaData.getTimestamp(),
 						checkpointOptions);
 
+//				// Step (3): Take the state snapshot. This should be largely asynchronous, to not
+//				//           impact progress of the streaming topology
+//				checkpointState(checkpointMetaData, checkpointOptions, checkpointMetrics);
+//
+//				// Step (4): Check whether the checkpoint is reconfigpoint type, and do rescaling if it is.
+//				checkReconfigPoint(checkpointMetaData, checkpointOptions, checkpointMetrics);
+
+
 				// Step (3): Take the state snapshot. This should be largely asynchronous, to not
 				//           impact progress of the streaming topology
-				checkpointState(checkpointMetaData, checkpointOptions, checkpointMetrics);
+				if (checkpointOptions.getCheckpointType() != RECONFIGPOINT) {
+					checkpointState(checkpointMetaData, checkpointOptions, checkpointMetrics);
+				} else {
+					// TODO: only the affected task i.e. the task to migrate should take snapshot, other tasks should keep unaffected.
+					// TODO: only snapshot on affected state tables and ack to coordinator accordingly
+					checkpointAffectedState(checkpointMetaData, checkpointOptions, checkpointMetrics);
+					// Step (4): Check whether the checkpoint is rescalepoint type, and do rescaling if it is.
+					checkReconfigPoint(checkpointMetaData, checkpointOptions, checkpointMetrics);
+				}
 
-				// Step (4): Check whether the checkpoint is rescalepoint type, and do rescaling if it is.
-				checkReconfigPoint(checkpointMetaData, checkpointOptions, checkpointMetrics);
 				return true;
 			}
 			else {
@@ -779,7 +811,37 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		checkpointingOperation.executeCheckpointing();
 	}
 
-	public void initializeState() throws Exception {
+	private void checkpointAffectedState(
+		CheckpointMetaData checkpointMetaData,
+		CheckpointOptions checkpointOptions,
+		CheckpointMetrics checkpointMetrics) throws Exception {
+
+		// TODO: find affected keygroups and construct affected keygroup list
+
+		CheckpointStreamFactory storage = checkpointStorage.resolveCheckpointStorageLocation(
+			checkpointMetaData.getCheckpointId(),
+			checkpointOptions.getTargetLocation());
+
+		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
+		List<Integer> affectedKeygroups = new ArrayList<>();
+		if (taskConfigManager.isReconfigTarget()) {
+			if (taskConfigManager.isSourceOrDestination()) {
+				affectedKeygroups.addAll(taskConfigManager.getAffectedKeygroups());
+			}
+		}
+
+		SnapshotAffectedStateOperation snapshotAffectedStateOperation = new SnapshotAffectedStateOperation(
+			this,
+			checkpointMetaData,
+			checkpointOptions,
+			storage,
+			checkpointMetrics,
+			affectedKeygroups);
+
+		snapshotAffectedStateOperation.executeAffectedStateSnapshot();
+	}
+
+	private void initializeState() throws Exception {
 
 		StreamOperator<?>[] allOperators = operatorChain.getAllOperators();
 
@@ -841,35 +903,36 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	}
 
 	// ------------------------------------------------------------------------
-	//  Rescale
+	//  Reconfig
 	// ------------------------------------------------------------------------
 
-	protected void reconnect() {
-		throw new UnsupportedOperationException("Unsupport for this task");
+	protected void reconnect() { // reconnect to upstream and downstream
+		throw new UnsupportedOperationException("++++++ reconnect not supported for current extension");
+	}
+	protected void resume() { // resume processing of updated keys
+		throw new UnsupportedOperationException("++++++ resume not supported for current extension");
 	}
 
 	private void initReconnect() {
-		TaskConfigManager configManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
+		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
 
-		if (!configManager.isScalingTarget()) {
+		if (!taskConfigManager.isReconfigTarget()) {
 			return;
 		}
 		LOG.info("++++++ trigger target vertex rescaling: " + this.toString());
-		// this line is to record the time to redistribute
-//		long start = System.nanoTime();
 
 		try {
 			// update gate
-			if (configManager.isScalingGates()) {
+			if (taskConfigManager.isUpdateGates()) {
 				for (InputGate gate : getEnvironment().getAllInputGates()) {
-					configManager.substituteInputGateChannels((SingleInputGate) gate);
+					taskConfigManager.substituteInputGateChannels((SingleInputGate) gate);
 				}
 			}
 
 			// update output (writers)
-			if (configManager.isScalingPartitions()) {
+			if (taskConfigManager.isUpdatePartitions()) {
 				ResultPartitionWriter[] oldWriterCopies =
-					configManager.substituteResultPartitions(getEnvironment().getAllWriters());
+					taskConfigManager.substituteResultPartitions(getEnvironment().getAllWriters());
 
 				recordWriters = createRecordWriters(configuration, getEnvironment());
 
@@ -882,52 +945,90 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					streamOutput.close();
 				}
 
-				configManager.unregisterPartitions((ResultPartition[]) oldWriterCopies);
+				taskConfigManager.unregisterPartitions((ResultPartition[]) oldWriterCopies);
 			}
 
 			reconnect();
 		} catch (Exception e) {
 			LOG.info("++++++ error", e);
 		} finally {
-			configManager.finish();
-//			System.out.println("redistribute id: " + this.toString() + " time: " + (System.nanoTime() - start));
-			// complete reconnection, then start to process tuple,
-			// the total migration time is T(complete reconnection) - T(receive barrior).
-			System.out.println(this.toString() + " completed reconnection: " + System.currentTimeMillis());
+			if (!taskConfigManager.isSourceOrDestination()) {
+				taskConfigManager.finish();
+			}
 		}
 	}
 
 	private void checkReconfigPoint(
-		CheckpointMetaData checkpointMetaData,
-		CheckpointOptions checkpointOptions,
-		CheckpointMetrics checkpointMetrics) {
+			CheckpointMetaData checkpointMetaData,
+			CheckpointOptions checkpointOptions,
+			CheckpointMetrics checkpointMetrics) {
 
-		if (checkpointOptions.getCheckpointType() != CheckpointType.RECONFIGPOINT) {
+		if (checkpointOptions.getCheckpointType() != RECONFIGPOINT) {
 			return;
 		}
 
-
-		// add a timer for measuring blocking time
-		System.out.println(this.toString() + " received checkpoint: " + System.currentTimeMillis());
+		// force append latest status into metrics queue.
+		getMetricsManager().updateMetrics();
 
 		initReconnect();
 	}
 
 	@Override
-	public void reinitializeState(KeyGroupRange keyGroupRange) {
-		LOG.info("++++++ let's reinitialize state: " + this.toString() + "  " + keyGroupRange);
+	public void reinitializeState(KeyGroupRange keyGroupRange, int idInModel) {
+		LOG.info("++++++ let's reinitialize state: " + this.toString() + "  " + keyGroupRange + "  idInModel: " + idInModel);
 		try {
 			synchronized (lock) {
 				this.assignedKeyGroupRange.update(keyGroupRange);
+				this.idInModel = idInModel;
 
-				initializeState();
-				openAllOperators();
+				List<Integer> migrateOutKeygroup = new ArrayList<>();
+				// find out the affected keys by checking the updated keygrouprange
+				for (int keyGroup = assignedKeyGroupRange.getStartKeyGroup(); keyGroup < assignedKeyGroupRange.getEndKeyGroup()+1; keyGroup++) {
+					int hashedKeygroup = assignedKeyGroupRange.mapFromAlignedToHashed(keyGroup);
+					if (!keyGroupRange.containsHashedKeyGroup(hashedKeygroup)) {
+						migrateOutKeygroup.add(hashedKeygroup);
+					}
+				}
+				// find out migrate in keygroup
+				List<Integer> migrateInKeygroup = new ArrayList<>();
+				for (int keyGroup = keyGroupRange.getStartKeyGroup(); keyGroup < keyGroupRange.getEndKeyGroup()+1; keyGroup++) {
+					int hashedKeygroup = keyGroupRange.mapFromAlignedToHashed(keyGroup);
+					if (!assignedKeyGroupRange.containsHashedKeyGroup(hashedKeygroup)) {
+						migrateInKeygroup.add(hashedKeygroup);
+					}
+				}
 
-				initReconnect();
+				if (!migrateInKeygroup.isEmpty()) {
+					updateState(keyGroupRange, getEnvironment().getTaskInfo().getMaxNumberOfParallelSubtasks());
+				}
+
+//				initializeState();
+//				openAllOperators();
+
+				getEnvironment().getMetricsManager().updateTaskId(
+					getEnvironment().getTaskInfo().getTaskNameWithSubtasks(), idInModel);
+
+//				initReconnect();
+				resume(); // resume the buffered processing
 			}
 		} catch (Exception e) {
 			LOG.info("++++++ error", e);
 			throw new RuntimeException(e);
+		} finally {
+			TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
+			Preconditions.checkState(taskConfigManager.isSourceOrDestination(), "++++++ Cannot reinitialize state for an unaffected task.");
+			taskConfigManager.finish();
+		}
+	}
+
+	private void updateState(KeyGroupRange keyGroupRange, int maxNumberOfParallelSubtasks) throws Exception {
+
+		StreamOperator<?>[] allOperators = operatorChain.getAllOperators();
+
+		for (StreamOperator<?> operator : allOperators) {
+			if (null != operator) { // TODO: add update state table logic here.
+				operator.updateStateTable(keyGroupRange, maxNumberOfParallelSubtasks);
+			}
 		}
 	}
 
@@ -935,14 +1036,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	public void updateKeyGroupRange(KeyGroupRange keyGroupRange) {
 		LOG.info("++++++ updateKeyGroupRange: "  + this.toString() + "  " + keyGroupRange);
 
-		TaskConfigManager rescaleManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
+		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
 
 //		synchronized (lock) {
 //			this.assignedKeyGroupRange.update(keyGroupRange);
 //		}
 		this.assignedKeyGroupRange.update(keyGroupRange);
 
-		rescaleManager.finish();
+		taskConfigManager.finish();
 	}
 
 	// ------------------------------------------------------------------------
@@ -1167,6 +1268,126 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	}
 
 	// ------------------------------------------------------------------------
+
+	private static final class SnapshotAffectedStateOperation {
+
+		private final StreamTask<?, ?> owner;
+
+		private final CheckpointMetaData checkpointMetaData;
+		private final CheckpointOptions checkpointOptions;
+		private final CheckpointMetrics checkpointMetrics;
+		private final CheckpointStreamFactory storageLocation;
+
+		private final StreamOperator<?>[] allOperators;
+
+		private long startSyncPartNano;
+		private long startAsyncPartNano;
+
+		private final Collection<Integer> affectedKeygroups;
+
+		// ------------------------
+
+		private final Map<OperatorID, OperatorSnapshotFutures> operatorSnapshotsInProgress;
+
+		public SnapshotAffectedStateOperation(
+			StreamTask<?, ?> owner,
+			CheckpointMetaData checkpointMetaData,
+			CheckpointOptions checkpointOptions,
+			CheckpointStreamFactory checkpointStorageLocation,
+			CheckpointMetrics checkpointMetrics,
+			Collection<Integer> affectedKeygroups) {
+
+			this.owner = Preconditions.checkNotNull(owner);
+			this.checkpointMetaData = Preconditions.checkNotNull(checkpointMetaData);
+			this.checkpointOptions = Preconditions.checkNotNull(checkpointOptions);
+			this.checkpointMetrics = Preconditions.checkNotNull(checkpointMetrics);
+			this.storageLocation = Preconditions.checkNotNull(checkpointStorageLocation);
+			this.allOperators = owner.operatorChain.getAllOperators();
+			this.operatorSnapshotsInProgress = new HashMap<>(allOperators.length);
+			Preconditions.checkState(affectedKeygroups != null);
+			this.affectedKeygroups = affectedKeygroups;
+		}
+
+		public void executeAffectedStateSnapshot() throws Exception {
+			startSyncPartNano = System.nanoTime();
+
+			try {
+				// TODO: only the affected operators do snapshot, by far, we temporarily use the same logic as before
+				for (StreamOperator<?> op : allOperators) {
+					checkpointStreamOperatorWithAffectedState(op);
+				}
+
+				if (LOG.isDebugEnabled()) {
+					LOG.debug("Finished synchronous checkpoints for checkpoint {} on task {}",
+						checkpointMetaData.getCheckpointId(), owner.getName());
+				}
+
+				startAsyncPartNano = System.nanoTime();
+
+				checkpointMetrics.setSyncDurationMillis((startAsyncPartNano - startSyncPartNano) / 1_000_000);
+
+				// we are transferring ownership over snapshotInProgressList for cleanup to the thread, active on submit
+				AsyncCheckpointRunnable asyncCheckpointRunnable = new AsyncCheckpointRunnable(
+					owner,
+					operatorSnapshotsInProgress,
+					checkpointMetaData,
+					checkpointMetrics,
+					startAsyncPartNano);
+
+				owner.cancelables.registerCloseable(asyncCheckpointRunnable);
+				owner.asyncOperationsThreadPool.execute(asyncCheckpointRunnable);
+
+				if (LOG.isDebugEnabled()) {
+					LOG.debug("{} - finished synchronous part of checkpoint {}. " +
+							"Alignment duration: {} ms, snapshot duration {} ms",
+						owner.getName(), checkpointMetaData.getCheckpointId(),
+						checkpointMetrics.getAlignmentDurationNanos() / 1_000_000,
+						checkpointMetrics.getSyncDurationMillis());
+				}
+			} catch (Exception ex) {
+				// Cleanup to release resources
+				for (OperatorSnapshotFutures operatorSnapshotResult : operatorSnapshotsInProgress.values()) {
+					if (null != operatorSnapshotResult) {
+						try {
+							operatorSnapshotResult.cancel();
+						} catch (Exception e) {
+							LOG.warn("Could not properly cancel an operator snapshot result.", e);
+						}
+					}
+				}
+
+				if (LOG.isDebugEnabled()) {
+					LOG.debug("{} - did NOT finish synchronous part of checkpoint {}. " +
+							"Alignment duration: {} ms, snapshot duration {} ms",
+						owner.getName(), checkpointMetaData.getCheckpointId(),
+						checkpointMetrics.getAlignmentDurationNanos() / 1_000_000,
+						checkpointMetrics.getSyncDurationMillis());
+				}
+
+				owner.synchronousCheckpointExceptionHandler.tryHandleCheckpointException(checkpointMetaData, ex);
+			}
+		}
+
+		@SuppressWarnings("deprecation")
+		private void checkpointStreamOperatorWithAffectedState(StreamOperator<?> op) throws Exception {
+			if (null != op) {
+				// only snapshot on the affected keygroup set, we can simply hard code it to snapshot on the first keygroup to test the effectiveness
+				OperatorSnapshotFutures snapshotInProgress = op.snapshotAffectedState(
+					checkpointMetaData.getCheckpointId(),
+					checkpointMetaData.getTimestamp(),
+					checkpointOptions,
+					storageLocation,
+					affectedKeygroups);
+				operatorSnapshotsInProgress.put(op.getOperatorID(), snapshotInProgress);
+			}
+		}
+
+		private enum AsyncCheckpointState {
+			RUNNING,
+			DISCARDED,
+			COMPLETED
+		}
+	}
 
 	private static final class CheckpointingOperation {
 

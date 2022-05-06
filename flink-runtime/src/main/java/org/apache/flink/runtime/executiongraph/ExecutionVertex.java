@@ -46,7 +46,7 @@ import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.runtime.jobmanager.scheduler.LocationPreferenceConstraint;
 import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
-import org.apache.flink.runtime.spector.reconfig.ReconfigID;
+import org.apache.flink.runtime.spector.ReconfigID;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
@@ -102,7 +102,13 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	private final Time timeout;
 
 	/** The name in the format "myTask (2/7)", cached to avoid frequent string concatenations. */
-	private final String taskNameWithSubtask;
+	private String taskNameWithSubtask;
+
+	private volatile ReconfigID reconfigId;
+
+	private volatile KeyGroupRange keyGroupRange;
+
+	private volatile int idInModel;
 
 	private volatile CoLocationConstraint locationConstraint;
 
@@ -113,9 +119,6 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	 *  In this case the underlying task waits in STANDBY state to maintain replicated running state backend
 	 *  for current execution job vertex on each node */
 	private volatile boolean isStandby;
-
-	private volatile ReconfigID reconfigId;
-	private volatile KeyGroupRange keyGroupRange;
 
 	// --------------------------------------------------------------------------------------------
 
@@ -163,7 +166,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	 * @param maxPriorExecutionHistoryLength
 	 *            The number of prior Executions (= execution attempts) to keep.
 	 */
-	public ExecutionVertex(
+	public  ExecutionVertex(
 			ExecutionJobVertex jobVertex,
 			int subTaskIndex,
 			IntermediateResult[] producedDataSets,
@@ -172,42 +175,63 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			long createTimestamp,
 			int maxPriorExecutionHistoryLength,
 			boolean isStandby) {
-
 		this.isStandby = isStandby;
 
 		this.jobVertex = jobVertex;
 		this.subTaskIndex = subTaskIndex;
-		this.taskNameWithSubtask = String.format("%s (%d/%d) isStandby: %s",
-				jobVertex.getJobVertex().getName(), subTaskIndex + 1, jobVertex.getParallelism(), isStandby);
-
-		this.resultPartitions = new LinkedHashMap<>(producedDataSets.length, 1);
+//		this.taskNameWithSubtask = String.format("%s (%d/%d) isStandby: %s",
+//			jobVertex.getJobVertex().getName(), subTaskIndex + 1, jobVertex.getParallelism(), isStandby);
 
 		if (!isStandby) {
+			this.taskNameWithSubtask = String.format("%s (%d/%d)",
+				jobVertex.getJobVertex().getName(), subTaskIndex + 1, jobVertex.getParallelism());
+			this.resultPartitions = new LinkedHashMap<>(producedDataSets.length, 1);
 			for (IntermediateResult result : producedDataSets) {
 				IntermediateResultPartition irp = new IntermediateResultPartition(result, this, subTaskIndex);
 				result.setPartition(subTaskIndex, irp);
 
 				resultPartitions.put(irp.getPartitionId(), irp);
 			}
+
+			this.inputEdges = new ExecutionEdge[jobVertex.getJobVertex().getInputs().size()][];
 		} else {
-			for (IntermediateResult result : producedDataSets) {
-				IntermediateResultPartition irp = new IntermediateResultPartition(result, this, subTaskIndex);
-				resultPartitions.put(irp.getPartitionId(), irp);
-			}
+			this.taskNameWithSubtask = String.format("%s (%d/%d) Standby",
+				jobVertex.getJobVertex().getName(), subTaskIndex + 1, jobVertex.getParallelism());
+			this.resultPartitions = new LinkedHashMap<>(0);
+
+			this.inputEdges = new ExecutionEdge[0][];
 		}
-		this.inputEdges = new ExecutionEdge[jobVertex.getJobVertex().getInputs().size()][];
+
+//		this.resultPartitions = new LinkedHashMap<>(producedDataSets.length, 1);
+//
+//		if (!isStandby) {
+//			for (IntermediateResult result : producedDataSets) {
+//				IntermediateResultPartition irp = new IntermediateResultPartition(result, this, subTaskIndex);
+//				result.setPartition(subTaskIndex, irp);
+//
+//				resultPartitions.put(irp.getPartitionId(), irp);
+//			}
+//		} else {
+//			for (IntermediateResult result : producedDataSets) {
+//				IntermediateResultPartition irp = new IntermediateResultPartition(result, this, subTaskIndex);
+//				resultPartitions.put(irp.getPartitionId(), irp);
+//			}
+//		}
+//
+//		this.inputEdges = new ExecutionEdge[jobVertex.getJobVertex().getInputs().size()][];
 
 		this.priorExecutions = new EvictingBoundedList<>(maxPriorExecutionHistoryLength);
+
+		int attemptNumber = isStandby ? 5 : 0;
 
 		this.currentExecution = new Execution(
 			getExecutionGraph().getFutureExecutor(),
 			this,
-			0,
+			attemptNumber,
 			initialGlobalModVersion,
 			createTimestamp,
 			timeout,
 			isStandby);
-
 
 		// create a co-location scheduling hint, if necessary
 		CoLocationGroup clg = jobVertex.getCoLocationGroup();
@@ -221,7 +245,9 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		getExecutionGraph().registerExecution(currentExecution);
 
 		this.timeout = timeout;
+
 		this.reconfigId = ReconfigID.DEFAULT;
+		this.idInModel = subTaskIndex;
 	}
 
 
@@ -245,6 +271,10 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		return this.jobVertex.getJobVertex().getName();
 	}
 
+	public void deregisterExecution() {
+		getExecutionGraph().deregisterExecution(currentExecution);
+	}
+
 	/**
 	 * Creates a simple name representation in the style 'taskname (x/y)', where
 	 * 'taskname' is the name as returned by {@link #getTaskName()}, 'x' is the parallel
@@ -256,6 +286,11 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	@Override
 	public String getTaskNameWithSubtaskIndex() {
 		return this.taskNameWithSubtask;
+	}
+
+	public void updateTaskNameWithSubtaskIndex() {
+		this.taskNameWithSubtask = String.format("%s (%d/%d)",
+			jobVertex.getJobVertex().getName(), subTaskIndex + 1, jobVertex.getParallelism());
 	}
 
 	public int getTotalNumberOfParallelSubtasks() {
@@ -301,12 +336,16 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		return currentExecution.getStateTimestamp(state);
 	}
 
-	public void updateRescaleId(ReconfigID reconfigId) {
+	public void updateReconfigId(ReconfigID reconfigId) {
 		this.reconfigId = reconfigId;
 	}
 
 	public void assignKeyGroupRange(KeyGroupRange keyGroupRange) {
 		this.keyGroupRange = keyGroupRange;
+	}
+
+	public void setIdInModel(int idInModel) {
+		this.idInModel = idInModel;
 	}
 
 	@Override
@@ -844,11 +883,12 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	 * TODO: This should actually be in the EXECUTION
 	 */
 	TaskDeploymentDescriptor createDeploymentDescriptor(
-			ExecutionAttemptID executionId,
-			LogicalSlot targetSlot,
-			@Nullable JobManagerTaskRestore taskRestore,
-			int attemptNumber,
-			boolean isStandby) throws ExecutionGraphException {
+		ExecutionAttemptID executionId,
+		LogicalSlot targetSlot,
+		@Nullable JobManagerTaskRestore taskRestore,
+		int attemptNumber,
+		boolean isStandby,
+		@Nullable List<Integer> affectedKeygroups) throws ExecutionGraphException {
 
 		// Produced intermediate results
 		List<ResultPartitionDeploymentDescriptor> producedPartitions = new ArrayList<>(resultPartitions.size());
@@ -934,14 +974,16 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			serializedTaskInformation,
 			executionId,
 			targetSlot.getAllocationId(),
+			reconfigId,
 			subTaskIndex,
 			attemptNumber,
 			targetSlot.getPhysicalSlotNumber(),
 			taskRestore,
+			keyGroupRange,
+			idInModel,
 			producedPartitions,
 			consumedPartitions,
-			reconfigId,
-			keyGroupRange,
+			affectedKeygroups,
 			isStandby);
 	}
 
@@ -957,10 +999,6 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	@Override
 	public ArchivedExecutionVertex archive() {
 		return new ArchivedExecutionVertex(this);
-	}
-
-	public Time getTimeout() {
-		return timeout;
 	}
 
 	public String getVertexId() {

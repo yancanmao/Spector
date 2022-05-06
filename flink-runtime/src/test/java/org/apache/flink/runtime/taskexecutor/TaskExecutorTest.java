@@ -82,6 +82,7 @@ import org.apache.flink.runtime.resourcemanager.utils.TestingResourceManagerGate
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.RpcUtils;
 import org.apache.flink.runtime.rpc.TestingRpcService;
+import org.apache.flink.runtime.spector.ReconfigID;
 import org.apache.flink.runtime.state.TaskExecutorLocalStateStoresManager;
 import org.apache.flink.runtime.taskexecutor.exceptions.RegistrationTimeoutException;
 import org.apache.flink.runtime.taskexecutor.exceptions.TaskManagerException;
@@ -712,10 +713,13 @@ public class TaskExecutorTest extends TestLogger {
 				new TaskDeploymentDescriptor.NonOffloaded<>(serializedJobVertexInformation),
 				new ExecutionAttemptID(),
 				allocationId,
+				ReconfigID.DEFAULT,
 				0,
 				0,
 				0,
 				null,
+				null,
+				0,
 				Collections.emptyList(),
 				Collections.emptyList());
 
@@ -1091,10 +1095,13 @@ public class TaskExecutorTest extends TestLogger {
 				new TaskDeploymentDescriptor.NonOffloaded<>(serializedJobVertexInformation),
 				new ExecutionAttemptID(),
 				allocationId1,
+				ReconfigID.DEFAULT,
 				0,
 				0,
 				0,
 				null,
+				null,
+				0,
 				Collections.emptyList(),
 				Collections.emptyList());
 

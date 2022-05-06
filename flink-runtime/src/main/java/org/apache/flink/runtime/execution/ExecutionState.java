@@ -24,7 +24,7 @@ package org.apache.flink.runtime.execution;
  * this diagram:
  * <pre>{@code
  *
- *     CREATED  -> SCHEDULED -> DEPLOYING -> (STANDBY ->) -> RUNNING -> FINISHED
+ *     CREATED  -> SCHEDULED -> DEPLOYING -> RUNNING -> FINISHED
  *        |            |            |          |
  *        |            |            |   +------+
  *        |            |            V   V
@@ -56,7 +56,7 @@ public enum ExecutionState {
 	DEPLOYING,
 
 	STANDBY,
-
+	
 	RUNNING,
 
 	/**

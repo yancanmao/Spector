@@ -23,12 +23,15 @@ import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.CheckpointListener;
 import org.apache.flink.runtime.state.CheckpointStreamFactory;
+import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
 import org.apache.flink.util.Disposable;
 
+import javax.annotation.Nullable;
 import java.io.Serializable;
+import java.util.Collection;
 
 /**
  * Basic interface for stream operators. Implementers would implement one of
@@ -128,6 +131,22 @@ public interface StreamOperator<OUT> extends CheckpointListener, KeyContext, Dis
 		CheckpointStreamFactory storageLocation) throws Exception;
 
 	/**
+	 * snapshot
+	 * @param checkpointId
+	 * @param timestamp
+	 * @param checkpointOptions
+	 * @param storageLocation
+	 * @return
+	 * @throws Exception
+	 */
+	OperatorSnapshotFutures snapshotAffectedState(
+		long checkpointId,
+		long timestamp,
+		CheckpointOptions checkpointOptions,
+		CheckpointStreamFactory storageLocation,
+		@Nullable Collection<Integer> affectedKeygroups) throws Exception;
+
+	/**
 	 * Provides a context to initialize all state in the operator.
 	 */
 	void initializeState() throws Exception;
@@ -149,4 +168,6 @@ public interface StreamOperator<OUT> extends CheckpointListener, KeyContext, Dis
 	OperatorID getOperatorID();
 
 	void updateOutput(StreamTask<?, ?> containingTask, Output<StreamRecord<OUT>> output);
+
+	void updateStateTable(KeyGroupRange keyGroupRange, int maxNumberOfParallelSubtasks) throws Exception;
 }

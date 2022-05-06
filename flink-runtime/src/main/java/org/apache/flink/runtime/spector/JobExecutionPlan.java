@@ -1,8 +1,7 @@
-package org.apache.flink.runtime.spector.reconfig;
+package org.apache.flink.runtime.spector;
 
 import org.apache.flink.runtime.state.KeyGroupRange;
 
-import java.security.Key;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -18,7 +17,7 @@ public class JobExecutionPlan {
 
 	private final int numOpenedSubtask;
 
-	private final JobExecutionPlan oldRescalePA;
+	private final JobExecutionPlan jobExecutionPlan;
 
 	// subtaskIndex -> partitions
 	private final Map<Integer, List<Integer>> partitionAssignment;
@@ -31,21 +30,19 @@ public class JobExecutionPlan {
 
 	private final List<KeyGroupRange> alignedKeyGroupRanges;
 
-	private KeyGroupRange keyGroupRangeForStandby;
-
 	private final Map<Integer, Boolean> modifiedSubtaskMap;
 
-	// this is used for remove the correponding subtask
-	private final Map<Integer, Boolean> removedSubtaskMap;
+	private final Map<Integer, List<Integer>> srcSubtaskMap;
+	private final Map<Integer, List<Integer>> dstSubtaskMap;
 
 	public JobExecutionPlan(
 		Map<String, List<String>> strExecutorMapping,
 		Map<String, List<String>> strOldExecutorMapping,
-		JobExecutionPlan oldExecutionPlan,
+		JobExecutionPlan jobExecutionPlan,
 		int numOpenedSubtask) {
 
 		this.numOpenedSubtask = numOpenedSubtask;
-		this.oldRescalePA = checkNotNull(oldExecutionPlan);
+		this.jobExecutionPlan = checkNotNull(jobExecutionPlan);
 
 		checkState(checkPartitionAssignmentValidity(strExecutorMapping),
 			"executorMapping has null or empty partition");
@@ -58,7 +55,9 @@ public class JobExecutionPlan {
 		this.executorIdMapping = new HashMap<>();
 		this.alignedKeyGroupRanges = new ArrayList<>();
 		this.modifiedSubtaskMap = new HashMap<>();
-		this.removedSubtaskMap = new HashMap<>();
+
+		this.srcSubtaskMap = new HashMap<>();
+		this.dstSubtaskMap = new HashMap<>();
 
 		// here we copy and translate passed-in mapping
 		Map<Integer, List<Integer>> executorMapping = generateIntegerMap(strExecutorMapping);
@@ -85,7 +84,7 @@ public class JobExecutionPlan {
 		int numOpenedSubtask) {
 
 		this.numOpenedSubtask = numOpenedSubtask;
-		this.oldRescalePA = null;
+		this.jobExecutionPlan = null;
 
 		checkState(checkPartitionAssignmentValidity(strExecutorMapping),
 			"executorMapping has null or empty partition");
@@ -96,7 +95,9 @@ public class JobExecutionPlan {
 		this.executorIdMapping = new HashMap<>();
 		this.alignedKeyGroupRanges = new ArrayList<>();
 		this.modifiedSubtaskMap = new HashMap<>();
-		this.removedSubtaskMap = new HashMap<>();
+
+		this.srcSubtaskMap = new HashMap<>();
+		this.dstSubtaskMap = new HashMap<>();
 
 		generateAlignedKeyGroupRanges();
 		generateExecutorIdMapping();
@@ -106,36 +107,31 @@ public class JobExecutionPlan {
 		Map<Integer, List<Integer>> executorMapping,
 		Map<Integer, List<Integer>> oldExecutorMapping) {
 
-		List<Integer> createdExecutorIdList = executorMapping.keySet().stream()
+		List<Integer> createdIdList = executorMapping.keySet().stream()
 			.filter(id -> !oldExecutorMapping.containsKey(id))
 			.collect(Collectors.toList());
-//		checkState(createdExecutorIdList.size() == 1, "more than one created");
+		checkState(createdIdList.size() == 1, "more than one created");
 
+		int createdExecutorId = createdIdList.get(0);
 
-		List<Integer> modifiedExecutorIdList = oldExecutorMapping.keySet().stream()
-			.filter(id ->
-				// listEqualsIgnoreOrder(executorMapping.get(id), oldExecutorMapping.get(id))
-				!(executorMapping.get(id).size() == oldExecutorMapping.get(id).size()
-					&& executorMapping.get(id).containsAll(oldExecutorMapping.get(id))))
+		List<Integer> modifiedIdList = oldExecutorMapping.keySet().stream()
+			.filter(id -> oldExecutorMapping.get(id).size() != executorMapping.get(id).size())
 			.collect(Collectors.toList());
-//		checkState(modifiedExecutorIdList.size() == 1, "more than one modified in scale out");
+		checkState(modifiedIdList.size() == 1, "more than one modified in scale out");
 
-//		int modifiedExecutorId = modifiedExecutorIdList.get(0);
-
-		Map<Integer, Integer> unUsedSubtaskMap = findNextUnusedSubtask(createdExecutorIdList);
+		int modifiedExecutorId = modifiedIdList.get(0);
 
 		for (Map.Entry<Integer, List<Integer>> entry : executorMapping.entrySet()) {
 			int executorId = entry.getKey();
 			List<Integer> partition = entry.getValue();
 
-			// if the subtask is to be created, find out the corresponding subtask index from unUsedSubtaskMap
-			int subtaskIndex = (createdExecutorIdList.contains(executorId)) ?
-				unUsedSubtaskMap.get(executorId):
-				oldRescalePA.getSubTaskId(executorId);
+			int subtaskIndex = (executorId == createdExecutorId) ?
+				findNextUnusedSubtask():
+				jobExecutionPlan.getSubTaskId(executorId);
 
 			putExecutorToSubtask(subtaskIndex, executorId, partition);
 
-			if (createdExecutorIdList.contains(executorId) || modifiedExecutorIdList.contains(executorId)) {
+			if (executorId == createdExecutorId || executorId == modifiedExecutorId) {
 				modifiedSubtaskMap.put(subtaskIndex, true);
 			}
 		}
@@ -151,8 +147,7 @@ public class JobExecutionPlan {
 		checkState(removedExecutorId.size() == 1, "more than one removed");
 
 		int removedId = removedExecutorId.get(0);
-		modifiedSubtaskMap.put(oldRescalePA.getSubTaskId(removedId), true);
-		removedSubtaskMap.put(oldRescalePA.getSubTaskId(removedId), true);
+		modifiedSubtaskMap.put(jobExecutionPlan.getSubTaskId(removedId), true);
 
 		List<Integer> modifiedIdList = executorMapping.keySet().stream()
 			.filter(id -> executorMapping.get(id).size() != oldExecutorMapping.get(id).size())
@@ -165,7 +160,7 @@ public class JobExecutionPlan {
 			int executorId = entry.getKey();
 			List<Integer> partition = entry.getValue();
 
-			int subtaskIndex = oldRescalePA.getSubTaskId(executorId);
+			int subtaskIndex = jobExecutionPlan.getSubTaskId(executorId);
 			putExecutorToSubtask(subtaskIndex, executorId, partition);
 
 			if (executorId == modifiedExecutorId) {
@@ -179,18 +174,27 @@ public class JobExecutionPlan {
 		Map<Integer, List<Integer>> oldExecutorMapping) {
 
 		List<Integer> modifiedIdList = executorMapping.keySet().stream()
-			.filter(id ->
-				// listEqualsIgnoreOrder(executorMapping.get(id), oldExecutorMapping.get(id))
-				!(executorMapping.get(id).size() == oldExecutorMapping.get(id).size()
-					&& executorMapping.get(id).containsAll(oldExecutorMapping.get(id))))
+			.filter(id -> {
+				if (executorMapping.get(id).size() != oldExecutorMapping.get(id).size()) {
+					if (executorMapping.get(id).size() < oldExecutorMapping.get(id).size()) {
+						compareAndSetAffectedKeys(oldExecutorMapping, executorMapping, id, srcSubtaskMap);
+					} else {
+						compareAndSetAffectedKeys(executorMapping, oldExecutorMapping, id, dstSubtaskMap);
+					}
+					return true;
+				} else {
+					return false;
+				}
+			})
 			.collect(Collectors.toList());
-//		checkState(modifiedIdList.size() == 2, "not exactly two are modified in repartition");
+
+		checkState(modifiedIdList.size() == 2, "not exactly two are modified in repartition");
 
 		for (Map.Entry<Integer, List<Integer>> entry : executorMapping.entrySet()) {
 			int executorId = entry.getKey();
 			List<Integer> partition = entry.getValue();
 
-			int subtaskIndex = oldRescalePA.getSubTaskId(executorId);
+			int subtaskIndex = jobExecutionPlan.getSubTaskId(executorId);
 			putExecutorToSubtask(subtaskIndex, executorId, partition);
 
 			if (modifiedIdList.contains(executorId)) {
@@ -199,29 +203,20 @@ public class JobExecutionPlan {
 		}
 	}
 
-	private Map<Integer, Integer> findNextUnusedSubtask(List<Integer> createdExecutorIdList) {
-		checkState(createdExecutorIdList.size() > 0, "null created task list");
-
-		int n = createdExecutorIdList.size();
-		Map<Integer, Integer> unUsedSubtaskMap = new HashMap<>(n);
-		for (int i = 0; i < numOpenedSubtask; i++) {
-			if (oldRescalePA.getIdInModel(i) == UNUSED_SUBTASK) {
-				unUsedSubtaskMap.put(createdExecutorIdList.get(createdExecutorIdList.size()-n), i);
-				n--;
-				if (n == 0) {
-					break;
-				}
+	private void compareAndSetAffectedKeys(Map<Integer, List<Integer>> executorMapping, Map<Integer, List<Integer>> oldExecutorMapping, Integer id, Map<Integer, List<Integer>> dstSubtaskMap) {
+		for (Integer hashedKeys : executorMapping.get(id)) {
+			if (!oldExecutorMapping.get(id).contains(hashedKeys)) {
+				List<Integer> keysToMigrateIn = dstSubtaskMap.getOrDefault(id, new ArrayList<>());
+				keysToMigrateIn.add(hashedKeys);
+				dstSubtaskMap.put(id, keysToMigrateIn);
 			}
 		}
-		checkState(unUsedSubtaskMap.size() > 0, "cannot find valid subtask for created executor");
-
-		return unUsedSubtaskMap;
 	}
 
 	private int findNextUnusedSubtask() {
 		int subtaskIndex = -1;
 		for (int i = 0; i < numOpenedSubtask; i++) {
-			if (oldRescalePA.getIdInModel(i) == UNUSED_SUBTASK) {
+			if (jobExecutionPlan.getIdInModel(i) == UNUSED_SUBTASK) {
 				subtaskIndex = i;
 				break;
 			}
@@ -255,7 +250,6 @@ public class JobExecutionPlan {
 
 	private void generateAlignedKeyGroupRanges() {
 		int keyGroupStart = 0;
-		List<Integer> integratedPartitionAssignment = new ArrayList<>();
 		for (int subTaskIndex = 0; subTaskIndex < partitionAssignment.keySet().size(); subTaskIndex++) {
 			int rangeSize = partitionAssignment.get(subTaskIndex).size();
 
@@ -268,15 +262,7 @@ public class JobExecutionPlan {
 
 			alignedKeyGroupRanges.add(keyGroupRange);
 			keyGroupStart += rangeSize;
-			integratedPartitionAssignment.addAll(partitionAssignment.get(subTaskIndex));
 		}
-
-		keyGroupRangeForStandby = integratedPartitionAssignment.isEmpty() ?
-			KeyGroupRange.EMPTY_KEY_GROUP_RANGE :
-			new KeyGroupRange(
-				keyGroupStart,
-				keyGroupStart + integratedPartitionAssignment.size() - 1,
-				integratedPartitionAssignment);
 	}
 
 	private void generateExecutorIdMapping() {
@@ -307,10 +293,6 @@ public class JobExecutionPlan {
 		return alignedKeyGroupRanges;
 	}
 
-	public KeyGroupRange getAlignedKeyGroupRangeForStandby() {
-		return keyGroupRangeForStandby;
-	}
-
 	public KeyGroupRange getAlignedKeyGroupRange(int subTaskIndex) {
 		return alignedKeyGroupRanges.get(subTaskIndex);
 	}
@@ -319,12 +301,23 @@ public class JobExecutionPlan {
 		return modifiedSubtaskMap.getOrDefault(subtaskIndex, false);
 	}
 
-	public List<Integer> getRemovedSubtask() {
-		List<Integer> removedSubtask = new ArrayList<>();
-		for (Integer removedSubtaskId : removedSubtaskMap.keySet()) {
-			removedSubtask.add(removedSubtaskId);
-		}
-		return removedSubtask;
+	public boolean isSourceSubtask(int subtaskIndex) {
+		checkState(isSubtaskModified(subtaskIndex),
+			"++++++ a non-affected task cannot become a source/destination task");
+
+		return srcSubtaskMap.containsKey(subtaskIndex);
+	}
+
+	public List<Integer> getAffectedKeygroupsForSource(int subtaskIndex) {
+		checkState(srcSubtaskMap.containsKey(subtaskIndex),
+			"++++++ not a source task");
+		return srcSubtaskMap.get(subtaskIndex);
+	}
+
+	public List<Integer> getAffectedKeygroupsForDestination(int subtaskIndex) {
+		checkState(dstSubtaskMap.containsKey(subtaskIndex),
+			"++++++ not a source task");
+		return dstSubtaskMap.get(subtaskIndex);
 	}
 
 	private static boolean checkPartitionAssignmentValidity(

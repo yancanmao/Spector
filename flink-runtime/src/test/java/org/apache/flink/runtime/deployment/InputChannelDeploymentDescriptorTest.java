@@ -32,7 +32,7 @@ import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.jobmaster.LogicalSlot;
-import org.apache.flink.runtime.spector.reconfig.ReconfigID;
+import org.apache.flink.runtime.spector.ReconfigID;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 
 import org.junit.Test;

@@ -33,6 +33,7 @@ import org.apache.flink.runtime.clusterframework.types.SlotID;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.entrypoint.ClusterInformation;
+import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.execution.librarycache.BlobLibraryCacheManager;
 import org.apache.flink.runtime.execution.librarycache.LibraryCacheManager;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
@@ -52,6 +53,7 @@ import org.apache.flink.runtime.io.network.netty.PartitionProducerStateChecker;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionConsumableNotifier;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.jobmaster.AllocatedSlotInfo;
 import org.apache.flink.runtime.jobmaster.AllocatedSlotReport;
@@ -69,15 +71,18 @@ import org.apache.flink.runtime.query.KvStateClientProxy;
 import org.apache.flink.runtime.query.KvStateRegistry;
 import org.apache.flink.runtime.query.KvStateServer;
 import org.apache.flink.runtime.registration.RegistrationConnectionListener;
+import org.apache.flink.runtime.spector.BackupStateManager;
+import org.apache.flink.runtime.spector.ReconfigOptions;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils;
-import org.apache.flink.runtime.spector.BackupStateManager;
-import org.apache.flink.runtime.spector.reconfig.ReconfigOptions;
-import org.apache.flink.runtime.state.*;
+import org.apache.flink.runtime.state.TaskExecutorLocalStateStoresManager;
+import org.apache.flink.runtime.state.TaskLocalStateStore;
+import org.apache.flink.runtime.state.TaskStateManager;
+import org.apache.flink.runtime.state.TaskStateManagerImpl;
 import org.apache.flink.runtime.taskexecutor.exceptions.CheckpointException;
 import org.apache.flink.runtime.taskexecutor.exceptions.PartitionException;
 import org.apache.flink.runtime.taskexecutor.exceptions.RegistrationTimeoutException;
@@ -133,7 +138,8 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
-import static org.apache.flink.util.Preconditions.*;
+import static org.apache.flink.util.Preconditions.checkArgument;
+import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * TaskExecutor implementation. The task executor is responsible for the execution of multiple
@@ -500,6 +506,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			try {
 				jobInformation = tdd.getSerializedJobInformation().deserializeValue(getClass().getClassLoader());
 				taskInformation = tdd.getSerializedTaskInformation().deserializeValue(getClass().getClassLoader());
+				taskInformation.setIdInModel(tdd.getIdInModel());
 			} catch (IOException | ClassNotFoundException e) {
 				throw new TaskSubmissionException("Could not deserialize the job or task information.", e);
 			}
@@ -508,6 +515,35 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				throw new TaskSubmissionException(
 					"Inconsistent job ID information inside TaskDeploymentDescriptor (" +
 						tdd.getJobId() + " vs. " + jobInformation.getJobId() + ")");
+			}
+
+			// if is standby task, skip all things aggressively
+			if (tdd.getIsStandby()) {
+				CheckpointResponder checkpointResponder = jobManagerConnection.getCheckpointResponder();
+
+				final TaskLocalStateStore localStateStore = localStateStoresManager.localStateStoreForSubtask(
+					jobId,
+					tdd.getAllocationId(),
+					taskInformation.getJobVertexId(),
+					tdd.getSubtaskIndex());
+
+				final JobManagerTaskRestore taskRestore = tdd.getTaskRestore();
+
+				final TaskStateManager taskStateManager = new TaskStateManagerImpl(
+					jobId,
+					tdd.getExecutionAttemptId(),
+					localStateStore,
+					taskRestore,
+					checkpointResponder);
+
+				Preconditions.checkState(!backupStateManager.replicas.containsKey(taskInformation.getJobVertexId()),
+					"++++++backupStateManager should only maintain a replica for each jobVertex");
+				backupStateManager.replicas.put(taskInformation.getJobVertexId(), taskStateManager);
+
+				jobManagerConnection.getTaskManagerActions().updateTaskExecutionState(
+					new TaskExecutionState(jobId, tdd.getExecutionAttemptId(), ExecutionState.STANDBY));
+
+				return CompletableFuture.completedFuture(Acknowledge.get());
 			}
 
 			TaskMetricGroup taskMetricGroup = taskManagerMetricGroup.addTaskForJob(
@@ -579,12 +615,6 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				getRpcService().getExecutor(),
 				tdd.getIsStandby());
 
-			if (tdd.getIsStandby()) {
-				Preconditions.checkState(!backupStateManager.replicas.containsKey(task.getJobVertexId()),
-					"++++++backupStateManager should only maintain a replica for each jobVertex");
-				backupStateManager.replicas.put(task.getJobVertexId(), task);
-			}
-
 			log.info("Received task {}.", task.getTaskInfo().getTaskNameWithSubtasks());
 
 			boolean taskAdded;
@@ -613,11 +643,12 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> reconfigTask(
-		ExecutionAttemptID executionAttemptID,
-		TaskDeploymentDescriptor tdd,
-		JobMasterId jobMasterId,
-		ReconfigOptions reconfigOptions,
-		Time timeout) {
+			ExecutionAttemptID executionAttemptID,
+			TaskDeploymentDescriptor tdd,
+			JobMasterId jobMasterId,
+			ReconfigOptions reconfigOptions,
+			Time timeout) {
+
 		final Task task = taskSlotTable.getTask(executionAttemptID);
 
 		if (task != null) {
@@ -631,39 +662,50 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				final TaskInformation taskInformation;
 				try {
 					taskInformation = tdd.getSerializedTaskInformation().deserializeValue(getClass().getClassLoader());
+					taskInformation.setIdInModel(tdd.getIdInModel());
 				} catch (IOException | ClassNotFoundException e) {
 					throw new TaskException("Could not deserialize the job or task information.", e);
 				}
 
 				task.updateTaskConfiguration(taskInformation);
 
-				task.prepareRescalingComponent(
-					tdd.getReconfigId(),
-					reconfigOptions,
-					tdd.getProducedPartitions(),
-					tdd.getInputGates());
-
-				if (reconfigOptions.isScalingPartitions()) {
-					task.createNewResultPartitions();
-				}
-
-				if (reconfigOptions.isRepartition()) {
-					JobManagerTaskRestore taskRestore = getTaskRestoreFromReplica(task);
-					// TODO: jobmaster may also send a task restore to the task because of partial state replication.
-					// TODO: as a result, we have to reconstruct a new state restore for state recovery.
+				if (reconfigOptions.isUpdatingState()) {
 					log.info("++++++ update task state: " + tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId());
-//					task.assignNewState(tdd.getKeyGroupRange(), tdd.getTaskRestore());
-					task.assignNewState(tdd.getKeyGroupRange(), taskRestore);
-				}
 
-				if (reconfigOptions.isUpdateKeyGroupRange()) {
-					log.info("++++++ update task keyGroupRange for subtask: " + tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId());
-					task.updateKeyGroupRange(tdd.getKeyGroupRange());
+//					JobManagerTaskRestore taskRestore = getTaskRestoreFromReplica(task);
+					JobManagerTaskRestore taskRestore = tdd.getTaskRestore();
+
+					task.assignNewState(
+						tdd.getKeyGroupRange(),
+						tdd.getIdInModel(),
+						taskRestore);
+				} else {
+					task.prepareReconfigComponent(
+						tdd.getReconfigId(),
+						reconfigOptions,
+						tdd.getProducedPartitions(),
+						tdd.getInputGates(),
+						tdd.getAffectedKeygroups());
+
+					if (reconfigOptions.isSettingAffectedkeys()) {
+						log.info("++++++ set affected keys for this source subtask "
+							+ tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId()
+							+ " afffected keygroups: " + tdd.getAffectedKeygroups());
+					}
+
+					if (reconfigOptions.isUpdatingPartitions()) {
+						task.createNewResultPartitions();
+					}
+
+					if (reconfigOptions.isUpdatingKeyGroupRange()) {
+						log.info("++++++ update task keyGroupRange for subtask: " + tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId());
+						task.updateKeyGroupRange(tdd.getKeyGroupRange());
+					}
 				}
 
 				return CompletableFuture.completedFuture(Acknowledge.get());
 			} catch (Exception e) {
-				log.error("++++++ rescaleTask err", e);
+				log.error("++++++ reconfigTask err", e);
 				return FutureUtils.completedExceptionally(e);
 			}
 		} else {
@@ -680,10 +722,10 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	 * @return
 	 */
 	public JobManagerTaskRestore getTaskRestoreFromReplica(Task reconfigTask) {
-		Task standbyTask = backupStateManager.replicas.get(reconfigTask.getJobVertexId());
+		TaskStateManager taskStateManager = backupStateManager.replicas.get(reconfigTask.getJobVertexId());
 		// directly assign backup taskrestore for the targeting task, and it will be updated in each operator during
 		// state initialization.
-		return ((TaskStateManagerImpl) standbyTask.getTaskStateManager()).getTaskRestore();
+		return ((TaskStateManagerImpl) taskStateManager).getTaskRestore();
 	}
 
 	@Override
@@ -726,19 +768,30 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	}
 
 	@Override
-	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobManagerTaskRestore taskRestore, Time timeout) {
-		final Task task = taskSlotTable.getTask(executionAttemptID);
+	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, JobManagerTaskRestore taskRestore, Time timeout) {
+//		final Task task = taskSlotTable.getTask(executionAttemptID);
+//
+//		if (task != null) {
+//			try {
+//				task.dispatchStateToStandbyTask(taskRestore);
+//				return CompletableFuture.completedFuture(Acknowledge.get());
+//			} catch (Throwable t) {
+//				return FutureUtils.completedExceptionally(new TaskException("Cannot dispatch state snapshot to standby task " + executionAttemptID + '.', t));
+//			}
+//		} else {
+//			final String message = "Cannot find standby task " + executionAttemptID + " to dispatch state to it.";
+//
+//			log.debug(message);
+//			return FutureUtils.completedExceptionally(new TaskException(message));
+//		}
+		final TaskStateManager taskStateManager = backupStateManager.replicas.get(jobvertexId);
 
-		if (task != null) {
-			try {
-				task.dispatchStateToStandbyTask(taskRestore);
-				return CompletableFuture.completedFuture(Acknowledge.get());
-			} catch (Throwable t) {
-				return FutureUtils.completedExceptionally(new TaskException("Cannot dispatch state snapshot to standby task " + executionAttemptID + '.', t));
-			}
+		if (taskStateManager != null) {
+			taskStateManager.setTaskRestore(taskRestore);
+
+			return CompletableFuture.completedFuture(Acknowledge.get());
 		} else {
 			final String message = "Cannot find standby task " + executionAttemptID + " to dispatch state to it.";
-
 			log.debug(message);
 			return FutureUtils.completedExceptionally(new TaskException(message));
 		}

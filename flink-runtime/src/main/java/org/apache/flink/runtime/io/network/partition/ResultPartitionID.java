@@ -21,7 +21,7 @@ package org.apache.flink.runtime.io.network.partition;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.IntermediateResultPartition;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
-import org.apache.flink.runtime.spector.reconfig.ReconfigID;
+import org.apache.flink.runtime.spector.ReconfigID;
 
 import java.io.Serializable;
 
@@ -43,7 +43,7 @@ public final class ResultPartitionID implements Serializable {
 	private final ReconfigID reconfigId;
 
 	public ResultPartitionID() {
-		this(new IntermediateResultPartitionID(), new ExecutionAttemptID());
+		this(new IntermediateResultPartitionID(), new ExecutionAttemptID(), ReconfigID.DEFAULT);
 	}
 
 	public ResultPartitionID(IntermediateResultPartitionID partitionId, ExecutionAttemptID producerId) {
@@ -83,11 +83,11 @@ public final class ResultPartitionID implements Serializable {
 
 	@Override
 	public int hashCode() {
-		return partitionId.hashCode() ^ producerId.hashCode();
+		return partitionId.hashCode() ^ producerId.hashCode() ^ reconfigId.hashCode();
 	}
 
 	@Override
 	public String toString() {
-		return partitionId.toString() + "@" + producerId.toString();
+		return partitionId.toString() + "@" + producerId.toString() + "@" + reconfigId.toString();
 	}
 }

@@ -19,12 +19,7 @@
 package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
-import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
-
-import org.apache.flink.shaded.guava18.com.google.common.collect.HashBasedTable;
 import org.apache.flink.shaded.guava18.com.google.common.collect.ImmutableList;
-import org.apache.flink.shaded.guava18.com.google.common.collect.Table;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,7 +40,7 @@ public class ResultPartitionManager implements ResultPartitionProvider {
 	private final Map<ResultPartitionID, ResultPartition> registeredPartitions = new HashMap<>();
 
 	private final Map<ExecutionAttemptID, Map<ResultPartitionID, ResultPartition>>
-		registeredPartitionsByExecutionID = new HashMap<>();
+			registeredPartitionsByExecutionID = new HashMap<>();
 
 	private boolean isShutdown;
 
@@ -57,13 +52,12 @@ public class ResultPartitionManager implements ResultPartitionProvider {
 
 			ResultPartition previous = registeredPartitions.put(partitionId, partition);
 
-
 			if (previous != null) {
 				throw new IllegalStateException("Result partition already registered.");
 			}
 
 			Map<ResultPartitionID, ResultPartition> partitions =
-				registeredPartitionsByExecutionID.getOrDefault(partitionId.getProducerId(), new HashMap<>());
+					registeredPartitionsByExecutionID.getOrDefault(partitionId.getProducerId(), new HashMap<>());
 
 			partitions.put(partitionId, partition);
 			registeredPartitionsByExecutionID.put(partitionId.getProducerId(), partitions);
@@ -98,14 +92,14 @@ public class ResultPartitionManager implements ResultPartitionProvider {
 	public void releasePartitionsProducedBy(ExecutionAttemptID executionId, Throwable cause) {
 		synchronized (registeredPartitions) {
 			final Map<ResultPartitionID, ResultPartition> partitions =
-				registeredPartitionsByExecutionID.getOrDefault(executionId, new HashMap<>());
+					registeredPartitionsByExecutionID.getOrDefault(executionId, new HashMap<>());
 
 			for (ResultPartition partition : partitions.values()) {
 				partition.release(cause);
 			}
 
 			for (ResultPartitionID partitionId : ImmutableList
-				.copyOf(partitions.keySet())) {
+					.copyOf(partitions.keySet())) {
 
 				registeredPartitions.remove(partitionId);
 				registeredPartitionsByExecutionID.get(partitionId.getProducerId()).remove(partitionId);

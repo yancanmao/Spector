@@ -31,4 +31,5 @@ public enum CheckpointType {
 
 	/** A rescalepoint. */
 	RECONFIGPOINT;
+
 }

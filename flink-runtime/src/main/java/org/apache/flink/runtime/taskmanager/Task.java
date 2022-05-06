@@ -66,9 +66,9 @@ import org.apache.flink.runtime.jobmanager.PartitionProducerDisposedException;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
-import org.apache.flink.runtime.spector.reconfig.ReconfigID;
-import org.apache.flink.runtime.spector.reconfig.ReconfigOptions;
-import org.apache.flink.runtime.spector.reconfig.TaskConfigManager;
+import org.apache.flink.runtime.spector.ReconfigID;
+import org.apache.flink.runtime.spector.ReconfigOptions;
+import org.apache.flink.runtime.spector.TaskConfigManager;
 import org.apache.flink.runtime.state.CheckpointListener;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.TaskStateManager;
@@ -237,6 +237,12 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	/** Partition producer state checker to request partition states from. */
 	private final PartitionProducerStateChecker partitionProducerStateChecker;
 
+	private final TaskConfigManager taskConfigManager;
+
+	/** The begin KeyGroupRange used to initialize streamtask */
+	@Nullable
+	private final KeyGroupRange keyGroupRange;
+
 	/** Executor to run future callbacks. */
 	private final Executor executor;
 
@@ -263,6 +269,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	/** Serial executor for asynchronous calls (checkpoints, etc), lazily initialized. */
 	private volatile ExecutorService asyncCallDispatcher;
 
+	private volatile ReconfigID reconfigId;
+
 	/** Initialized from the Flink configuration. May also be set at the ExecutionConfig */
 	private long taskCancellationInterval;
 
@@ -280,49 +288,10 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	 */
 	private final boolean isStandby;
 
-	private final TaskConfigManager taskConfigManager;
-
-	/** The begin KeyGroupRange used to initialize streamtask */
-	@Nullable
-	private final KeyGroupRange keyGroupRange;
-
-	public Task(
-		JobInformation jobInformation,
-		TaskInformation taskInformation,
-		ExecutionAttemptID executionAttemptID,
-		AllocationID slotAllocationId,
-		int subtaskIndex,
-		int attemptNumber,
-		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
-		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
-		int targetSlotNumber,
-		MemoryManager memManager,
-		IOManager ioManager,
-		NetworkEnvironment networkEnvironment,
-		BroadcastVariableManager bcVarManager,
-		TaskStateManager taskStateManager,
-		TaskManagerActions taskManagerActions,
-		InputSplitProvider inputSplitProvider,
-		CheckpointResponder checkpointResponder,
-		GlobalAggregateManager aggregateManager,
-		BlobCacheService blobService,
-		LibraryCacheManager libraryCache,
-		FileCache fileCache,
-		TaskManagerRuntimeInfo taskManagerConfig,
-		@Nonnull TaskMetricGroup metricGroup,
-		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
-		PartitionProducerStateChecker partitionProducerStateChecker,
-		Executor executor) {
-		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId, ReconfigID.DEFAULT, null,
-			subtaskIndex, attemptNumber, resultPartitionDeploymentDescriptors,
-			inputGateDeploymentDescriptors, targetSlotNumber, memManager,
-			ioManager, networkEnvironment, bcVarManager, taskStateManager,
-			taskManagerActions, inputSplitProvider, checkpointResponder, aggregateManager,
-			blobService, libraryCache, fileCache, taskManagerConfig,
-			metricGroup, resultPartitionConsumableNotifier,
-			partitionProducerStateChecker, executor, false);
-	}
-
+	/**
+	 * <p><b>IMPORTANT:</b> This constructor may not start any work that would need to
+	 * be undone in the case of a failing task deployment.</p>
+	 */
 	public Task(
 		JobInformation jobInformation,
 		TaskInformation taskInformation,
@@ -394,8 +363,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		@Nonnull TaskMetricGroup metricGroup,
 		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
 		PartitionProducerStateChecker partitionProducerStateChecker,
-		Executor executor,
-		boolean isStandby) {
+		Executor executor, boolean isStandby) {
 
 		Preconditions.checkNotNull(jobInformation);
 		Preconditions.checkNotNull(taskInformation);
@@ -412,17 +380,22 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				attemptNumber,
 				String.valueOf(slotAllocationId));
 
+		this.taskInfo.setIdInModel(taskInformation.getIdInModel());
+
 		this.jobId = jobInformation.getJobId();
 		this.vertexId = taskInformation.getJobVertexId();
 		this.executionId  = Preconditions.checkNotNull(executionAttemptID);
 		this.allocationId = Preconditions.checkNotNull(slotAllocationId);
+		this.reconfigId = Preconditions.checkNotNull(reconfigId);
 		this.keyGroupRange = keyGroupRange;
+
 		this.isStandby = isStandby;
 		if (this.isStandby) {
 			this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks() + " (STANDBY)";
 		} else {
 			this.taskNameWithSubtask = taskInfo.getTaskNameWithSubtasks();
 		}
+
 		this.jobConfiguration = jobInformation.getJobConfiguration();
 		this.taskConfiguration = taskInformation.getTaskConfiguration();
 		this.requiredJarFiles = jobInformation.getRequiredJarFileBlobKeys();
@@ -593,8 +566,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	}
 
 	@Nullable
-//	@VisibleForTesting
-	public AbstractInvokable getInvokable() {
+	@VisibleForTesting
+	AbstractInvokable getInvokable() {
 		return invokable;
 	}
 
@@ -798,10 +771,10 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				network.getTaskEventDispatcher(),
 				checkpointResponder,
 				taskManagerConfig,
-				metrics,
-				this,
 				taskConfigManager,
-				keyGroupRange);
+				keyGroupRange,
+				metrics,
+				this);
 
 			// now load and instantiate the task's invokable code
 			invokable = loadAndInstantiateInvokable(userCodeClassLoader, nameOfInvokableClass, env);
@@ -843,6 +816,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			// finish the produced partitions. if this fails, we consider the execution failed.
 			for (ResultPartition partition : producedPartitions) {
 				if (partition != null) {
+					LOG.info("++++++ " + taskNameWithSubtask + "   finish partition " + partition.toString());
 					partition.finish();
 				}
 			}
@@ -854,6 +828,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			}
 		}
 		catch (Throwable t) {
+			LOG.error("++++++ task err " + taskNameWithSubtask, t);
 
 			// unwrap wrapped exceptions to make stack traces more compact
 			if (t instanceof WrappingRuntimeException) {
@@ -1241,22 +1216,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		taskStateManager.setTaskRestore(taskRestore);
 		LOG.info("++++++ Standby task " + taskNameWithSubtask + " received state snapshot of checkpoint " +
 			taskRestore.getRestoreCheckpointId() + ".");
-
-		long checkpointId = taskRestore.getRestoreCheckpointId();
-
-		// TODO: this may not be required, we only need to make the state be initialize on the task
-		invokable.notifyStartedRestoringCheckpoint(checkpointId);
-
-
-		// Invokable should be an instance of an operator class in the hierarchy of StreamTask.
-		executeAsyncCallRunnable(() -> {
-			try {
-				invokable.initializeState();
-				invokable.notifyCompletedRestoringCheckpoint(checkpointId);
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-		}, "Async restore checkpoint " + checkpointId);
 	}
 
 	// ------------------------------------------------------------------------
@@ -1401,10 +1360,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		}
 	}
 
-	public TaskStateManager getTaskStateManager() {
-		return taskStateManager;
-	}
-
 	// ------------------------------------------------------------------------
 	//  Actions on reconfig
 	// ------------------------------------------------------------------------
@@ -1413,22 +1368,25 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		this.taskConfiguration.addAll(newTaskInfo.getTaskConfiguration());
 	}
 
-	public void prepareRescalingComponent(
-		ReconfigID reconfigId,
-		ReconfigOptions reconfigOptions,
-		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
-		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors) {
+	public void prepareReconfigComponent(
+			ReconfigID reconfigId,
+			ReconfigOptions reconfigOptions,
+			Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+			Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
+			Collection<Integer> affectedKeygroups) {
 
-		taskConfigManager.prepareRescaleMeta(
+		taskConfigManager.prepareReconfigMeta(
 			reconfigId,
 			reconfigOptions,
 			resultPartitionDeploymentDescriptors,
-			inputGateDeploymentDescriptors);
+			inputGateDeploymentDescriptors,
+			affectedKeygroups);
 	}
 
-	public void assignNewState(KeyGroupRange keyGroupRange, JobManagerTaskRestore taskRestore) {
+	public void assignNewState(KeyGroupRange keyGroupRange, int idInModel, JobManagerTaskRestore taskRestore) {
 		((TaskStateManagerImpl) taskStateManager).updateTaskRestore(taskRestore);
-		invokable.reinitializeState(keyGroupRange);
+
+		invokable.reinitializeState(keyGroupRange, idInModel);
 	}
 
 	public void updateKeyGroupRange(KeyGroupRange keyGroupRange) {
@@ -1533,7 +1491,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				}
 			}
 
-			LOG.info("++++++ Invoking async call {} on task {}", callName, taskNameWithSubtask);
+			LOG.debug("Invoking async call {} on task {}", callName, taskNameWithSubtask);
 
 			try {
 				executor.submit(runnable);

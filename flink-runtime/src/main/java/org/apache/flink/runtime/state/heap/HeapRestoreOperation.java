@@ -240,6 +240,7 @@ public class HeapRestoreOperation<K> implements RestoreOperation<Void> {
 		for (Tuple2<Integer, Long> groupOffset : keyGroupOffsets) {
 			int alignedKeyGroupIndex = groupOffset.f0;
 			long offset = groupOffset.f1;
+
 			// Check that restored key groups all belong to the backend.
 			if (!keyGroupRange.contains(alignedKeyGroupIndex)) {
 				LOG.info("++++++ Skipped keyGroupRange: " + keyGroupRange +
@@ -247,6 +248,8 @@ public class HeapRestoreOperation<K> implements RestoreOperation<Void> {
 						", offset: " + offset);
 				continue;
 			}
+
+			// Check that restored key groups all belong to the backend.
 			Preconditions.checkState(keyGroupRange.contains(alignedKeyGroupIndex), "The key group must belong to the backend.");
 
 			fsDataInputStream.seek(offset);

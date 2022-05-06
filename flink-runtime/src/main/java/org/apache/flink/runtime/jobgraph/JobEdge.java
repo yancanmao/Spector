@@ -120,7 +120,7 @@ public class JobEdge implements java.io.Serializable {
 	public void setDistributionPattern(DistributionPattern distributionPattern){
 		this.distributionPattern = distributionPattern;
 	}
-
+	
 	/**
 	 * Gets the ID of the consumed data set.
 	 * 

@@ -51,7 +51,7 @@ import javax.annotation.Nullable;
  */
 @Internal
 public class CopyOnWriteStateTableSnapshot<K, N, S>
-	extends AbstractStateTableSnapshot<K, N, S, CopyOnWriteStateTable<K, N, S>> {
+		extends AbstractStateTableSnapshot<K, N, S, CopyOnWriteStateTable<K, N, S>> {
 
 	/**
 	 * Version of the {@link CopyOnWriteStateTable} when this snapshot was created. This can be used to release the snapshot.

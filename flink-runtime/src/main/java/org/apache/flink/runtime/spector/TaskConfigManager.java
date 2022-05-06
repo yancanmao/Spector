@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.spector.reconfig;
+package org.apache.flink.runtime.spector;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.deployment.InputChannelDeploymentDescriptor;
@@ -40,10 +40,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.List;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -68,7 +66,7 @@ public class TaskConfigManager {
 
 	private final ResultPartitionConsumableNotifier resultPartitionConsumableNotifier;
 
-	private volatile TaskRescaleMeta rescaleMeta;
+	private volatile TaskReconfigMeta reconfigMeta;
 
 	private volatile ResultPartition[] storedOldWriterCopies;
 
@@ -92,43 +90,49 @@ public class TaskConfigManager {
 		this.resultPartitionConsumableNotifier = checkNotNull(notifier);
 	}
 
-	public void prepareRescaleMeta(
+	public void prepareReconfigMeta(
 			ReconfigID reconfigId,
 			ReconfigOptions reconfigOptions,
 			Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
-			Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors) {
+			Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
+			Collection<Integer> affectedKeygroups) {
 
-		TaskRescaleMeta meta = new TaskRescaleMeta(
+		TaskReconfigMeta meta = new TaskReconfigMeta(
 			reconfigId,
 			reconfigOptions,
 			resultPartitionDeploymentDescriptors,
-			inputGateDeploymentDescriptors);
+			inputGateDeploymentDescriptors,
+			affectedKeygroups);
 
 		long timeStart = System.currentTimeMillis();
-		while (rescaleMeta != null) {
+		while (reconfigMeta != null) {
 			if (System.currentTimeMillis() - timeStart > 1000) {
-				throw new IllegalStateException("One rescaling is in process, cannot prepare another rescaleMeta for " + taskNameWithSubtaskAndId);
+				throw new IllegalStateException("One reconfig is in process, cannot prepare another reconfigMeta for " + taskNameWithSubtaskAndId);
 			}
 		}
-		rescaleMeta = meta;
+		reconfigMeta = meta;
 	}
 
-	public boolean isScalingTarget() {
-		return rescaleMeta != null;
+	public boolean isReconfigTarget() {
+		return reconfigMeta != null;
 	}
 
-	public boolean isScalingPartitions() {
-		return rescaleMeta.getReconfigOptions().isScalingPartitions();
+	public boolean isSourceOrDestination() {
+		return reconfigMeta.affectedKeygroups != null;
 	}
 
-	public boolean isScalingGates() {
-		return rescaleMeta.getReconfigOptions().isScalingGates();
+	public boolean isUpdatePartitions() {
+		return reconfigMeta.getReconfigOptions().isUpdatingPartitions();
+	}
+
+	public boolean isUpdateGates() {
+		return reconfigMeta.getReconfigOptions().isUpdatingGates();
 	}
 
 	public void createNewResultPartitions() throws IOException {
 		int counter = 0;
-		for (ResultPartitionDeploymentDescriptor desc : rescaleMeta.getResultPartitionDeploymentDescriptors()) {
-			ResultPartitionID partitionId = new ResultPartitionID(desc.getPartitionId(), executionId, rescaleMeta.getReconfigId());
+		for (ResultPartitionDeploymentDescriptor desc : reconfigMeta.getResultPartitionDeploymentDescriptors()) {
+			ResultPartitionID partitionId = new ResultPartitionID(desc.getPartitionId(), executionId, reconfigMeta.getReconfigId());
 
 			ResultPartition newPartition = new ResultPartition(
 				taskNameWithSubtaskAndId,
@@ -143,7 +147,7 @@ public class TaskConfigManager {
 				ioManager,
 				desc.sendScheduleOrUpdateConsumersMessage());
 
-			rescaleMeta.addNewPartitions(counter, newPartition);
+			reconfigMeta.addNewPartitions(counter, newPartition);
 			network.setupPartition(newPartition);
 
 			++counter;
@@ -154,7 +158,7 @@ public class TaskConfigManager {
 		ResultPartitionWriter[] oldWriterCopies = Arrays.copyOf(oldWriters, oldWriters.length);
 
 		for (int i = 0; i < oldWriters.length; i++) {
-			oldWriters[i] = rescaleMeta.getNewPartitions(i);
+			oldWriters[i] = reconfigMeta.getNewPartitions(i);
 		}
 
 		return oldWriterCopies;
@@ -171,9 +175,9 @@ public class TaskConfigManager {
 	}
 
 	public void substituteInputGateChannels(SingleInputGate inputGate) throws IOException, InterruptedException {
-		checkNotNull(rescaleMeta, "rescale component cannot be null");
+		checkNotNull(reconfigMeta, "reconfig component cannot be null");
 
-		InputGateDeploymentDescriptor igdd = rescaleMeta.getMatchedInputGateDescriptor(inputGate);
+		InputGateDeploymentDescriptor igdd = reconfigMeta.getMatchedInputGateDescriptor(inputGate);
 		InputChannelDeploymentDescriptor[] icdd = checkNotNull(igdd.getInputChannelDeploymentDescriptors());
 
 //		inputGate.releaseAllResources();
@@ -219,15 +223,19 @@ public class TaskConfigManager {
 	}
 
 	public void finish() {
-		this.rescaleMeta = null;
-		LOG.info("++++++ taskRescaleManager finish, set meta to null for task " + taskNameWithSubtaskAndId);
+		this.reconfigMeta = null;
+		LOG.info("++++++ taskConfigManager finish, set meta to null for task " + taskNameWithSubtaskAndId);
 	}
 
 	public NetworkEnvironment getNetwork() {
 		return network;
 	}
 
-	private static class TaskRescaleMeta {
+	public Collection<Integer> getAffectedKeygroups() {
+		return reconfigMeta.getAffectedKeygroups();
+	}
+
+	private static class TaskReconfigMeta {
 		private final ReconfigID reconfigId;
 		private final ReconfigOptions reconfigOptions;
 
@@ -236,19 +244,24 @@ public class TaskConfigManager {
 
 		private final ResultPartition[] newPartitions;
 
-		TaskRescaleMeta(
-				ReconfigID ReconfigID,
-				ReconfigOptions ReconfigOptions,
-				Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
-				Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors) {
+		private final Collection<Integer> affectedKeygroups;
 
-			this.reconfigId = checkNotNull(ReconfigID);
-			this.reconfigOptions = checkNotNull(ReconfigOptions);
+		TaskReconfigMeta(
+				ReconfigID reconfigId,
+				ReconfigOptions reconfigOptions,
+				Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+				Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
+				Collection<Integer> affectedKeygroups) {
+
+			this.reconfigId = checkNotNull(reconfigId);
+			this.reconfigOptions = checkNotNull(reconfigOptions);
 
 			this.resultPartitionDeploymentDescriptors = checkNotNull(resultPartitionDeploymentDescriptors);
 			this.inputGateDeploymentDescriptors = checkNotNull(inputGateDeploymentDescriptors);
 
 			this.newPartitions = new ResultPartition[resultPartitionDeploymentDescriptors.size()];
+
+			this.affectedKeygroups = affectedKeygroups;
 		}
 
 		public ReconfigID getReconfigId() {
@@ -279,43 +292,18 @@ public class TaskConfigManager {
 			newPartitions[index] = partition;
 		}
 
-		/**
-		 * Get matched InputGateDescriptor of the input gate
-		 * <p>
-		 * It just need to compare the `comsumedResultId`. There will be never two InputGateDeploymentDescriptor with
-		 * the same `consumedResultId` which will actually be sent to different parallel operator instance.
-		 * <p>
-		 * We should not compare the `consumedSubPartitionIndex` here since the original partition type
-		 * between previous operator and current may be `FORWARD`.
-		 * <p>
-		 * In that case, all its parallel operator instances has `consumedSubpartitionIndex` zero.
-		 * However, the new deployment descriptor may set the new `consumedSubpartitionIndex` greater than zero
-		 * which will cause gate would never find its new InputGateDeploymentDescriptor.
-		 *
-		 * @param gate
-		 * @return
-		 */
+		public Collection<Integer> getAffectedKeygroups() {
+			return affectedKeygroups;
+		}
+
 		public InputGateDeploymentDescriptor getMatchedInputGateDescriptor(SingleInputGate gate) {
-			List<InputGateDeploymentDescriptor> igdds = new ArrayList<>();
 			for (InputGateDeploymentDescriptor igdd : inputGateDeploymentDescriptors) {
-				if (gate.getConsumedResultId().equals(igdd.getConsumedResultId())) {
-					igdds.add(igdd);
+				if (gate.getConsumedResultId().equals(igdd.getConsumedResultId())
+					&& gate.getConsumedSubpartitionIndex() == igdd.getConsumedSubpartitionIndex()) {
+					return igdd;
 				}
 			}
-			if (igdds.size() != 1) {
-				throw new IllegalStateException("Cannot find matched InputGateDeploymentDescriptor");
-			}
-			gate.setConsumedSubpartitionIndex(igdds.get(0).getConsumedSubpartitionIndex());
-			return igdds.get(0);
+			throw new IllegalStateException("Cannot find matched InputGateDeploymentDescriptor");
 		}
-//		public InputGateDeploymentDescriptor getMatchedInputGateDescriptor(SingleInputGate gate) {
-//			for (InputGateDeploymentDescriptor igdd : inputGateDeploymentDescriptors) {
-//				if (gate.getConsumedResultId().equals(igdd.getConsumedResultId())
-//					&& gate.getConsumedSubpartitionIndex() == igdd.getConsumedSubpartitionIndex()) {
-//					return igdd;
-//				}
-//			}
-//			throw new IllegalStateException("Cannot find matched InputGateDeploymentDescriptor");
-//		}
 	}
 }

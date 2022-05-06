@@ -47,6 +47,7 @@ import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.taskexecutor.GlobalAggregateManager;
 import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
+import org.apache.flink.runtime.util.profiling.MetricsManager;
 import org.apache.flink.types.Record;
 import org.apache.flink.util.MutableObjectIterator;
 import org.apache.flink.util.Preconditions;
@@ -277,11 +278,6 @@ public class MockEnvironment implements Environment, AutoCloseable {
 	}
 
 	@Override
-	public Task getContainingTask() {
-		return null;
-	}
-
-	@Override
 	public JobVertexID getJobVertexId() {
 		return jobVertexID;
 	}
@@ -360,5 +356,15 @@ public class MockEnvironment implements Environment, AutoCloseable {
 
 	public Optional<Throwable> getActualExternalFailureCause() {
 		return actualExternalFailureCause;
+	}
+
+	@Override
+	public MetricsManager getMetricsManager() {
+		return null;
+	}
+
+	@Override
+	public Task getContainingTask() {
+		return null;
 	}
 }

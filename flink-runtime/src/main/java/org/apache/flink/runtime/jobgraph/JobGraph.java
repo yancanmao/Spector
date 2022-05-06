@@ -67,7 +67,7 @@ public class JobGraph implements Serializable {
 	private final Map<JobVertexID, JobVertex> taskVertices = new LinkedHashMap<JobVertexID, JobVertex>();
 
 	/** The job configuration attached to this job. */
-	private final Configuration jobConfiguration = new Configuration();
+	private Configuration jobConfiguration = new Configuration();
 
 	/** ID of this job. May be set if specific job id is desired (e.g. session management) */
 	private final JobID jobID;
@@ -84,6 +84,8 @@ public class JobGraph implements Serializable {
 
 	/** The mode in which the job is scheduled */
 	private ScheduleMode scheduleMode = ScheduleMode.LAZY_FROM_SOURCES;
+
+	private String jobUpdaterClassName;
 
 	// --- checkpointing ---
 
@@ -109,11 +111,6 @@ public class JobGraph implements Serializable {
 
 	/** List of classpaths required to run this job. */
 	private List<URL> classpaths = Collections.emptyList();
-
-	/**
-	 * For supporting state repartition
-	 */
-	private String jobRescalerClassName;
 
 	// --------------------------------------------------------------------------------------------
 
@@ -213,6 +210,10 @@ public class JobGraph implements Serializable {
 	 */
 	public Configuration getJobConfiguration() {
 		return this.jobConfiguration;
+	}
+
+	public void setJobConfiguration(Configuration config) {
+		this.jobConfiguration = config;
 	}
 
 	/**
@@ -394,11 +395,11 @@ public class JobGraph implements Serializable {
 
 	public void setJobRescalerClass(Class<? extends JobGraphUpdater> jobRescaler) {
 		Preconditions.checkNotNull(jobRescaler);
-		this.jobRescalerClassName = jobRescaler.getName();
+		this.jobUpdaterClassName = jobRescaler.getName();
 	}
 
-	public String getJobRescalerClassName() {
-		return this.jobRescalerClassName;
+	public String getJobUpdaterClassName() {
+		return this.jobUpdaterClassName;
 	}
 
 	/**

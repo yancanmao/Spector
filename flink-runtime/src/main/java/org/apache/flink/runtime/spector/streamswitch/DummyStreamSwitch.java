@@ -1,63 +1,78 @@
-package org.apache.flink.runtime.spector.reconfig;
+package org.apache.flink.runtime.spector.streamswitch;
 
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.runtime.executiongraph.ExecutionGraph;
-import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
+import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
+import org.apache.flink.runtime.spector.controller.OperatorControllerListener;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
-import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
 
-public class SimpleController extends Thread {
+public class DummyStreamSwitch extends Thread implements FlinkOperatorController {
 
-	private static final Logger LOG = LoggerFactory.getLogger(SimpleController.class);
+	private static final Logger LOG = LoggerFactory.getLogger(DummyStreamSwitch.class);
 
-	private final String name;
+	private OperatorControllerListener listener;
 
-	private final Map<String, List<String>> executorMapping;
+	Map<String, List<String>> executorMapping;
 
 	private volatile boolean waitForMigrationDeployed;
 
-	private final Random random;
+	private volatile boolean isStopped;
 
-	private ExecutionPlanConstructor executionPlanConstructor;
+	private Random random;
 
-	public SimpleController(JobReconfigAction jobReconfigAction, ExecutionGraph executionGraph) {
-		this("DummyStreamSwitch", jobReconfigAction, executionGraph);
-	}
+	@Override
+	public void init(OperatorControllerListener listener, List<String> executors, List<String> partitions) {
+		this.listener = listener;
 
-	public SimpleController(String name, JobReconfigAction jobReconfigAction, ExecutionGraph executionGraph) {
-		this.name = name;
 		this.executorMapping = new HashMap<>();
-		Configuration config = executionGraph.getJobConfiguration();
+
+		int numExecutors = executors.size();
+		int numPartitions = partitions.size();
+		for (int executorId = 0; executorId < numExecutors; executorId++) {
+			List<String> executorPartitions = new ArrayList<>();
+			executorMapping.put(String.valueOf(executorId), executorPartitions);
+
+			KeyGroupRange keyGroupRange = KeyGroupRangeAssignment.computeKeyGroupRangeForOperatorIndex(
+				numPartitions, numExecutors, executorId);
+			for (int i = keyGroupRange.getStartKeyGroup(); i <= keyGroupRange.getEndKeyGroup(); i++) {
+				executorPartitions.add(String.valueOf(i));
+			}
+		}
 
 		this.random = new Random();
 		this.random.setSeed(System.currentTimeMillis());
 
-		for (Map.Entry<JobVertexID, ExecutionJobVertex> entry : executionGraph.getAllVertices().entrySet()) {
-			JobVertexID vertexID = entry.getKey();
-			int numExecutors = entry.getValue().getParallelism();
-			int numPartitions = entry.getValue().getMaxParallelism();
-			if (entry.getValue().getName().toLowerCase().contains("flatmap")) {
-				for (int executorId = 0; executorId < numExecutors; executorId++) {
-					List<String> executorPartitions = new ArrayList<>();
-					executorMapping.put(String.valueOf(executorId), executorPartitions);
-					KeyGroupRange keyGroupRange = KeyGroupRangeAssignment.computeKeyGroupRangeForOperatorIndex(
-						numPartitions, numExecutors, executorId);
-					for (int i = keyGroupRange.getStartKeyGroup(); i <= keyGroupRange.getEndKeyGroup(); i++) {
-						executorPartitions.add(String.valueOf(i));
-					}
-				}
-				this.executionPlanConstructor = new ExecutionPlanConstructor(jobReconfigAction, vertexID, numExecutors, executorMapping);
-			}
-		}
-		Preconditions.checkState(executionPlanConstructor != null, "operator not found for reconfig");
+		this.listener.setup(executorMapping);
 	}
 
+	@Override
+	public void initMetrics(JobGraph jobGraph, JobVertexID vertexID, Configuration jobConfiguration, int parallelism) {
+	}
+
+	@Override
+	public void onForceRetrieveMetrics() {
+	}
+
+	@Override
+	public void stopGracefully() {
+		isStopped = true;
+	}
+
+	@Override
+	public void onMigrationExecutorsStopped() {
+
+	}
+
+	@Override
 	public void onMigrationCompleted() {
 		waitForMigrationDeployed = false;
 	}
@@ -65,24 +80,29 @@ public class SimpleController extends Thread {
 	@Override
 	public void run() {
 		try {
-			LOG.info("------ " + name + " start to run");
+			LOG.info("------ dummy streamSwitch start to run");
 
 			// cool down time, wait for fully deployment
 			Thread.sleep(5 * 1000);
 
-//			testCaseOneToOneChange();
-			testRepartition();
+//			testRepartition();
+//			testScaleOut();
+//			testScaleIn();
+			testCaseOneToOneChange();
+//			testJoin();
+//			testCaseScaleIn();
+//			testRandomScalePartitionAssignment();
 
-			LOG.info("------ " + name + " finished");
+			LOG.info("------ dummy streamSwitch finished");
 		} catch (Exception e) {
-			LOG.info("------ " + name + " exception", e);
+			LOG.info("------ exception", e);
 		}
 	}
 
 
 
 	private void triggerAction(String logStr, Runnable runnable, Map<String, List<String>> partitionAssignment) throws InterruptedException {
-		LOG.info("------ " + name + "  " + logStr + "   partitionAssignment: " + partitionAssignment);
+		LOG.info("------ " + logStr + "   partitionAssignment: " + partitionAssignment);
 		waitForMigrationDeployed = true;
 
 		runnable.run();
@@ -143,7 +163,7 @@ public class SimpleController extends Thread {
 		}
 		triggerAction(
 			"trigger 1 repartition",
-			() -> executionPlanConstructor.remap(executorMapping),
+			() -> listener.remap(executorMapping),
 			executorMapping);
 	}
 
@@ -169,7 +189,7 @@ public class SimpleController extends Thread {
 		}
 		triggerAction(
 			"trigger 1 scale out",
-			() -> executionPlanConstructor.scale(4, executorMapping),
+			() -> listener.scale(4, executorMapping),
 			executorMapping);
 	}
 
@@ -201,7 +221,7 @@ public class SimpleController extends Thread {
 		}
 		triggerAction(
 			"trigger 1 scale in",
-			() -> executionPlanConstructor.scale(3, executorMapping),
+			() -> listener.scale(3, executorMapping),
 			executorMapping);
 
 		Thread.sleep(5000);
@@ -228,7 +248,7 @@ public class SimpleController extends Thread {
 		}
 		triggerAction(
 			"trigger 2 scale out",
-			() -> executionPlanConstructor.scale(4, executorMapping),
+			() -> listener.scale(4, executorMapping),
 			executorMapping);
 	}
 
@@ -246,134 +266,134 @@ public class SimpleController extends Thread {
 		 */
 		preparePartitionAssignment("0", "1");
 		for (int i = 0; i < 128; i++) {
-			if (i <= 20)
+			if (i > 0 && i <= 63)
 				executorMapping.get("0").add(i + "");
 			else
 				executorMapping.get("1").add(i + "");
 		}
 		triggerAction(
 			"trigger 1 repartition",
-			() -> executionPlanConstructor.remap(executorMapping),
+			() -> listener.remap(executorMapping),
 			executorMapping);
 //		sleep(10000);
-
-		/*
-		 * scale in to parallelism 1
-		 *   1: [0, 127]
-		 */
-		preparePartitionAssignment("1");
-		for (int i = 0; i < 128; i++) {
-			executorMapping.get("1").add(i + "");
-		}
-		triggerAction(
-			"trigger 2 scale in",
-			() -> executionPlanConstructor.scale(1, executorMapping),
-			executorMapping);
+//
+//		/*
+//		 * scale in to parallelism 1
+//		 *   1: [0, 127]
+//		 */
+//		preparePartitionAssignment("1");
+//		for (int i = 0; i < 128; i++) {
+//			executorMapping.get("1").add(i + "");
+//		}
+//		triggerAction(
+//			"trigger 2 scale in",
+//			() -> listener.scale(1, executorMapping),
+//			executorMapping);
 //		sleep(10000);
-
-		/*
-		 * scale out to parallelism 2
-		 *   1: [0, 50]
-		 *   2: [51, 127]
-		 */
-		preparePartitionAssignment("1", "2");
-		for (int i = 0; i < 128; i++) {
-			if (i <= 50)
-				executorMapping.get("1").add(i + "");
-			else
-				executorMapping.get("2").add(i + "");
-		}
-		triggerAction(
-			"trigger 3 scale out",
-			() -> executionPlanConstructor.scale(2, executorMapping),
-			executorMapping);
+//
+//		/*
+//		 * scale out to parallelism 2
+//		 *   1: [0, 50]
+//		 *   2: [51, 127]
+//		 */
+//		preparePartitionAssignment("1", "2");
+//		for (int i = 0; i < 128; i++) {
+//			if (i <= 50)
+//				executorMapping.get("1").add(i + "");
+//			else
+//				executorMapping.get("2").add(i + "");
+//		}
+//		triggerAction(
+//			"trigger 3 scale out",
+//			() -> listener.scale(2, executorMapping),
+//			executorMapping);
 //		sleep(10000);
-
-		/*
-		 * scale out to parallelism 3
-		 *   1: [0, 50]
-		 *   2: [51, 90]
-		 *   3: [91, 127]
-		 */
-		preparePartitionAssignment("1", "2", "3");
-		for (int i = 0; i < 128; i++) {
-			if (i <= 50)
-				executorMapping.get("1").add(i + "");
-			else if (i <= 90)
-				executorMapping.get("2").add(i + "");
-			else
-				executorMapping.get("3").add(i + "");
-		}
-		triggerAction(
-			"trigger 4 scale out",
-			() -> executionPlanConstructor.scale(3, executorMapping),
-			executorMapping);
+//
+//		/*
+//		 * scale out to parallelism 3
+//		 *   1: [0, 50]
+//		 *   2: [51, 90]
+//		 *   3: [91, 127]
+//		 */
+//		preparePartitionAssignment("1", "2", "3");
+//		for (int i = 0; i < 128; i++) {
+//			if (i <= 50)
+//				executorMapping.get("1").add(i + "");
+//			else if (i <= 90)
+//				executorMapping.get("2").add(i + "");
+//			else
+//				executorMapping.get("3").add(i + "");
+//		}
+//		triggerAction(
+//			"trigger 4 scale out",
+//			() -> listener.scale(3, executorMapping),
+//			executorMapping);
 //		sleep(10000);
-
-		/*
-		 * scale in to parallelism 2
-		 *   1: [0, 90]
-		 *   3: [91, 127]
-		 */
-		preparePartitionAssignment("1", "3");
-		for (int i = 0; i < 128; i++) {
-			if (i <= 90)
-				executorMapping.get("1").add(i + "");
-			else
-				executorMapping.get("3").add(i + "");
-		}
-		triggerAction(
-			"trigger 5 scale in",
-			() -> executionPlanConstructor.scale(2, executorMapping),
-			executorMapping);
+//
+//		/*
+//		 * scale in to parallelism 2
+//		 *   1: [0, 90]
+//		 *   3: [91, 127]
+//		 */
+//		preparePartitionAssignment("1", "3");
+//		for (int i = 0; i < 128; i++) {
+//			if (i <= 90)
+//				executorMapping.get("1").add(i + "");
+//			else
+//				executorMapping.get("3").add(i + "");
+//		}
+//		triggerAction(
+//			"trigger 5 scale in",
+//			() -> listener.scale(2, executorMapping),
+//			executorMapping);
 //		sleep(10000);
-
-		/*
-		 * scale out to parallelism 3
-		 *   1: even in [0, 90]
-		 *   3: [91, 127]
-		 *   4: odd in [0, 90]
-		 */
-		preparePartitionAssignment("1", "3", "4");
-		for (int i = 0; i < 128; i++) {
-			if (i <= 90)
-				if (i % 2 == 0)
-					executorMapping.get("1").add(i + "");
-				else
-					executorMapping.get("4").add(i + "");
-			else
-				executorMapping.get("3").add(i + "");
-		}
-		triggerAction(
-			"trigger 6 scale out",
-			() -> executionPlanConstructor.scale(3, executorMapping),
-			executorMapping);
+//
+//		/*
+//		 * scale out to parallelism 3
+//		 *   1: even in [0, 90]
+//		 *   3: [91, 127]
+//		 *   4: odd in [0, 90]
+//		 */
+//		preparePartitionAssignment("1", "3", "4");
+//		for (int i = 0; i < 128; i++) {
+//			if (i <= 90)
+//				if (i % 2 == 0)
+//					executorMapping.get("1").add(i + "");
+//				else
+//					executorMapping.get("4").add(i + "");
+//			else
+//				executorMapping.get("3").add(i + "");
+//		}
+//		triggerAction(
+//			"trigger 6 scale out",
+//			() -> listener.scale(3, executorMapping),
+//			executorMapping);
 //		sleep(10000);
-
-		/*
-		 * scale out to parallelism 4
-		 *   1: even in [0, 90]
-		 *   3: even in [91, 127]
-		 *   4: odd in [0, 90]
-		 *   5: odd in [91, 127]
-		 */
-		preparePartitionAssignment("1", "3", "4", "5");
-		for (int i = 0; i < 128; i++) {
-			if (i <= 90)
-				if (i % 2 == 0)
-					executorMapping.get("1").add(i + "");
-				else
-					executorMapping.get("4").add(i + "");
-			else
-				if (i % 2 == 0)
-					executorMapping.get("3").add(i + "");
-				else
-					executorMapping.get("5").add(i + "");
-		}
-		triggerAction(
-			"trigger 7 scale out",
-			() -> executionPlanConstructor.scale(4, executorMapping),
-			executorMapping);
+//
+//		/*
+//		 * scale out to parallelism 4
+//		 *   1: even in [0, 90]
+//		 *   3: even in [91, 127]
+//		 *   4: odd in [0, 90]
+//		 *   5: odd in [91, 127]
+//		 */
+//		preparePartitionAssignment("1", "3", "4", "5");
+//		for (int i = 0; i < 128; i++) {
+//			if (i <= 90)
+//				if (i % 2 == 0)
+//					executorMapping.get("1").add(i + "");
+//				else
+//					executorMapping.get("4").add(i + "");
+//			else
+//				if (i % 2 == 0)
+//					executorMapping.get("3").add(i + "");
+//				else
+//					executorMapping.get("5").add(i + "");
+//		}
+//		triggerAction(
+//			"trigger 7 scale out",
+//			() -> listener.scale(4, executorMapping),
+//			executorMapping);
 	}
 
 	private void testJoin() throws InterruptedException {
@@ -391,7 +411,7 @@ public class SimpleController extends Thread {
 		}
 		triggerAction(
 			"trigger 1 scale out",
-			() -> executionPlanConstructor.scale(2, executorMapping),
+			() -> listener.scale(2, executorMapping),
 			executorMapping);
 		sleep(10000);
 
@@ -406,7 +426,7 @@ public class SimpleController extends Thread {
 		}
 		triggerAction(
 			"trigger 2 scale out",
-			() -> executionPlanConstructor.scale(3, executorMapping),
+			() -> listener.scale(3, executorMapping),
 			executorMapping);
 		sleep(10000);
 
@@ -419,7 +439,7 @@ public class SimpleController extends Thread {
 		}
 		triggerAction(
 			"trigger 3 scale in",
-			() -> executionPlanConstructor.scale(2, executorMapping),
+			() -> listener.scale(2, executorMapping),
 			executorMapping);
 		sleep(10000);
 
@@ -434,7 +454,7 @@ public class SimpleController extends Thread {
 		}
 		triggerAction(
 			"trigger 4 scale out",
-			() -> executionPlanConstructor.scale(3, executorMapping),
+			() -> listener.scale(3, executorMapping),
 			executorMapping);
 	}
 }

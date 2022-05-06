@@ -28,7 +28,7 @@ import org.apache.flink.runtime.executiongraph.ExecutionVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.OperatorInstanceID;
-import org.apache.flink.runtime.spector.reconfig.JobExecutionPlan;
+import org.apache.flink.runtime.spector.JobExecutionPlan;
 import org.apache.flink.runtime.state.*;
 import org.apache.flink.util.Preconditions;
 
@@ -353,12 +353,12 @@ public class StateAssignmentOperation {
 
 
 	private void assignTaskStateToExecutionJobVertices(
-			ExecutionJobVertex executionJobVertex,
-			Map<OperatorInstanceID, List<OperatorStateHandle>> subManagedOperatorState,
-			Map<OperatorInstanceID, List<OperatorStateHandle>> subRawOperatorState,
-			Map<OperatorInstanceID, List<KeyedStateHandle>> subManagedKeyedState,
-			Map<OperatorInstanceID, List<KeyedStateHandle>> subRawKeyedState,
-			int newParallelism) {
+		ExecutionJobVertex executionJobVertex,
+		Map<OperatorInstanceID, List<OperatorStateHandle>> subManagedOperatorState,
+		Map<OperatorInstanceID, List<OperatorStateHandle>> subRawOperatorState,
+		Map<OperatorInstanceID, List<KeyedStateHandle>> subManagedKeyedState,
+		Map<OperatorInstanceID, List<KeyedStateHandle>> subRawKeyedState,
+		int newParallelism) {
 
 		List<OperatorID> operatorIDs = executionJobVertex.getOperatorIDs();
 
@@ -435,11 +435,11 @@ public class StateAssignmentOperation {
 	}
 
 	public static OperatorSubtaskState operatorSubtaskStateFrom(
-			OperatorInstanceID instanceID,
-			Map<OperatorInstanceID, List<OperatorStateHandle>> subManagedOperatorState,
-			Map<OperatorInstanceID, List<OperatorStateHandle>> subRawOperatorState,
-			Map<OperatorInstanceID, List<KeyedStateHandle>> subManagedKeyedState,
-			Map<OperatorInstanceID, List<KeyedStateHandle>> subRawKeyedState) {
+		OperatorInstanceID instanceID,
+		Map<OperatorInstanceID, List<OperatorStateHandle>> subManagedOperatorState,
+		Map<OperatorInstanceID, List<OperatorStateHandle>> subRawOperatorState,
+		Map<OperatorInstanceID, List<KeyedStateHandle>> subManagedKeyedState,
+		Map<OperatorInstanceID, List<KeyedStateHandle>> subRawKeyedState) {
 
 		if (!subManagedOperatorState.containsKey(instanceID) &&
 			!subRawOperatorState.containsKey(instanceID) &&
@@ -465,12 +465,12 @@ public class StateAssignmentOperation {
 	}
 
 	private void reDistributeKeyedStates(
-			List<OperatorState> oldOperatorStates,
-			int newParallelism,
-			List<OperatorID> newOperatorIDs,
-			List<KeyGroupRange> newKeyGroupPartitions,
-			Map<OperatorInstanceID, List<KeyedStateHandle>> newManagedKeyedState,
-			Map<OperatorInstanceID, List<KeyedStateHandle>> newRawKeyedState) {
+		List<OperatorState> oldOperatorStates,
+		int newParallelism,
+		List<OperatorID> newOperatorIDs,
+		List<KeyGroupRange> newKeyGroupPartitions,
+		Map<OperatorInstanceID, List<KeyedStateHandle>> newManagedKeyedState,
+		Map<OperatorInstanceID, List<KeyedStateHandle>> newRawKeyedState) {
 		//TODO: rewrite this method to only use OperatorID
 		checkState(newOperatorIDs.size() == oldOperatorStates.size(),
 			"This method still depends on the order of the new and old operators");
@@ -494,11 +494,11 @@ public class StateAssignmentOperation {
 
 	// TODO rewrite based on operator id
 	private Tuple2<List<KeyedStateHandle>, List<KeyedStateHandle>> reAssignSubKeyedStates(
-			OperatorState operatorState,
-			List<KeyGroupRange> keyGroupPartitions,
-			int subTaskIndex,
-			int newParallelism,
-			int oldParallelism) {
+		OperatorState operatorState,
+		List<KeyGroupRange> keyGroupPartitions,
+		int subTaskIndex,
+		int newParallelism,
+		int oldParallelism) {
 
 		List<KeyedStateHandle> subManagedKeyedState;
 		List<KeyedStateHandle> subRawKeyedState;
@@ -525,11 +525,11 @@ public class StateAssignmentOperation {
 
 	@VisibleForTesting
 	static void reDistributePartitionableStates(
-			List<OperatorState> oldOperatorStates,
-			int newParallelism,
-			List<OperatorID> newOperatorIDs,
-			Map<OperatorInstanceID, List<OperatorStateHandle>> newManagedOperatorStates,
-			Map<OperatorInstanceID, List<OperatorStateHandle>> newRawOperatorStates) {
+		List<OperatorState> oldOperatorStates,
+		int newParallelism,
+		List<OperatorID> newOperatorIDs,
+		Map<OperatorInstanceID, List<OperatorStateHandle>> newManagedOperatorStates,
+		Map<OperatorInstanceID, List<OperatorStateHandle>> newRawOperatorStates) {
 
 		//TODO: rewrite this method to only use OperatorID
 		checkState(newOperatorIDs.size() == oldOperatorStates.size(),
@@ -686,6 +686,23 @@ public class StateAssignmentOperation {
 
 								for (int alignedOldKeyGroup = start; alignedOldKeyGroup <= end; alignedOldKeyGroup++) {
 									long offset = keyGroupsStateHandle.getOffsetForKeyGroup(alignedOldKeyGroup);
+
+									int nextAlignedOldKeyGroup = alignedOldKeyGroup + 1;
+									// those who does not snapshot should be skipped
+									if (nextAlignedOldKeyGroup <= end) {
+										// the current offset is not the last one
+										long nextOffset = keyGroupsStateHandle.getOffsetForKeyGroup(nextAlignedOldKeyGroup);
+										if (nextOffset == offset) {
+											continue;
+										}
+									} else {
+										// the current offset is the last one, need to check whether the last
+										// keygroup contains the corresponding state.
+										long stateSize = keyGroupsStateHandle.getStateSize();
+										if (offset == stateSize) {
+											continue;
+										}
+									}
 
 									fsDataInputStream.seek(offset);
 									int hashedKeyGroup = inView.readInt();
@@ -896,9 +913,9 @@ public class StateAssignmentOperation {
 	 * @param tasks task to map to
 	 */
 	private static void checkStateMappingCompleteness(
-			boolean allowNonRestoredState,
-			Map<OperatorID, OperatorState> operatorStates,
-			Map<JobVertexID, ExecutionJobVertex> tasks) {
+		boolean allowNonRestoredState,
+		Map<OperatorID, OperatorState> operatorStates,
+		Map<JobVertexID, ExecutionJobVertex> tasks) {
 
 		Set<OperatorID> allOperatorIDs = new HashSet<>();
 		for (ExecutionJobVertex executionJobVertex : tasks.values()) {
@@ -966,7 +983,7 @@ public class StateAssignmentOperation {
 			chainOpParallelStates,
 			oldParallelism,
 			newParallelism);
-		}
+	}
 
 	/**
 	 * Determine the subset of {@link KeyGroupsStateHandle KeyGroupsStateHandles} with correct

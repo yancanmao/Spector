@@ -113,6 +113,10 @@ public class KeyGroupRange implements KeyGroupsList, Serializable {
 		return keyGroup >= startKeyGroup && keyGroup <= endKeyGroup;
 	}
 
+	public boolean containsHashedKeyGroup(int hashedKeyGroup) {
+		return fromAlignedToHashed.isEmpty() ? contains(hashedKeyGroup) : fromAlignedToHashed.containsKey(hashedKeyGroup);
+	}
+
 	/**
 	 * Create a range that represent the intersection between this range and the given range.
 	 *
@@ -190,9 +194,9 @@ public class KeyGroupRange implements KeyGroupsList, Serializable {
 	@Override
 	public String toString() {
 		return "KeyGroupRange{" +
-			"startKeyGroup=" + startKeyGroup +
-			", endKeyGroup=" + endKeyGroup +
-			'}';
+				"startKeyGroup=" + startKeyGroup +
+				", endKeyGroup=" + endKeyGroup +
+				'}';
 	}
 
 	@Override

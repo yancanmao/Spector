@@ -60,8 +60,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
 import java.io.IOException;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.RunnableFuture;
@@ -303,6 +305,22 @@ public class HeapKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 		return snapshotRunner;
 	}
 
+	public RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshotAffectedKeyGroups(
+		final long checkpointId,
+		final long timestamp,
+		@Nonnull final CheckpointStreamFactory streamFactory,
+		@Nonnull CheckpointOptions checkpointOptions,
+		@Nullable Collection<Integer> affectedKeygroups) throws IOException {
+
+		long startTime = System.currentTimeMillis();
+
+		final RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshotRunner =
+			snapshotStrategy.snapshotAffectedKeygroups(checkpointId, timestamp, streamFactory, checkpointOptions, affectedKeygroups);
+
+		snapshotStrategy.logSyncCompleted(streamFactory, startTime);
+		return snapshotRunner;
+	}
+
 	@Override
 	public void notifyCheckpointComplete(long checkpointId) {
 		//Nothing to do
@@ -331,6 +349,31 @@ public class HeapKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 				function.process(key, state);
 			}
 		}
+	}
+
+	public void updateKeyGroupOffset() {
+		// TODO: update this part
+//		for (StateTable<K, ?, ?> registeredKVState : registeredKVStates.values()) {
+//			registeredKVState.updateKeyGroupOffset();
+//		}
+	}
+
+	public void updateStateTable(KeyGroupRange keyGroupRange, int numberOfKeyGroups) {
+		// TODO: update actual state table here
+		this.keyGroupRange = keyGroupRange;
+		this.numberOfKeyGroups = numberOfKeyGroups;
+//		InternalKeyContextImpl<K> keyContext = new InternalKeyContextImpl<>(
+//			keyGroupRange,
+//			numberOfKeyGroups
+//		);
+//		for (StateTable<K, ?, ?> registeredKVState : registeredKVStates.values()) {
+//			registeredKVState.updateStateTable(keyContext);
+//		}
+//
+//		// TODO: add a heapStateUpdateOperation, where we need to read the state from the data view and update them to the state table
+//
+//		// substitute the keyContext
+//		this.keyContext = keyContext;
 	}
 
 	@Override
@@ -381,4 +424,11 @@ public class HeapKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 			TypeSerializer<K> keySerializer) throws Exception;
 	}
 
+	public ClassLoader getUserCodeClassLoader() {
+		return userCodeClassLoader;
+	}
+
+	public Map<String, StateTable<K, ?, ?>> getRegisteredKVStates() {
+		return registeredKVStates;
+	}
 }
