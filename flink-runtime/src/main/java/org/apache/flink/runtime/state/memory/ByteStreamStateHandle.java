@@ -23,6 +23,8 @@ import org.apache.flink.runtime.state.StreamStateHandle;
 import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.UUID;
 
 /**
  * A state handle that contains stream state in a byte array.
@@ -96,6 +98,17 @@ public class ByteStreamStateHandle implements StreamStateHandle {
 			"handleName='" + handleName + '\'' +
 			", dataBytes=" + data.length +
 			'}';
+	}
+
+	public ByteStreamStateHandle copyOfRange(long startOffset, long start, long end) {
+		byte[] metadata = Arrays.copyOfRange(getData(), 0, (int) startOffset);
+		byte[] keyGroupData = Arrays.copyOfRange(getData(), (int) start, (int) end);
+		byte[] newData = new byte[metadata.length + keyGroupData.length];
+
+		System.arraycopy(metadata, 0, newData, 0, metadata.length);
+		System.arraycopy(keyGroupData, 0, newData, metadata.length, keyGroupData.length);
+
+		return new ByteStreamStateHandle(handleName + "-" + UUID.randomUUID(), newData);
 	}
 
 	/**

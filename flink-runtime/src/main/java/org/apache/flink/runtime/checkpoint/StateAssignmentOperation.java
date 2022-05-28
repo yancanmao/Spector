@@ -30,6 +30,7 @@ import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.OperatorInstanceID;
 import org.apache.flink.runtime.spector.JobExecutionPlan;
 import org.apache.flink.runtime.state.*;
+import org.apache.flink.runtime.state.memory.ByteStreamStateHandle;
 import org.apache.flink.util.Preconditions;
 
 import org.slf4j.Logger;
@@ -681,35 +682,43 @@ public class StateAssignmentOperation {
 							int start = keyGroupRangeFromOldState.getStartKeyGroup();
 							int end = keyGroupRangeFromOldState.getEndKeyGroup();
 
+							long startOffset = keyGroupsStateHandle.getOffsetForKeyGroup(start);
+
 							try (FSDataInputStream fsDataInputStream = keyGroupsStateHandle.openInputStream()) {
 								DataInputViewStreamWrapper inView = new DataInputViewStreamWrapper(fsDataInputStream);
+
 
 								for (int alignedOldKeyGroup = start; alignedOldKeyGroup <= end; alignedOldKeyGroup++) {
 									long offset = keyGroupsStateHandle.getOffsetForKeyGroup(alignedOldKeyGroup);
 
 									int nextAlignedOldKeyGroup = alignedOldKeyGroup + 1;
-									// those who does not snapshot should be skipped
-									if (nextAlignedOldKeyGroup <= end) {
-										// the current offset is not the last one
-										long nextOffset = keyGroupsStateHandle.getOffsetForKeyGroup(nextAlignedOldKeyGroup);
-										if (nextOffset == offset) {
-											continue;
-										}
-									} else {
-										// the current offset is the last one, need to check whether the last
-										// keygroup contains the corresponding state.
-										long stateSize = keyGroupsStateHandle.getStateSize();
-										if (offset == stateSize) {
-											continue;
-										}
+
+									long nextOffset = nextAlignedOldKeyGroup <= end ?
+										keyGroupsStateHandle.getOffsetForKeyGroup(nextAlignedOldKeyGroup)
+										: keyGroupsStateHandle.getStateSize();
+
+									// skip if the keygroup does not have any state snapshot
+									if (nextOffset == offset) {
+										continue;
 									}
 
 									fsDataInputStream.seek(offset);
 									int hashedKeyGroup = inView.readInt();
 
+//									hashedKeyGroupToHandle.put(
+//										hashedKeyGroup,
+//										Tuple2.of(offset, keyGroupsStateHandle.getDelegateStateHandle()));
+
+									StreamStateHandle curStateHandle = keyGroupsStateHandle.getDelegateStateHandle();
+									// TODO: byte array can at most store 2gb state...
+									Preconditions.checkState(curStateHandle instanceof ByteStreamStateHandle,
+										"++++++ State handle operations are only supported for byted state handle");
+									StreamStateHandle newStateHandlePerKeyGroup =
+										((ByteStreamStateHandle) curStateHandle).copyOfRange(startOffset, offset, nextOffset);
+
 									hashedKeyGroupToHandle.put(
 										hashedKeyGroup,
-										Tuple2.of(offset, keyGroupsStateHandle.getDelegateStateHandle()));
+										Tuple2.of(startOffset, newStateHandlePerKeyGroup));
 								}
 							} catch (IOException err) {
 								throw new RuntimeException(err);
