@@ -31,6 +31,7 @@ import org.apache.flink.runtime.state.metainfo.StateMetaInfoSnapshot;
 import javax.annotation.Nonnegative;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.HashMap;
 
 /**
  * This class represents the snapshot of a {@link CopyOnWriteStateTable} and has a role in operator state checkpointing. Besides
@@ -98,6 +99,9 @@ public class CopyOnWriteStateTableSnapshot<K, N, S>
 	@Nullable
 	private StateKeyGroupWriter partitionedStateTableSnapshot;
 
+	@Nullable
+	private final HashMap<Integer, Boolean> changelogs;
+
 	/**
 	 * Creates a new {@link CopyOnWriteStateTableSnapshot}.
 	 *
@@ -120,6 +124,12 @@ public class CopyOnWriteStateTableSnapshot<K, N, S>
 
 		this.stateSnapshotTransformer = owningStateTable.metaInfo.
 			getStateSnapshotTransformFactory().createForDeserializedState().orElse(null);
+
+		this.changelogs = owningStateTable.getChangeLogs();
+	}
+
+	public HashMap<Integer, Boolean> getChangelogs() {
+		return changelogs;
 	}
 
 	/**

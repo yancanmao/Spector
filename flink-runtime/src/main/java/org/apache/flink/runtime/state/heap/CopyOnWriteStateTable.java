@@ -33,13 +33,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.ConcurrentModificationException;
-import java.util.Iterator;
-import java.util.NoSuchElementException;
-import java.util.Objects;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -209,6 +203,11 @@ public class CopyOnWriteStateTable<K, N, S> extends StateTable<K, N, S> implemen
 	private int modCount;
 
 	/**
+	 * changelogs for each keygroup
+	 */
+	private HashMap<Integer, Boolean> changelogs;
+
+	/**
 	 * Constructs a new {@code StateTable} with default capacity of {@code DEFAULT_CAPACITY}.
 	 *
 	 * @param keyContext the key context.
@@ -260,6 +259,8 @@ public class CopyOnWriteStateTable<K, N, S> extends StateTable<K, N, S> implemen
 			capacity = MathUtils.roundUpToPowerOfTwo(capacity);
 		}
 		primaryTable = makeTable(capacity);
+
+		this.changelogs = new HashMap<>(keyContext.getNumberOfKeyGroups());
 	}
 
 	// Public API from AbstractStateTable ------------------------------------------------------------------------------
@@ -328,26 +329,31 @@ public class CopyOnWriteStateTable<K, N, S> extends StateTable<K, N, S> implemen
 
 	@Override
 	public void put(N namespace, S state) {
+		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
 		put(keyContext.getCurrentKey(), namespace, state);
 	}
 
 	@Override
 	public S putAndGetOld(N namespace, S state) {
+		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
 		return putAndGetOld(keyContext.getCurrentKey(), namespace, state);
 	}
 
 	@Override
 	public void remove(N namespace) {
+		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
 		remove(keyContext.getCurrentKey(), namespace);
 	}
 
 	@Override
 	public S removeAndGetOld(N namespace) {
+		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
 		return removeAndGetOld(keyContext.getCurrentKey(), namespace);
 	}
 
 	@Override
 	public <T> void transform(N namespace, T value, StateTransformationFunction<S, T> transformation) throws Exception {
+		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
 		transform(keyContext.getCurrentKey(), namespace, value, transformation);
 	}
 
@@ -586,7 +592,12 @@ public class CopyOnWriteStateTable<K, N, S> extends StateTable<K, N, S> implemen
 		synchronized (snapshotVersions) {
 			Preconditions.checkState(snapshotVersions.remove(snapshotVersion), "Attempt to release unknown snapshot version");
 			highestRequiredSnapshotVersion = snapshotVersions.isEmpty() ? 0 : snapshotVersions.last();
+			changelogs.clear();
 		}
+	}
+
+	public HashMap<Integer, Boolean> getChangeLogs() {
+		return changelogs;
 	}
 
 	/**

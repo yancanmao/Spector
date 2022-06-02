@@ -172,6 +172,7 @@ class HeapSnapshotStrategy<K>
 					serializationProxy.write(outView);
 
 					final long[] keyGroupRangeOffsets = new long[keyGroupRange.getNumberOfKeyGroups()];
+					final boolean[] changelogs = new boolean[keyGroupRange.getNumberOfKeyGroups()];
 
 					for (int keyGroupPos = 0; keyGroupPos < keyGroupRange.getNumberOfKeyGroups(); ++keyGroupPos) {
 						int alignedKeyGroupId = keyGroupRange.getKeyGroupId(keyGroupPos);
@@ -190,6 +191,15 @@ class HeapSnapshotStrategy<K>
 							StateSnapshot.StateKeyGroupWriter partitionedSnapshot =
 
 								stateSnapshot.getValue().getKeyGroupWriter();
+
+							if (stateSnapshot.getValue() instanceof CopyOnWriteStateTableSnapshot) {
+								if (((CopyOnWriteStateTableSnapshot) stateSnapshot.getValue()).getChangelogs() != null) {
+									if (((CopyOnWriteStateTableSnapshot) stateSnapshot.getValue()).getChangelogs()
+										.containsKey(hashedKeyGroup)) {
+										changelogs[keyGroupPos] = true;
+									}
+								}
+							}
 							try (
 								OutputStream kgCompressionOut =
 									keyGroupCompressionDecorator.decorateWithCompression(localStream)) {
@@ -202,7 +212,7 @@ class HeapSnapshotStrategy<K>
 					}
 
 					if (snapshotCloseableRegistry.unregisterCloseable(streamWithResultProvider)) {
-						KeyGroupRangeOffsets kgOffs = new KeyGroupRangeOffsets(keyGroupRange, keyGroupRangeOffsets);
+						KeyGroupRangeOffsets kgOffs = new KeyGroupRangeOffsets(keyGroupRange, keyGroupRangeOffsets, changelogs);
 						SnapshotResult<StreamStateHandle> result =
 							streamWithResultProvider.closeAndFinalizeCheckpointStreamResult();
 						return CheckpointStreamWithResultProvider.toKeyedStateHandleSnapshotResult(result, kgOffs);

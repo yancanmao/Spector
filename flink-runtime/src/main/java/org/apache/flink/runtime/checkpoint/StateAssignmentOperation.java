@@ -20,6 +20,7 @@ package org.apache.flink.runtime.checkpoint;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.runtime.executiongraph.Execution;
@@ -284,10 +285,10 @@ public class StateAssignmentOperation {
 			OperatorState operatorState = oldOperatorStates.get(operatorIndex);
 
 			// For managed state, hashedKeyGroup -> (offset, streamStateHandle)
-			Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToManagedStateHandle =
+			Map<Integer, Tuple3<Long, StreamStateHandle, Boolean>> hashedKeyGroupToManagedStateHandle =
 				getHashedKeyGroupToHandleFromOperatorState(operatorState, OperatorSubtaskState::getManagedKeyedState);
 
-			Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToRawStateHandle =
+			Map<Integer, Tuple3<Long, StreamStateHandle, Boolean>> hashedKeyGroupToRawStateHandle =
 				getHashedKeyGroupToHandleFromOperatorState(operatorState, OperatorSubtaskState::getRawKeyedState);
 
 			// TODO: job execution plan is incorrect because it only targeting on a operator but is used in multiple operator.
@@ -310,18 +311,17 @@ public class StateAssignmentOperation {
 					// keyGroupRange which length is 1
 					KeyGroupRange rangeOfOneKeyGroupRange = KeyGroupRange.of(alignedKeyGroupRange.getKeyGroupId(i), alignedKeyGroupRange.getKeyGroupId(i));
 
-					Tuple2<Long, StreamStateHandle> managedStateTuple = hashedKeyGroupToManagedStateHandle.get(assignedKeyGroup);
-					if (managedStateTuple != null) {
+					Tuple3<Long, StreamStateHandle, Boolean> managedStateTuple = hashedKeyGroupToManagedStateHandle.get(assignedKeyGroup);
+					if (managedStateTuple != null && managedStateTuple.f2) { // not null and the keygroup state is modified
 						subManagedKeyedStates.add(new KeyGroupsStateHandle(
 							new KeyGroupRangeOffsets(rangeOfOneKeyGroupRange, new long[]{managedStateTuple.f0}),
 							managedStateTuple.f1));
-					}
-
-					Tuple2<Long, StreamStateHandle> rawStateTuple = hashedKeyGroupToRawStateHandle.get(assignedKeyGroup);
-					if (rawStateTuple != null) {
-						subRawKeyedStates.add(new KeyGroupsStateHandle(
-							new KeyGroupRangeOffsets(rangeOfOneKeyGroupRange, new long[]{rawStateTuple.f0}),
-							rawStateTuple.f1));
+						Tuple3<Long, StreamStateHandle, Boolean> rawStateTuple = hashedKeyGroupToRawStateHandle.get(assignedKeyGroup);
+						if (rawStateTuple != null) { // TODO: what about changelog for raw keyed state?
+							subRawKeyedStates.add(new KeyGroupsStateHandle(
+								new KeyGroupRangeOffsets(rangeOfOneKeyGroupRange, new long[]{rawStateTuple.f0}),
+								rawStateTuple.f1));
+						}
 					}
 				}
 			}
@@ -616,10 +616,10 @@ public class StateAssignmentOperation {
 			OperatorState operatorState = oldOperatorStates.get(operatorIndex);
 
 			// For managed state, hashedKeyGroup -> (offset, streamStateHandle)
-			Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToManagedStateHandle =
+			Map<Integer, Tuple3<Long, StreamStateHandle, Boolean>> hashedKeyGroupToManagedStateHandle =
 				getHashedKeyGroupToHandleFromOperatorState(operatorState, OperatorSubtaskState::getManagedKeyedState);
 
-			Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToRawStateHandle =
+			Map<Integer, Tuple3<Long, StreamStateHandle, Boolean>> hashedKeyGroupToRawStateHandle =
 				getHashedKeyGroupToHandleFromOperatorState(operatorState, OperatorSubtaskState::getRawKeyedState);
 
 			// TODO: job execution plan is incorrect because it only targeting on a operator but is used in multiple operator.
@@ -639,14 +639,14 @@ public class StateAssignmentOperation {
 					// keyGroupRange which length is 1
 					KeyGroupRange rangeOfOneKeyGroupRange = KeyGroupRange.of(alignedKeyGroupRange.getKeyGroupId(i), alignedKeyGroupRange.getKeyGroupId(i));
 
-					Tuple2<Long, StreamStateHandle> managedStateTuple = hashedKeyGroupToManagedStateHandle.get(assignedKeyGroup);
+					Tuple3<Long, StreamStateHandle, Boolean> managedStateTuple = hashedKeyGroupToManagedStateHandle.get(assignedKeyGroup);
 					if (managedStateTuple != null) {
 						subManagedKeyedStates.add(new KeyGroupsStateHandle(
 							new KeyGroupRangeOffsets(rangeOfOneKeyGroupRange, new long[]{managedStateTuple.f0}),
 							managedStateTuple.f1));
 					}
 
-					Tuple2<Long, StreamStateHandle> rawStateTuple = hashedKeyGroupToRawStateHandle.get(assignedKeyGroup);
+					Tuple3<Long, StreamStateHandle, Boolean> rawStateTuple = hashedKeyGroupToRawStateHandle.get(assignedKeyGroup);
 					if (rawStateTuple != null) {
 						subRawKeyedStates.add(new KeyGroupsStateHandle(
 							new KeyGroupRangeOffsets(rangeOfOneKeyGroupRange, new long[]{rawStateTuple.f0}),
@@ -660,11 +660,11 @@ public class StateAssignmentOperation {
 		}
 	}
 
-	private static Map<Integer, Tuple2<Long, StreamStateHandle>> getHashedKeyGroupToHandleFromOperatorState(
+	private static Map<Integer, Tuple3<Long, StreamStateHandle, Boolean>> getHashedKeyGroupToHandleFromOperatorState(
 		OperatorState operatorState,
 		Function<OperatorSubtaskState, StateObjectCollection<KeyedStateHandle>> applier) {
 
-		Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle = new HashMap<>();
+		Map<Integer, Tuple3<Long, StreamStateHandle, Boolean>> hashedKeyGroupToHandle = new HashMap<>();
 
 		for (int i = 0; i < operatorState.getParallelism(); i++) {
 			if (operatorState.getState(i) != null) {
@@ -690,6 +690,7 @@ public class StateAssignmentOperation {
 
 								for (int alignedOldKeyGroup = start; alignedOldKeyGroup <= end; alignedOldKeyGroup++) {
 									long offset = keyGroupsStateHandle.getOffsetForKeyGroup(alignedOldKeyGroup);
+									boolean isModified = keyGroupsStateHandle.getIsModified(alignedOldKeyGroup);
 
 									int nextAlignedOldKeyGroup = alignedOldKeyGroup + 1;
 
@@ -718,7 +719,7 @@ public class StateAssignmentOperation {
 
 									hashedKeyGroupToHandle.put(
 										hashedKeyGroup,
-										Tuple2.of(startOffset, newStateHandlePerKeyGroup));
+										Tuple3.of(startOffset, newStateHandlePerKeyGroup, isModified));
 								}
 							} catch (IOException err) {
 								throw new RuntimeException(err);

@@ -39,6 +39,15 @@ public class KeyGroupRangeOffsets implements Iterable<Tuple2<Integer, Long>> , S
 	/** the aligned array of offsets for the key-groups */
 	private final long[] offsets;
 
+	private boolean[] changelogs;
+
+	public KeyGroupRangeOffsets(KeyGroupRange keyGroupRange, long[] offsets, boolean[] changelogs) {
+		this.keyGroupRange = Preconditions.checkNotNull(keyGroupRange);
+		this.offsets = Preconditions.checkNotNull(offsets);
+		this.changelogs = Preconditions.checkNotNull(changelogs);
+		Preconditions.checkArgument(offsets.length == keyGroupRange.getNumberOfKeyGroups());
+	}
+
 	/**
 	 * Creates key-group range with offsets from the given key-group range. The order of given offsets must be aligned
 	 * with respect to the key-groups in the range.
@@ -82,6 +91,14 @@ public class KeyGroupRangeOffsets implements Iterable<Tuple2<Integer, Long>> , S
 	 */
 	public KeyGroupRangeOffsets(KeyGroupRange keyGroupRange) {
 		this(keyGroupRange, new long[keyGroupRange.getNumberOfKeyGroups()]);
+	}
+
+	public boolean getIsModified(int keyGroup) {
+		return changelogs[computeKeyGroupIndex(keyGroup)];
+	}
+
+	public void setIsModified(int keyGroup, boolean isModified) {
+		changelogs[computeKeyGroupIndex(keyGroup)] = isModified;
 	}
 
 	/**
