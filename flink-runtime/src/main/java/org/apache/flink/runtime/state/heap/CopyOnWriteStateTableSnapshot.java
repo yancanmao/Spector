@@ -31,6 +31,7 @@ import org.apache.flink.runtime.state.metainfo.StateMetaInfoSnapshot;
 import javax.annotation.Nonnegative;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.Collection;
 import java.util.HashMap;
 
 /**
@@ -191,6 +192,14 @@ public class CopyOnWriteStateTableSnapshot<K, N, S>
 	@Override
 	public void release() {
 		owningStateTable.releaseSnapshot(this);
+	}
+
+	public void releaseChangeLogs() {
+		owningStateTable.releaseChangeLogs();
+	}
+
+	public void releaseChangeLogs(Collection<Integer> affectedKeygroups) {
+		owningStateTable.releaseChangeLogs(affectedKeygroups);
 	}
 
 	/**

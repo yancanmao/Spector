@@ -20,6 +20,7 @@ package org.apache.flink.runtime.state.heap;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.runtime.state.RegisteredKeyValueStateBackendMetaInfo;
 import org.apache.flink.runtime.state.StateEntry;
 import org.apache.flink.runtime.state.StateTransformationFunction;
@@ -314,6 +315,7 @@ public class CopyOnWriteStateTable<K, N, S> extends StateTable<K, N, S> implemen
 
 	@Override
 	public void put(K key, int keyGroup, N namespace, S state) {
+		changelogs.put(keyGroup, true);
 		put(key, namespace, state);
 	}
 
@@ -592,12 +594,34 @@ public class CopyOnWriteStateTable<K, N, S> extends StateTable<K, N, S> implemen
 		synchronized (snapshotVersions) {
 			Preconditions.checkState(snapshotVersions.remove(snapshotVersion), "Attempt to release unknown snapshot version");
 			highestRequiredSnapshotVersion = snapshotVersions.isEmpty() ? 0 : snapshotVersions.last();
-			changelogs.clear();
 		}
 	}
 
 	public HashMap<Integer, Boolean> getChangeLogs() {
 		return changelogs;
+	}
+
+	public void releaseChangeLogs() {
+		changelogs.clear();
+	}
+
+	public void releaseChangeLogs(Collection<Integer> affectedKeygroups) {
+		affectedKeygroups.forEach(kg -> changelogs.remove(kg));
+		StateTableEntry<K, N, S>[] table = primaryTable;
+//		List<StateTableEntry<K, N, S>> removableEntries = new ArrayList<>();
+		for (StateTableEntry<K, N, S> entry : table) {
+			if (entry == null) {
+				continue;
+			}
+			int hashedKeyGroup = KeyGroupRangeAssignment.assignToKeyGroup(entry.key, keyContext.getNumberOfKeyGroups());
+			if (affectedKeygroups.contains(hashedKeyGroup)) {
+//				removableEntries.add(entry);
+				remove(entry.getKey(), entry.getNamespace());
+			}
+		}
+//		for (StateTableEntry<K, N, S> entry : removableEntries) {
+//			remove(entry.getKey(), entry.getNamespace());
+//		}
 	}
 
 	/**

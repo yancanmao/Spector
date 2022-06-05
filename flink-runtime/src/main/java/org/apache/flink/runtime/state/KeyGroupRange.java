@@ -85,7 +85,12 @@ public class KeyGroupRange implements KeyGroupsList, Serializable {
 	}
 
 	public int mapFromHashedToAligned(int hashedKeyGroup) {
-		return fromHashedToAligned.isEmpty() ? hashedKeyGroup : fromHashedToAligned.get(hashedKeyGroup) + startKeyGroup;
+		try {
+			return fromHashedToAligned.isEmpty() ? hashedKeyGroup : fromHashedToAligned.get(hashedKeyGroup) + startKeyGroup;
+		} catch (Exception e) {
+			System.out.println("= =");
+		}
+		return 0;
 	}
 
 	public void update(KeyGroupRange keyGroupRange) {

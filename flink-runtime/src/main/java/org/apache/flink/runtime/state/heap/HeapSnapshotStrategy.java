@@ -22,25 +22,7 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
-import org.apache.flink.runtime.state.AbstractSnapshotStrategy;
-import org.apache.flink.runtime.state.AsyncSnapshotCallable;
-import org.apache.flink.runtime.state.CheckpointStreamFactory;
-import org.apache.flink.runtime.state.CheckpointStreamWithResultProvider;
-import org.apache.flink.runtime.state.CheckpointedStateScope;
-import org.apache.flink.runtime.state.DoneFuture;
-import org.apache.flink.runtime.state.KeyGroupRange;
-import org.apache.flink.runtime.state.KeyGroupRangeOffsets;
-import org.apache.flink.runtime.state.KeyedBackendSerializationProxy;
-import org.apache.flink.runtime.state.KeyedStateHandle;
-import org.apache.flink.runtime.state.LocalRecoveryConfig;
-import org.apache.flink.runtime.state.RegisteredKeyValueStateBackendMetaInfo;
-import org.apache.flink.runtime.state.SnapshotResult;
-import org.apache.flink.runtime.state.StateSerializerProvider;
-import org.apache.flink.runtime.state.StateSnapshot;
-import org.apache.flink.runtime.state.StateSnapshotRestore;
-import org.apache.flink.runtime.state.StreamCompressionDecorator;
-import org.apache.flink.runtime.state.StreamStateHandle;
-import org.apache.flink.runtime.state.UncompressedStreamCompressionDecorator;
+import org.apache.flink.runtime.state.*;
 import org.apache.flink.runtime.state.metainfo.StateMetaInfoSnapshot;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.function.SupplierWithException;
@@ -193,8 +175,8 @@ class HeapSnapshotStrategy<K>
 								stateSnapshot.getValue().getKeyGroupWriter();
 
 							if (stateSnapshot.getValue() instanceof CopyOnWriteStateTableSnapshot) {
-								if (((CopyOnWriteStateTableSnapshot) stateSnapshot.getValue()).getChangelogs() != null) {
-									if (((CopyOnWriteStateTableSnapshot) stateSnapshot.getValue()).getChangelogs()
+								if (((CopyOnWriteStateTableSnapshot<?, ?, ?>) stateSnapshot.getValue()).getChangelogs() != null) {
+									if (((CopyOnWriteStateTableSnapshot<?, ?, ?>) stateSnapshot.getValue()).getChangelogs()
 										.containsKey(hashedKeyGroup)) {
 										changelogs[keyGroupPos] = true;
 									}
@@ -225,6 +207,12 @@ class HeapSnapshotStrategy<K>
 				protected void cleanupProvidedResources() {
 					for (StateSnapshot tableSnapshot : cowStateStableSnapshots.values()) {
 						tableSnapshot.release();
+						if (tableSnapshot instanceof CopyOnWriteStateTableSnapshot) {
+							// reset changelogs for current checkpoint.
+							if (((CopyOnWriteStateTableSnapshot<?, ?, ?>) tableSnapshot).getChangelogs() != null) {
+								((CopyOnWriteStateTableSnapshot<?, ?, ?>) tableSnapshot).releaseChangeLogs();
+							}
+						}
 					}
 				}
 
@@ -323,6 +311,7 @@ class HeapSnapshotStrategy<K>
 					serializationProxy.write(outView);
 
 					final long[] keyGroupRangeOffsets = new long[keyGroupRange.getNumberOfKeyGroups()];
+					final boolean[] changelogs = new boolean[keyGroupRange.getNumberOfKeyGroups()];
 
 					Preconditions.checkState(affectedKeygroups != null,
 						"++++++ Need to provide an affected keygroup list ");
@@ -345,6 +334,16 @@ class HeapSnapshotStrategy<K>
 								StateSnapshot.StateKeyGroupWriter partitionedSnapshot =
 
 									stateSnapshot.getValue().getKeyGroupWriter();
+
+								if (stateSnapshot.getValue() instanceof CopyOnWriteStateTableSnapshot) {
+									if (((CopyOnWriteStateTableSnapshot<?, ?, ?>) stateSnapshot.getValue()).getChangelogs() != null) {
+										if (((CopyOnWriteStateTableSnapshot<?, ?, ?>) stateSnapshot.getValue()).getChangelogs()
+											.containsKey(hashedKeyGroup)) {
+											changelogs[keyGroupPos] = true;
+										}
+									}
+								}
+
 								try (
 									OutputStream kgCompressionOut =
 										keyGroupCompressionDecorator.decorateWithCompression(localStream)) {
@@ -358,7 +357,7 @@ class HeapSnapshotStrategy<K>
 					}
 
 					if (snapshotCloseableRegistry.unregisterCloseable(streamWithResultProvider)) {
-						KeyGroupRangeOffsets kgOffs = new KeyGroupRangeOffsets(keyGroupRange, keyGroupRangeOffsets);
+						KeyGroupRangeOffsets kgOffs = new KeyGroupRangeOffsets(keyGroupRange, keyGroupRangeOffsets, changelogs);
 						SnapshotResult<StreamStateHandle> result =
 							streamWithResultProvider.closeAndFinalizeCheckpointStreamResult();
 						return CheckpointStreamWithResultProvider.toKeyedStateHandleSnapshotResult(result, kgOffs);
@@ -371,6 +370,14 @@ class HeapSnapshotStrategy<K>
 				protected void cleanupProvidedResources() {
 					for (StateSnapshot tableSnapshot : cowStateStableSnapshots.values()) {
 						tableSnapshot.release();
+						if (tableSnapshot instanceof CopyOnWriteStateTableSnapshot) {
+							// reset changelogs for current checkpoint.
+							if (((CopyOnWriteStateTableSnapshot<?, ?, ?>) tableSnapshot).getChangelogs() != null
+								&& affectedKeygroups != null) {
+								((CopyOnWriteStateTableSnapshot<?, ?, ?>) tableSnapshot).releaseChangeLogs(affectedKeygroups);
+								// TODO: remove the corresponding keygroups from state table.
+							}
+						}
 					}
 				}
 
