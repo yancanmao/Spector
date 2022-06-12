@@ -96,6 +96,12 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 	 */
 	private final HashMap<JobVertexID, List<ExecutionVertex>> standbyExecutionVertexes;
 
+	/**
+	 * keys to replicate
+	 */
+	private final HashMap<JobVertexID, List<Integer>> backupKeyGroups;
+
+
 	public JobStateCoordinator(
 			JobGraph jobGraph,
 			ExecutionGraph executionGraph,
@@ -110,6 +116,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 		this.jobGraphUpdater = JobGraphUpdater.instantiate(jobGraph, userCodeLoader);
 
 		this.standbyExecutionVertexes = new HashMap<>();
+		this.backupKeyGroups = new HashMap<>();
 	}
 
 	//****************************Standby Task Creation****************************

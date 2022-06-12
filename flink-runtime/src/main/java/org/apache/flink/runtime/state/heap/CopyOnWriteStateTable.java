@@ -315,12 +315,13 @@ public class CopyOnWriteStateTable<K, N, S> extends StateTable<K, N, S> implemen
 
 	@Override
 	public void put(K key, int keyGroup, N namespace, S state) {
-		changelogs.put(keyGroup, true);
+		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
 		put(key, namespace, state);
 	}
 
 	@Override
 	public S get(N namespace) {
+		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
 		return get(keyContext.getCurrentKey(), namespace);
 	}
 
@@ -608,20 +609,27 @@ public class CopyOnWriteStateTable<K, N, S> extends StateTable<K, N, S> implemen
 	public void releaseChangeLogs(Collection<Integer> affectedKeygroups) {
 		affectedKeygroups.forEach(kg -> changelogs.remove(kg));
 		StateTableEntry<K, N, S>[] table = primaryTable;
-//		List<StateTableEntry<K, N, S>> removableEntries = new ArrayList<>();
+		List<StateTableEntry<K, N, S>> removableEntries = new ArrayList<>();
 		for (StateTableEntry<K, N, S> entry : table) {
 			if (entry == null) {
 				continue;
 			}
-			int hashedKeyGroup = KeyGroupRangeAssignment.assignToKeyGroup(entry.key, keyContext.getNumberOfKeyGroups());
-			if (affectedKeygroups.contains(hashedKeyGroup)) {
-//				removableEntries.add(entry);
-				remove(entry.getKey(), entry.getNamespace());
-			}
+			checkToreleaseStateEntry(affectedKeygroups, entry, removableEntries);
 		}
-//		for (StateTableEntry<K, N, S> entry : removableEntries) {
+		for (StateTableEntry<K, N, S> entry : removableEntries) {
+			remove(entry.getKey(), entry.getNamespace());
+		}
+	}
+
+	private void checkToreleaseStateEntry(Collection<Integer> affectedKeygroups, StateTableEntry<K, N, S> entry, List<StateTableEntry<K, N, S>> removableEntries) {
+		int hashedKeyGroup = KeyGroupRangeAssignment.assignToKeyGroup(entry.key, keyContext.getNumberOfKeyGroups());
+		if (affectedKeygroups.contains(hashedKeyGroup)) {
+			removableEntries.add(entry);
 //			remove(entry.getKey(), entry.getNamespace());
-//		}
+		}
+		if (entry.next != null) {
+			checkToreleaseStateEntry(affectedKeygroups, entry.next, removableEntries);
+		}
 	}
 
 	/**

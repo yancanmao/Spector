@@ -266,7 +266,7 @@ public class DummyStreamSwitch extends Thread implements FlinkOperatorController
 		 */
 		preparePartitionAssignment("0", "1");
 		for (int i = 0; i < 128; i++) {
-			if (i > 0 && i <= 63)
+			if (i > 0 && i <= 20)
 				executorMapping.get("0").add(i + "");
 			else
 				executorMapping.get("1").add(i + "");
