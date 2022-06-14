@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.executiongraph;
 
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.runtime.clusterframework.types.SlotID;
 import org.apache.flink.runtime.clusterframework.types.SlotProfile;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.instance.SlotSharingGroupId;
@@ -134,6 +135,11 @@ class ProgrammedSlotProvider implements Scheduler {
 		}
 
 		throw new IllegalArgumentException("No registered slot future for task " + vertexId + " (" + subtask + ')');
+	}
+
+	@Override
+	public CompletableFuture<LogicalSlot> allocateSlot(SlotRequestId slotRequestId, ScheduledUnit scheduledUnit, SlotProfile slotProfile, boolean allowQueuedScheduling, Time allocationTimeout, SlotID slotId) {
+		return null;
 	}
 
 	@Override

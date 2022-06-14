@@ -27,6 +27,7 @@ import org.apache.flink.runtime.clusterframework.ApplicationStatus;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.SlotID;
+import org.apache.flink.runtime.clusterframework.types.TaskManagerSlot;
 import org.apache.flink.runtime.instance.HardwareDescription;
 import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.jobmaster.JobMaster;
@@ -79,6 +80,12 @@ public interface ResourceManagerGateway extends FencedRpcGateway<ResourceManager
 		JobMasterId jobMasterId,
 		SlotRequest slotRequest,
 		@RpcTimeout Time timeout);
+
+	CompletableFuture<Acknowledge> requestSlot(
+		JobMasterId jobMasterId,
+		SlotRequest slotRequest,
+		@RpcTimeout Time timeout,
+		SlotID slotId);
 
 	/**
 	 * Cancel the slot allocation requests from the resource manager.
@@ -237,4 +244,6 @@ public interface ResourceManagerGateway extends FencedRpcGateway<ResourceManager
 	 * {@link BlobServer}.
 	 */
 	CompletableFuture<TransientBlobKey> requestTaskManagerFileUpload(ResourceID taskManagerId, FileType fileType, @RpcTimeout Time timeout);
+
+	CompletableFuture<Collection<TaskManagerSlot>> getAllSlots();
 }

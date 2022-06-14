@@ -23,10 +23,7 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.runtime.akka.AkkaUtils;
-import org.apache.flink.runtime.clusterframework.types.AllocationID;
-import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
-import org.apache.flink.runtime.clusterframework.types.SlotID;
+import org.apache.flink.runtime.clusterframework.types.*;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
@@ -406,6 +403,72 @@ public class SlotPoolImpl implements SlotPool {
 			.thenApply((Function.identity()));
 	}
 
+	@Nonnull
+	@Override
+	public CompletableFuture<PhysicalSlot> requestNewAllocatedSlot(
+		@Nonnull SlotRequestId slotRequestId,
+		@Nonnull ResourceProfile resourceProfile,
+		Time timeout,
+		SlotID slotId) {
+
+		componentMainThreadExecutor.assertRunningInMainThread();
+
+		final PendingRequest pendingRequest = new PendingRequest(
+			slotRequestId,
+			resourceProfile);
+
+		// register request timeout
+		FutureUtils
+			.orTimeout(
+				pendingRequest.getAllocatedSlotFuture(),
+				timeout.toMilliseconds(),
+				TimeUnit.MILLISECONDS,
+				componentMainThreadExecutor)
+			.whenComplete(
+				(AllocatedSlot ignored, Throwable throwable) -> {
+					if (throwable instanceof TimeoutException) {
+						timeoutPendingSlotRequest(slotRequestId);
+					}
+				});
+
+		checkNotNull(resourceManagerGateway);
+		checkNotNull(pendingRequest);
+
+		log.info("Requesting slotId {} slot [{}] and profile {} from resource manager.", slotId, pendingRequest.getSlotRequestId(), pendingRequest.getResourceProfile());
+
+		final AllocationID allocationId = new AllocationID();
+
+		pendingRequests.put(pendingRequest.getSlotRequestId(), allocationId, pendingRequest);
+
+		pendingRequest.getAllocatedSlotFuture().whenComplete(
+			(AllocatedSlot allocatedSlot, Throwable throwable) -> {
+				if (throwable != null || !allocationId.equals(allocatedSlot.getAllocationId())) {
+					// cancel the slot request if there is a failure or if the pending request has
+					// been completed with another allocated slot
+					resourceManagerGateway.cancelSlotRequest(allocationId);
+				}
+			});
+
+		CompletableFuture<Acknowledge> rmResponse = resourceManagerGateway.requestSlot(
+			jobMasterId,
+			new SlotRequest(jobId, allocationId, pendingRequest.getResourceProfile(), jobManagerAddress),
+			rpcTimeout,
+			slotId);
+
+		FutureUtils.whenCompleteAsyncIfNotDone(
+			rmResponse,
+			componentMainThreadExecutor,
+			(Acknowledge ignored, Throwable failure) -> {
+				// on failure, fail the request future
+				if (failure != null) {
+					slotRequestToResourceManagerFailed(pendingRequest.getSlotRequestId(), failure);
+				}
+			});
+
+		return pendingRequest.getAllocatedSlotFuture()
+			.thenApply((Function.identity()));
+	}
+
 	@Override
 	@Nonnull
 	public Collection<SlotInfo> getAvailableSlotsInformation() {
@@ -683,6 +746,14 @@ public class SlotPoolImpl implements SlotPool {
 	// ------------------------------------------------------------------------
 	//  Resource
 	// ------------------------------------------------------------------------
+
+	@Override
+	public CompletableFuture<Collection<TaskManagerSlot>> getAllSlots() {
+		if (resourceManagerGateway == null) {
+			return CompletableFuture.completedFuture(null);
+		}
+		return resourceManagerGateway.getAllSlots();
+	}
 
 	/**
 	 * Register TaskManager to this pool, only those slots come from registered TaskManager will be considered valid.

@@ -21,6 +21,7 @@ package org.apache.flink.runtime.jobmanager.scheduler;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
+import org.apache.flink.runtime.clusterframework.types.SlotID;
 import org.apache.flink.runtime.clusterframework.types.SlotProfile;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.executiongraph.ExecutionVertex;
@@ -168,6 +169,11 @@ public class Scheduler implements InstanceListener, SlotAvailabilityListener, Sl
 		} catch (NoResourceAvailableException e) {
 			return FutureUtils.completedExceptionally(e);
 		}
+	}
+
+	@Override
+	public CompletableFuture<LogicalSlot> allocateSlot(SlotRequestId slotRequestId, ScheduledUnit scheduledUnit, SlotProfile slotProfile, boolean allowQueuedScheduling, Time allocationTimeout, SlotID slotId) {
+		return null;
 	}
 
 	@Override

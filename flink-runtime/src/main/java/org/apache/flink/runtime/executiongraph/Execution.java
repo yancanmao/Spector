@@ -27,10 +27,7 @@ import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.accumulators.StringifiedAccumulatorResult;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
-import org.apache.flink.runtime.clusterframework.types.AllocationID;
-import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
-import org.apache.flink.runtime.clusterframework.types.SlotProfile;
+import org.apache.flink.runtime.clusterframework.types.*;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.deployment.InputChannelDeploymentDescriptor;
@@ -482,7 +479,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				queued,
 				locationPreferenceConstraint,
 				allPreviousExecutionGraphAllocationIds,
-				allocationTimeout);
+				allocationTimeout, null);
 
 			final CompletableFuture<Void> deploymentFuture;
 
@@ -525,8 +522,20 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			executionGraph.isQueuedSchedulingAllowed(),
 			LocationPreferenceConstraint.ANY,
 			Collections.emptySet(),
-			executionGraph.getAllocationTimeout()
-		);
+			executionGraph.getAllocationTimeout(),
+			null);
+	}
+
+	public CompletableFuture<Execution> allocateAndAssignSlotForExecution(ReconfigID reconfigId, SlotID slotId) {
+		final ExecutionGraph executionGraph = getVertex().getExecutionGraph();
+		getVertex().updateReconfigId(reconfigId);
+		return allocateAndAssignSlotForExecution(
+			executionGraph.getSlotProvider(),
+			executionGraph.isQueuedSchedulingAllowed(),
+			LocationPreferenceConstraint.ANY,
+			Collections.emptySet(),
+			executionGraph.getAllocationTimeout(),
+			slotId);
 	}
 
 	/**
@@ -538,16 +547,17 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	 * @param allPreviousExecutionGraphAllocationIds set with all previous allocation ids in the job graph.
 	 *                                                 Can be empty if the allocation ids are not required for scheduling.
 	 * @param allocationTimeout rpcTimeout for allocating a new slot
+	 * @param slotId
 	 * @return Future which is completed with this execution once the slot has been assigned
 	 * 			or with an exception if an error occurred.
 	 * @throws IllegalExecutionStateException if this method has been called while not being in the CREATED state
 	 */
 	public CompletableFuture<Execution> allocateAndAssignSlotForExecution(
-			SlotProvider slotProvider,
-			boolean queued,
-			LocationPreferenceConstraint locationPreferenceConstraint,
-			@Nonnull Set<AllocationID> allPreviousExecutionGraphAllocationIds,
-			Time allocationTimeout) throws IllegalExecutionStateException {
+		SlotProvider slotProvider,
+		boolean queued,
+		LocationPreferenceConstraint locationPreferenceConstraint,
+		@Nonnull Set<AllocationID> allPreviousExecutionGraphAllocationIds,
+		Time allocationTimeout, SlotID slotId) throws IllegalExecutionStateException {
 
 		checkNotNull(slotProvider);
 
@@ -596,7 +606,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 								previousAllocationIDs,
 								allPreviousExecutionGraphAllocationIds),
 							queued,
-							allocationTimeout));
+							allocationTimeout,
+							slotId));
 
 			// register call back to cancel slot request in case that the execution gets canceled
 			releaseFuture.whenComplete(

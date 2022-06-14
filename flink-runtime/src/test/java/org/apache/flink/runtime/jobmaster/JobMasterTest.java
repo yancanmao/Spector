@@ -47,9 +47,7 @@ import org.apache.flink.runtime.checkpoint.StandaloneCheckpointRecoveryFactory;
 import org.apache.flink.runtime.checkpoint.StandaloneCompletedCheckpointStore;
 import org.apache.flink.runtime.checkpoint.TestingCheckpointRecoveryFactory;
 import org.apache.flink.runtime.checkpoint.savepoint.SavepointV2;
-import org.apache.flink.runtime.clusterframework.types.AllocationID;
-import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
+import org.apache.flink.runtime.clusterframework.types.*;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
@@ -573,6 +571,12 @@ public class JobMasterTest extends TestLogger {
 			return new CompletableFuture<>();
 		}
 
+		@Nonnull
+		@Override
+		public CompletableFuture<PhysicalSlot> requestNewAllocatedSlot(@Nonnull SlotRequestId slotRequestId, @Nonnull ResourceProfile resourceProfile, Time timeout, SlotID slotId) {
+			return null;
+		}
+
 		@Override
 		public AllocatedSlotReport createAllocatedSlotReport(ResourceID taskManagerId) {
 			final Collection<SlotInfo> slotInfos = registeredSlots.getOrDefault(taskManagerId, Collections.emptyList());
@@ -583,6 +587,11 @@ public class JobMasterTest extends TestLogger {
 				.collect(Collectors.toList());
 
 			return new AllocatedSlotReport(jobId, allocatedSlotInfos);
+		}
+
+		@Override
+		public CompletableFuture<Collection<TaskManagerSlot>> getAllSlots() {
+			return null;
 		}
 
 		@Override

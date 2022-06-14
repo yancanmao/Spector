@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.jobmaster.slotpool;
 
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.runtime.clusterframework.types.SlotID;
 import org.apache.flink.runtime.clusterframework.types.SlotProfile;
 import org.apache.flink.runtime.instance.SlotSharingGroupId;
 import org.apache.flink.runtime.jobmanager.scheduler.ScheduledUnit;
@@ -58,6 +59,13 @@ public interface SlotProvider {
 		SlotProfile slotProfile,
 		boolean allowQueuedScheduling,
 		Time allocationTimeout);
+
+	CompletableFuture<LogicalSlot> allocateSlot(
+		SlotRequestId slotRequestId,
+		ScheduledUnit scheduledUnit,
+		SlotProfile slotProfile,
+		boolean allowQueuedScheduling,
+		Time allocationTimeout, SlotID slotId);
 
 	/**
 	 * Allocating slot with specific requirement.

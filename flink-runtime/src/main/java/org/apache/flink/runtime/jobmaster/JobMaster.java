@@ -42,6 +42,7 @@ import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
+import org.apache.flink.runtime.clusterframework.types.TaskManagerSlot;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.execution.SuppressRestartsException;
@@ -855,6 +856,11 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 			log.warn("Cannot fail slot " + allocationId + " because the TaskManager " +
 			taskManagerId + " is unknown.");
 		}
+	}
+
+	@Override
+	public CompletableFuture<Collection<TaskManagerSlot>> getAllSlots() {
+		return slotPool.getAllSlots();
 	}
 
 	private void internalFailAllocation(AllocationID allocationId, Exception cause) {

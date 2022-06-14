@@ -20,9 +20,11 @@ package org.apache.flink.runtime.jobmaster.slotpool;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.runtime.clusterframework.types.SlotID;
 import org.apache.flink.runtime.clusterframework.types.SlotProfile;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.FutureUtils;
+import org.apache.flink.runtime.instance.Slot;
 import org.apache.flink.runtime.instance.SlotSharingGroupId;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationConstraint;
 import org.apache.flink.runtime.jobmanager.scheduler.Locality;
@@ -111,15 +113,40 @@ public class SchedulerImpl implements Scheduler {
 		SlotProfile slotProfile,
 		boolean allowQueuedScheduling,
 		Time allocationTimeout) {
+		return allocateSlotInternal(slotRequestId, scheduledUnit, slotProfile,
+			allowQueuedScheduling, allocationTimeout, null);
+	}
+
+	@Override
+	public CompletableFuture<LogicalSlot> allocateSlot(
+		SlotRequestId slotRequestId,
+		ScheduledUnit scheduledUnit,
+		SlotProfile slotProfile,
+		boolean allowQueuedScheduling,
+		Time allocationTimeout,
+		SlotID slotId) {
+		return allocateSlotInternal(slotRequestId, scheduledUnit, slotProfile,
+			allowQueuedScheduling, allocationTimeout, slotId);
+	}
+
+	private CompletableFuture<LogicalSlot> allocateSlotInternal(
+		SlotRequestId slotRequestId,
+		ScheduledUnit scheduledUnit,
+		SlotProfile slotProfile,
+		boolean allowQueuedScheduling,
+		Time allocationTimeout,
+		@Nullable SlotID slotId) {
 		log.debug("Received slot request [{}] for task: {}", slotRequestId, scheduledUnit.getTaskToExecute());
 
 		componentMainThreadExecutor.assertRunningInMainThread();
 
 		final CompletableFuture<LogicalSlot> allocationResultFuture = new CompletableFuture<>();
 
-		CompletableFuture<LogicalSlot> allocationFuture = scheduledUnit.getSlotSharingGroupId() == null ?
-			allocateSingleSlot(slotRequestId, slotProfile, allowQueuedScheduling, allocationTimeout) :
-			allocateSharedSlot(slotRequestId, scheduledUnit, slotProfile, allowQueuedScheduling, allocationTimeout);
+		CompletableFuture<LogicalSlot> allocationFuture = slotId != null ?
+			allocateSingleSlotWithSlotId(slotRequestId, slotProfile, allowQueuedScheduling, allocationTimeout, slotId)	:
+			scheduledUnit.getSlotSharingGroupId() == null ?
+				allocateSingleSlot(slotRequestId, slotProfile, allowQueuedScheduling, allocationTimeout) :
+				allocateSharedSlot(slotRequestId, scheduledUnit, slotProfile, allowQueuedScheduling, allocationTimeout);
 
 		allocationFuture.whenComplete((LogicalSlot slot, Throwable failure) -> {
 			if (failure != null) {
@@ -160,6 +187,41 @@ public class SchedulerImpl implements Scheduler {
 	}
 
 	//---------------------------
+
+	private CompletableFuture<LogicalSlot> allocateSingleSlotWithSlotId(
+		SlotRequestId slotRequestId,
+		SlotProfile slotProfile,
+		boolean allowQueuedScheduling,
+		Time allocationTimeout,
+		SlotID slotId) {
+
+		Optional<SlotAndLocality> slotAndLocality = tryAllocateFromAvailable(slotRequestId, slotId);
+
+		if (slotAndLocality.isPresent()) {
+			// already successful from available
+			try {
+				return CompletableFuture.completedFuture(
+					completeAllocationByAssigningPayload(slotRequestId, slotAndLocality.get()));
+			} catch (FlinkException e) {
+				return FutureUtils.completedExceptionally(e);
+			}
+		} else if (allowQueuedScheduling) {
+			// we allocate by requesting a new slot
+			return slotPool
+				.requestNewAllocatedSlot(slotRequestId, slotProfile.getResourceProfile(), allocationTimeout)
+				.thenApply((PhysicalSlot allocatedSlot) -> {
+					try {
+						return completeAllocationByAssigningPayload(slotRequestId, new SlotAndLocality(allocatedSlot, Locality.UNKNOWN));
+					} catch (FlinkException e) {
+						throw new CompletionException(e);
+					}
+				});
+		} else {
+			// failed to allocate
+			return FutureUtils.completedExceptionally(
+				new NoResourceAvailableException("Could not allocate a simple slot for " + slotRequestId + '.'));
+		}
+	}
 
 	private CompletableFuture<LogicalSlot> allocateSingleSlot(
 		SlotRequestId slotRequestId,
@@ -217,6 +279,22 @@ public class SchedulerImpl implements Scheduler {
 			slotPool.releaseSlot(slotRequestId, flinkException);
 			throw flinkException;
 		}
+	}
+
+	private Optional<SlotAndLocality> tryAllocateFromAvailable(
+		@Nonnull SlotRequestId slotRequestId,
+		SlotID slotId) {
+		Optional<SlotInfo> slotInfo = slotPool.getAvailableSlotsInformation().stream()
+			.filter(slotInfoWithUtilization -> slotInfoWithUtilization.getPhysicalSlotNumber() == slotId.getSlotNumber() &&
+				slotInfoWithUtilization.getTaskManagerLocation().getResourceID() == slotId.getResourceID())
+			.findFirst();
+
+		return slotInfo.flatMap(slotInfoWithUtilization -> {
+			Optional<PhysicalSlot> optionalAllocatedSlot = slotPool.allocateAvailableSlot(slotRequestId, slotInfoWithUtilization.getAllocationId());
+
+			return optionalAllocatedSlot.map(
+				allocatedSlot -> new SlotAndLocality(allocatedSlot, Locality.UNKNOWN));
+		});
 	}
 
 	private Optional<SlotAndLocality> tryAllocateFromAvailable(

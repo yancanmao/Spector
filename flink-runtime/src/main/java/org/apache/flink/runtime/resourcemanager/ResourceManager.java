@@ -25,11 +25,7 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.blob.TransientBlobKey;
 import org.apache.flink.runtime.clusterframework.ApplicationStatus;
 import org.apache.flink.runtime.clusterframework.messages.InfoMessage;
-import org.apache.flink.runtime.clusterframework.types.AllocationID;
-import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.clusterframework.types.ResourceIDRetrievable;
-import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
-import org.apache.flink.runtime.clusterframework.types.SlotID;
+import org.apache.flink.runtime.clusterframework.types.*;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.entrypoint.ClusterInformation;
 import org.apache.flink.runtime.heartbeat.HeartbeatListener;
@@ -275,6 +271,11 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
 	// ------------------------------------------------------------------------
 
 	@Override
+	public CompletableFuture<Collection<TaskManagerSlot>> getAllSlots() {
+		return CompletableFuture.completedFuture(slotManager.getAllSlots());
+	}
+
+	@Override
 	public CompletableFuture<RegistrationResponse> registerJobManager(
 			final JobMasterId jobMasterId,
 			final ResourceID jobManagerResourceId,
@@ -444,6 +445,36 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
 				try {
 					slotManager.registerSlotRequest(slotRequest);
 				} catch (SlotManagerException e) {
+					return FutureUtils.completedExceptionally(e);
+				}
+
+				return CompletableFuture.completedFuture(Acknowledge.get());
+			} else {
+				return FutureUtils.completedExceptionally(new ResourceManagerException("The job leader's id " +
+					jobManagerRegistration.getJobMasterId() + " does not match the received id " + jobMasterId + '.'));
+			}
+
+		} else {
+			return FutureUtils.completedExceptionally(new ResourceManagerException("Could not find registered job manager for job " + jobId + '.'));
+		}
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> requestSlot(JobMasterId jobMasterId, SlotRequest slotRequest, final Time timeout, SlotID slotId) {
+		JobID jobId = slotRequest.getJobId();
+		JobManagerRegistration jobManagerRegistration = jobManagerRegistrations.get(jobId);
+
+		if (null != jobManagerRegistration) {
+			if (Objects.equals(jobMasterId, jobManagerRegistration.getJobMasterId())) {
+				log.info("Request slot {} with profile {} for job {} with allocation id {}.",
+					slotId,
+					slotRequest.getResourceProfile(),
+					slotRequest.getJobId(),
+					slotRequest.getAllocationId());
+
+				try {
+					slotManager.allocateSlot(slotRequest, slotId);
+				} catch (ResourceManagerException e) {
 					return FutureUtils.completedExceptionally(e);
 				}
 

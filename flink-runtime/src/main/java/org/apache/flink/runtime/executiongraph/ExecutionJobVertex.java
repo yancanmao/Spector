@@ -686,7 +686,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 				queued,
 				locationPreferenceConstraint,
 				allPreviousExecutionGraphAllocationIds,
-				allocationTimeout);
+				allocationTimeout, null);
 			slots[i] = allocationFuture;
 		}
 
