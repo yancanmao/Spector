@@ -538,7 +538,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 				Preconditions.checkState(!backupStateManager.replicas.containsKey(taskInformation.getJobVertexId()),
 					"++++++backupStateManager should only maintain a replica for each jobVertex");
-				backupStateManager.replicas.put(taskInformation.getJobVertexId(), taskStateManager);
+				backupStateManager.put(taskInformation.getJobVertexId(), taskStateManager);
 
 				jobManagerConnection.getTaskManagerActions().updateTaskExecutionState(
 					new TaskExecutionState(jobId, tdd.getExecutionAttemptId(), ExecutionState.STANDBY));
@@ -672,8 +672,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				if (reconfigOptions.isUpdatingState()) {
 					log.info("++++++ update task state: " + tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId());
 
-//					JobManagerTaskRestore taskRestore = getTaskRestoreFromReplica(task);
-					JobManagerTaskRestore taskRestore = tdd.getTaskRestore();
+					JobManagerTaskRestore taskRestore = backupStateManager.getTaskRestoreFromReplica(task.getJobVertexId());
+//					JobManagerTaskRestore taskRestore = tdd.getTaskRestore();
 
 					task.assignNewState(
 						tdd.getKeyGroupRange(),
@@ -716,18 +716,6 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		}
 	}
 
-	/**
-	 * The API to retrieve task restore from the replica tasks.
-	 * @param reconfigTask
-	 * @return
-	 */
-	public JobManagerTaskRestore getTaskRestoreFromReplica(Task reconfigTask) {
-		TaskStateManager taskStateManager = backupStateManager.replicas.get(reconfigTask.getJobVertexId());
-		// directly assign backup taskrestore for the targeting task, and it will be updated in each operator during
-		// state initialization.
-		return ((TaskStateManagerImpl) taskStateManager).getTaskRestore();
-	}
-
 	@Override
 	public CompletableFuture<Acknowledge> cancelTask(ExecutionAttemptID executionAttemptID, Time timeout) {
 		final Task task = taskSlotTable.getTask(executionAttemptID);
@@ -768,26 +756,13 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	}
 
 	@Override
-	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, JobManagerTaskRestore taskRestore, Time timeout) {
-//		final Task task = taskSlotTable.getTask(executionAttemptID);
-//
-//		if (task != null) {
-//			try {
-//				task.dispatchStateToStandbyTask(taskRestore);
-//				return CompletableFuture.completedFuture(Acknowledge.get());
-//			} catch (Throwable t) {
-//				return FutureUtils.completedExceptionally(new TaskException("Cannot dispatch state snapshot to standby task " + executionAttemptID + '.', t));
-//			}
-//		} else {
-//			final String message = "Cannot find standby task " + executionAttemptID + " to dispatch state to it.";
-//
-//			log.debug(message);
-//			return FutureUtils.completedExceptionally(new TaskException(message));
-//		}
-		final TaskStateManager taskStateManager = backupStateManager.replicas.get(jobvertexId);
-
-		if (taskStateManager != null) {
-			taskStateManager.setTaskRestore(taskRestore);
+	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(
+		ExecutionAttemptID executionAttemptID,
+		JobVertexID jobvertexId,
+		JobManagerTaskRestore taskRestore,
+		Time timeout) {
+		if (backupStateManager.replicas.containsKey(jobvertexId)) {
+			backupStateManager.mergeState(jobvertexId, taskRestore);
 
 			return CompletableFuture.completedFuture(Acknowledge.get());
 		} else {
@@ -795,6 +770,16 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			log.debug(message);
 			return FutureUtils.completedExceptionally(new TaskException(message));
 		}
+
+//		if (taskStateManager != null) {
+//			taskStateManager.setTaskRestore(taskRestore);
+//
+//			return CompletableFuture.completedFuture(Acknowledge.get());
+//		} else {
+//			final String message = "Cannot find standby task " + executionAttemptID + " to dispatch state to it.";
+//			log.debug(message);
+//			return FutureUtils.completedExceptionally(new TaskException(message));
+//		}
 	}
 
 	// ----------------------------------------------------------------------

@@ -33,10 +33,13 @@ public class HeapUpdateOperation<K> {
 	private final StateSerializerProvider<K> keySerializerProvider;
 	private final Map<String, StateTable<K, ?, ?>> registeredKVStates;
 
+	private final Collection<Integer> migrateInKeygroup;
+
+
 	public HeapUpdateOperation(Collection<KeyedStateHandle> stateHandles,
-                               HeapKeyedStateBackend<K> keyedStateBackend, TypeSerializer<K> keySerializer,
-                               KeyGroupRange keyGroupRange, int maxNumberOfParallelSubtasks,
-                               CloseableRegistry cancelStreamRegistry) {
+							   HeapKeyedStateBackend<K> keyedStateBackend, TypeSerializer<K> keySerializer,
+							   KeyGroupRange keyGroupRange, int maxNumberOfParallelSubtasks,
+							   CloseableRegistry cancelStreamRegistry, Collection<Integer> migrateInKeygroup) {
 		this.stateHandles = stateHandles;
 		this.keyedStateBackend = keyedStateBackend;
 		this.registeredKVStates = keyedStateBackend.getRegisteredKVStates();
@@ -45,6 +48,7 @@ public class HeapUpdateOperation<K> {
 		this.keyGroupRange = keyGroupRange;
 		this.maxNumberOfParallelSubtasks = maxNumberOfParallelSubtasks;
 		this.cancelStreamRegistry = cancelStreamRegistry;
+		this.migrateInKeygroup = migrateInKeygroup;
 	}
 
 	public void updateHeapState() throws Exception {
@@ -141,18 +145,19 @@ public class HeapUpdateOperation<K> {
 			long offset = groupOffset.f1;
 
 			// Check that restored key groups all belong to the backend.
-//			Preconditions.checkState(keyGroupRange.contains(keyGroupIndex), "The key group must belong to the backend.");
-			Preconditions.checkState(keyGroupRange.contains(alignedKeyGroupIndex), "The key group must belong to the backend."
-				+ keyGroupRange + " : " + alignedKeyGroupIndex);
-
 			fsDataInputStream.seek(offset);
 
 			int hashedKeyGroup = inView.readInt();
-			Preconditions.checkState(hashedKeyGroup == keyGroupRange.mapFromAlignedToHashed(alignedKeyGroupIndex),
-				String.format("Unexpected key-group in restore {%s : %s}.", hashedKeyGroup, keyGroupRange.mapFromAlignedToHashed(alignedKeyGroupIndex)));
+
+			if (!migrateInKeygroup.contains(hashedKeyGroup)) {
+				continue;
+			}
+
+//			Preconditions.checkState(hashedKeyGroup == keyGroupRange.mapFromAlignedToHashed(alignedKeyGroupIndex),
+//				String.format("Unexpected key-group in restore {%s : %s}.", hashedKeyGroup, keyGroupRange.mapFromAlignedToHashed(alignedKeyGroupIndex)));
 
 			LOG.info("++++++-- keyGroupRange: " + keyGroupRange +
-				", alignedKeyGroupIndex: " + alignedKeyGroupIndex +
+				", alignedKeyGroupIndex: " + keyGroupRange.mapFromHashedToAligned(hashedKeyGroup) +
 				", offset: " + offset +
 				", hashedKeyGroup: " + hashedKeyGroup);
 

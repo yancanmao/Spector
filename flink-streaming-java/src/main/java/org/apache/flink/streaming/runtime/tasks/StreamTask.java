@@ -978,9 +978,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		LOG.info("++++++ let's reinitialize state: " + this.toString() + "  " + keyGroupRange + "  idInModel: " + idInModel);
 		try {
 			synchronized (lock) {
-				this.assignedKeyGroupRange.update(keyGroupRange);
-				this.idInModel = idInModel;
-
 				List<Integer> migrateOutKeygroup = new ArrayList<>();
 				// find out the affected keys by checking the updated keygrouprange
 				for (int keyGroup = assignedKeyGroupRange.getStartKeyGroup(); keyGroup < assignedKeyGroupRange.getEndKeyGroup()+1; keyGroup++) {
@@ -998,8 +995,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					}
 				}
 
+				this.assignedKeyGroupRange.update(keyGroupRange);
+				this.idInModel = idInModel;
+
 				if (!migrateInKeygroup.isEmpty()) {
-					updateState(keyGroupRange, getEnvironment().getTaskInfo().getMaxNumberOfParallelSubtasks());
+					updateState(keyGroupRange, getEnvironment().getTaskInfo().getMaxNumberOfParallelSubtasks(), migrateInKeygroup);
 				}
 
 //				initializeState();
@@ -1021,13 +1021,13 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		}
 	}
 
-	private void updateState(KeyGroupRange keyGroupRange, int maxNumberOfParallelSubtasks) throws Exception {
+	private void updateState(KeyGroupRange keyGroupRange, int maxNumberOfParallelSubtasks, Collection<Integer> migrateInKeygroup) throws Exception {
 
 		StreamOperator<?>[] allOperators = operatorChain.getAllOperators();
 
 		for (StreamOperator<?> operator : allOperators) {
-			if (null != operator) { // TODO: add update state table logic here.
-				operator.updateStateTable(keyGroupRange, maxNumberOfParallelSubtasks);
+			if (null != operator) {
+				operator.updateStateTable(keyGroupRange, maxNumberOfParallelSubtasks, migrateInKeygroup);
 			}
 		}
 	}

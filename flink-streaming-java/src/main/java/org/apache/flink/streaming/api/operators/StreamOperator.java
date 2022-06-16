@@ -169,5 +169,5 @@ public interface StreamOperator<OUT> extends CheckpointListener, KeyContext, Dis
 
 	void updateOutput(StreamTask<?, ?> containingTask, Output<StreamRecord<OUT>> output);
 
-	void updateStateTable(KeyGroupRange keyGroupRange, int maxNumberOfParallelSubtasks) throws Exception;
+	void updateStateTable(KeyGroupRange keyGroupRange, int maxNumberOfParallelSubtasks, Collection<Integer> migrateInKeygroup) throws Exception;
 }
