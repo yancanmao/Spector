@@ -32,13 +32,7 @@ import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.StoppingException;
 import org.apache.flink.runtime.accumulators.AccumulatorSnapshot;
 import org.apache.flink.runtime.blob.BlobWriter;
-import org.apache.flink.runtime.checkpoint.CheckpointCoordinator;
-import org.apache.flink.runtime.checkpoint.CheckpointDeclineReason;
-import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
-import org.apache.flink.runtime.checkpoint.CheckpointTriggerException;
-import org.apache.flink.runtime.checkpoint.Checkpoints;
-import org.apache.flink.runtime.checkpoint.CompletedCheckpoint;
-import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
+import org.apache.flink.runtime.checkpoint.*;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
@@ -46,14 +40,7 @@ import org.apache.flink.runtime.clusterframework.types.TaskManagerSlot;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.execution.SuppressRestartsException;
-import org.apache.flink.runtime.executiongraph.ArchivedExecutionGraph;
-import org.apache.flink.runtime.executiongraph.Execution;
-import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
-import org.apache.flink.runtime.executiongraph.ExecutionGraph;
-import org.apache.flink.runtime.executiongraph.ExecutionGraphBuilder;
-import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
-import org.apache.flink.runtime.executiongraph.IntermediateResult;
-import org.apache.flink.runtime.executiongraph.JobStatusListener;
+import org.apache.flink.runtime.executiongraph.*;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategy;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategyResolving;
 import org.apache.flink.runtime.heartbeat.HeartbeatListener;
@@ -62,12 +49,7 @@ import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.heartbeat.HeartbeatTarget;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
-import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
-import org.apache.flink.runtime.jobgraph.JobGraph;
-import org.apache.flink.runtime.jobgraph.JobStatus;
-import org.apache.flink.runtime.jobgraph.JobVertex;
-import org.apache.flink.runtime.jobgraph.JobVertexID;
-import org.apache.flink.runtime.jobgraph.SavepointRestoreSettings;
+import org.apache.flink.runtime.jobgraph.*;
 import org.apache.flink.runtime.jobmanager.OnCompletionActions;
 import org.apache.flink.runtime.jobmanager.PartitionProducerDisposedException;
 import org.apache.flink.runtime.jobmaster.exceptions.JobModificationException;
@@ -90,7 +72,6 @@ import org.apache.flink.runtime.query.UnknownKvStateLocation;
 import org.apache.flink.runtime.registration.RegisteredRpcConnection;
 import org.apache.flink.runtime.registration.RegistrationResponse;
 import org.apache.flink.runtime.registration.RetryingRegistration;
-import org.apache.flink.runtime.spector.JobStateCoordinator;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.BackPressureStatsTracker;
@@ -101,6 +82,11 @@ import org.apache.flink.runtime.rpc.FencedRpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.RpcUtils;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils;
+import org.apache.flink.runtime.spector.JobStateCoordinator;
+import org.apache.flink.runtime.spector.netty.CheckpointCoordinatorNettyServer;
+import org.apache.flink.runtime.spector.netty.TaskExecutorNettyClient;
+import org.apache.flink.runtime.spector.netty.data.CheckpointCoordinatorSocketAddress;
+import org.apache.flink.runtime.spector.netty.data.TaskExecutorSocketAddress;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.taskexecutor.AccumulatorReport;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
@@ -111,30 +97,16 @@ import org.apache.flink.runtime.webmonitor.WebMonitorUtils;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.InstantiationUtil;
-
+import org.apache.flink.util.NetUtils;
 import org.slf4j.Logger;
 
 import javax.annotation.Nullable;
-
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.Executor;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeoutException;
+import java.net.UnknownHostException;
+import java.util.*;
+import java.util.concurrent.*;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -230,6 +202,10 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 	private Map<String, Object> accumulators;
 
+	private final boolean nettyStateTransmissionEnabled = true;
+
+	private final CheckpointCoordinatorNettyServer checkpointCoordinatorNettyServer;
+
 	// ------------------------------------------------------------------------
 
 	public JobMaster(
@@ -300,6 +276,18 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 		this.jobStateCoordinator = new JobStateCoordinator(
 			jobGraph, executionGraph, userCodeLoader);
+
+		try {
+			boolean taskAckEnable = true;
+			this.checkpointCoordinatorNettyServer = nettyStateTransmissionEnabled ?
+				new CheckpointCoordinatorNettyServer(
+					() -> this.getSelfGateway(CheckpointCoordinatorGateway.class),
+//					NetUtils.getLocalHostLANAddress().getHostAddress(),
+					InetAddress.getLocalHost().getHostAddress(),
+					taskAckEnable) : null;
+		} catch (UnknownHostException e) {
+			throw new RuntimeException(e);
+		}
 	}
 
 	//----------------------------------------------------------------------------------------------
@@ -824,7 +812,8 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 	public CompletableFuture<Collection<SlotOffer>> offerSlots(
 			final ResourceID taskManagerId,
 			final Collection<SlotOffer> slots,
-			final Time timeout) {
+			final Time timeout,
+			final TaskExecutorSocketAddress taskExecutorSocketAddress) {
 
 		Tuple2<TaskManagerLocation, TaskExecutorGateway> taskManager = registeredTaskManagers.get(taskManagerId);
 
@@ -835,7 +824,33 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		final TaskManagerLocation taskManagerLocation = taskManager.f0;
 		final TaskExecutorGateway taskExecutorGateway = taskManager.f1;
 
-		final RpcTaskManagerGateway rpcTaskManagerGateway = new RpcTaskManagerGateway(taskExecutorGateway, getFencingToken());
+		TaskExecutorNettyClient taskExecutorNettyClient = null;
+		boolean nettyStateTransmissionEnable = true;
+		if (nettyStateTransmissionEnable) {
+			int channelCount = 10;
+			int connectTimeoutMills = 10000;
+			int lowWaterMark = 10 * 1024 * 1024;
+			int highWaterMark = 50 * 1024 * 1024;
+			boolean taskDeploymentEnabled = false;
+			taskExecutorNettyClient = new TaskExecutorNettyClient(
+				taskExecutorSocketAddress,
+				channelCount,
+				connectTimeoutMills,
+				lowWaterMark,
+				highWaterMark,
+				taskDeploymentEnabled);
+			try {
+				taskExecutorNettyClient.start();
+			} catch (Exception e) {
+				throw new RuntimeException(e);
+			}
+		}
+
+		final RpcTaskManagerGateway rpcTaskManagerGateway = new RpcTaskManagerGateway(
+			taskExecutorGateway,
+			getFencingToken(),
+			nettyStateTransmissionEnable,
+			taskExecutorNettyClient);
 
 		return CompletableFuture.completedFuture(
 			slotPool.offerSlots(
@@ -880,8 +895,14 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 		final ResourceID taskManagerId = taskManagerLocation.getResourceID();
 
+		// pass taskExecutorNettyServer to JobMaster for the future data transmission.
+		CheckpointCoordinatorSocketAddress checkpointCoordinatorSocketAddress =
+			checkpointCoordinatorNettyServer == null ?
+			null :
+			new CheckpointCoordinatorSocketAddress(checkpointCoordinatorNettyServer.getAddress(), checkpointCoordinatorNettyServer.getPort());
+
 		if (registeredTaskManagers.containsKey(taskManagerId)) {
-			final RegistrationResponse response = new JMTMRegistrationSuccess(resourceId);
+			final RegistrationResponse response = new JMTMRegistrationSuccess(resourceId, checkpointCoordinatorSocketAddress);
 			return CompletableFuture.completedFuture(response);
 		} else {
 			return getRpcService()
@@ -908,11 +929,12 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 							}
 						});
 
-						return new JMTMRegistrationSuccess(resourceId);
+						return new JMTMRegistrationSuccess(resourceId, checkpointCoordinatorSocketAddress);
 					},
 					getMainThreadExecutor());
 		}
 	}
+
 
 	@Override
 	public void disconnectResourceManager(
@@ -1068,6 +1090,10 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		log.info("Starting execution of job {} ({}) under job master id {}.", jobGraph.getName(), jobGraph.getJobID(), newJobMasterId);
 
 		resetAndScheduleExecutionGraph();
+
+		if (checkpointCoordinatorNettyServer != null) {
+			checkpointCoordinatorNettyServer.start();
+		}
 
 		return Acknowledge.get();
 	}

@@ -941,7 +941,7 @@ public class TaskExecutorTest extends TestLogger {
 		when(jobMasterGateway.getHostname()).thenReturn(jobManagerAddress);
 
 		when(jobMasterGateway.offerSlots(
-				any(ResourceID.class), any(Collection.class), any(Time.class)))
+				any(ResourceID.class), any(Collection.class), any(Time.class), null))
 			.thenReturn(CompletableFuture.completedFuture((Collection<SlotOffer>) Collections.singleton(offer1)));
 
 		rpc.registerGateway(resourceManagerAddress, resourceManagerGateway);

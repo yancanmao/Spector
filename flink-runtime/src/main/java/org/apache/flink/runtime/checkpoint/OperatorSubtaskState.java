@@ -18,6 +18,8 @@
 
 package org.apache.flink.runtime.checkpoint;
 
+import org.apache.flink.core.memory.DataInputView;
+import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.runtime.state.CompositeStateHandle;
 import org.apache.flink.runtime.state.OperatorStateHandle;
 import org.apache.flink.runtime.state.KeyedStateHandle;
@@ -32,8 +34,11 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import java.io.DataOutputStream;
 import java.util.ArrayList;
 import java.util.List;
+
+import static org.apache.flink.runtime.checkpoint.savepoint.SavepointV2Serializer.*;
 
 /**
  * This class encapsulates the state for one parallel instance of an operator. The complete state of a (logical)
@@ -60,25 +65,25 @@ public class OperatorSubtaskState implements CompositeStateHandle {
 	 * Snapshot from the {@link org.apache.flink.runtime.state.OperatorStateBackend}.
 	 */
 	@Nonnull
-	private final StateObjectCollection<OperatorStateHandle> managedOperatorState;
+	private StateObjectCollection<OperatorStateHandle> managedOperatorState;
 
 	/**
 	 * Snapshot written using {@link org.apache.flink.runtime.state.OperatorStateCheckpointOutputStream}.
 	 */
 	@Nonnull
-	private final StateObjectCollection<OperatorStateHandle> rawOperatorState;
+	private StateObjectCollection<OperatorStateHandle> rawOperatorState;
 
 	/**
 	 * Snapshot from {@link org.apache.flink.runtime.state.KeyedStateBackend}.
 	 */
 	@Nonnull
-	private final StateObjectCollection<KeyedStateHandle> managedKeyedState;
+	private StateObjectCollection<KeyedStateHandle> managedKeyedState;
 
 	/**
 	 * Snapshot written using {@link org.apache.flink.runtime.state.KeyedStateCheckpointOutputStream}.
 	 */
 	@Nonnull
-	private final StateObjectCollection<KeyedStateHandle> rawKeyedState;
+	private StateObjectCollection<KeyedStateHandle> rawKeyedState;
 
 	/**
 	 * The state size. This is also part of the deserialized state handle.
@@ -266,4 +271,57 @@ public class OperatorSubtaskState implements CompositeStateHandle {
 			|| managedKeyedState.hasState()
 			|| rawKeyedState.hasState();
 	}
+
+//    public void write(DataOutputView out) throws Exception {
+//		out.write(managedOperatorState.size());
+//		for (OperatorStateHandle stateHandle : managedOperatorState) {
+//			serializeOperatorStateHandle(stateHandle, out);
+//		}
+//		out.write(rawOperatorState.size());
+//		for (OperatorStateHandle stateHandle : rawOperatorState) {
+//			serializeOperatorStateHandle(stateHandle, out);
+//		}
+//		out.write(managedKeyedState.size());
+//		for (KeyedStateHandle stateHandle : managedKeyedState) {
+//			serializeKeyedStateHandle(stateHandle, out);
+//		}
+//		out.write(rawKeyedState.size());
+//		for (KeyedStateHandle stateHandle : rawKeyedState) {
+//			serializeKeyedStateHandle(stateHandle, out);
+//		}
+//    }
+//
+//	public void read(DataInputView in) throws Exception {
+//		final int size1 = in.readInt();
+//		List<OperatorStateHandle> managedOperatorStateList = new ArrayList<>(size1);
+//		for (int i = 0; i < size1; ++i) {
+//			managedOperatorStateList.add(deserializeOperatorStateHandle(in));
+//		}
+//
+//		managedOperatorState = new StateObjectCollection<>(managedOperatorStateList);
+//
+//		final int size2 = in.readInt();
+//		List<OperatorStateHandle> rawOperatorStateList = new ArrayList<>(size2);
+//		for (int i = 0; i < size2; ++i) {
+//			rawOperatorStateList.add(deserializeOperatorStateHandle(in));
+//		}
+//
+//		rawOperatorState = new StateObjectCollection<>(rawOperatorStateList);
+//
+//		final int size3 = in.readInt();
+//		List<KeyedStateHandle> managedKeyedStateList = new ArrayList<>(size3);
+//		for (int i = 0; i < size3; ++i) {
+//			managedKeyedStateList.add(deserializeKeyedStateHandle(in));
+//		}
+//
+//		managedKeyedState = new StateObjectCollection<>(managedKeyedStateList);
+//
+//		final int size4 = in.readInt();
+//		List<KeyedStateHandle> rawKeyedStateList = new ArrayList<>(size4);
+//		for (int i = 0; i < size3; ++i) {
+//			rawKeyedStateList.add(deserializeKeyedStateHandle(in));
+//		}
+//
+//		rawKeyedState = new StateObjectCollection<>(rawKeyedStateList);
+//	}
 }

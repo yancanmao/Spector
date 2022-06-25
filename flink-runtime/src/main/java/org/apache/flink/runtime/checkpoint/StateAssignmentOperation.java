@@ -37,6 +37,7 @@ import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -73,6 +74,8 @@ public class StateAssignmentOperation {
 
 	private JobExecutionPlan jobExecutionPlan;
 
+	private final HashMap<JobVertexID, List<Integer>> backupKeyGroups;
+
 	public StateAssignmentOperation(
 		long restoreCheckpointId,
 		Map<JobVertexID, ExecutionJobVertex> tasks,
@@ -80,11 +83,23 @@ public class StateAssignmentOperation {
 		boolean allowNonRestoredState,
 		Operation operation) {
 
+		this(restoreCheckpointId, tasks, operatorStates, allowNonRestoredState, operation, null);
+	}
+
+	public StateAssignmentOperation(
+		long restoreCheckpointId,
+		Map<JobVertexID, ExecutionJobVertex> tasks,
+		Map<OperatorID, OperatorState> operatorStates,
+		boolean allowNonRestoredState,
+		Operation operation,
+		@Nullable HashMap<JobVertexID, List<Integer>> backupKeyGroups) {
+
 		this.restoreCheckpointId = restoreCheckpointId;
 		this.tasks = Preconditions.checkNotNull(tasks);
 		this.operatorStates = Preconditions.checkNotNull(operatorStates);
 		this.allowNonRestoredState = allowNonRestoredState;
 		this.operation = operation;
+		this.backupKeyGroups = backupKeyGroups;
 	}
 
 	public void assignStates() {
@@ -708,10 +723,10 @@ public class StateAssignmentOperation {
 
 //									hashedKeyGroupToHandle.put(
 //										hashedKeyGroup,
-//										Tuple2.of(offset, keyGroupsStateHandle.getDelegateStateHandle()));
+//										Tuple3.of(offset, keyGroupsStateHandle.getDelegateStateHandle(), isModified));
 
 									StreamStateHandle curStateHandle = keyGroupsStateHandle.getDelegateStateHandle();
-									// TODO: byte array can at most store 2gb state...
+//									// TODO: byte array can at most store 2gb state...
 									Preconditions.checkState(curStateHandle instanceof ByteStreamStateHandle,
 										"++++++ State handle operations are only supported for byted state handle");
 									StreamStateHandle newStateHandlePerKeyGroup =

@@ -26,17 +26,8 @@ import org.slf4j.LoggerFactory;
 import sun.net.util.IPAddressUtil;
 
 import java.io.IOException;
-import java.net.Inet4Address;
-import java.net.Inet6Address;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.MalformedURLException;
-import java.net.ServerSocket;
-import java.net.URL;
-import java.net.UnknownHostException;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Iterator;
+import java.net.*;
+import java.util.*;
 
 /**
  * Utility for various network related tasks (such as finding free ports).
@@ -397,6 +388,42 @@ public class NetUtils {
 	}
 
 	/**
+	 * Returns the local host or lan address.
+	 */
+	public static InetAddress getLocalHostLANAddress() throws UnknownHostException {
+		try {
+			List<InetAddress> siteLocalAddressList = new ArrayList<>();
+			for (Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces(); networkInterfaces.hasMoreElements();) {
+				NetworkInterface networkInterface = networkInterfaces.nextElement();
+				for (Enumeration<InetAddress> inetAddressEnumeration = networkInterface.getInetAddresses(); inetAddressEnumeration.hasMoreElements();) {
+					InetAddress inetAddress = inetAddressEnumeration.nextElement();
+					if (inetAddress instanceof Inet4Address && inetAddress.isSiteLocalAddress()) {
+						siteLocalAddressList.add(inetAddress);
+					}
+				}
+			}
+			InetAddress localAddress = InetAddress.getLocalHost();
+			if (siteLocalAddressList.isEmpty()) {
+				if (localAddress == null) {
+					throw new UnknownHostException("Can't get local host from InetAddress");
+				}
+				return localAddress;
+			} else {
+				for (InetAddress inetAddress : siteLocalAddressList) {
+					if (localAddress != null && localAddress.getHostAddress().equals(inetAddress.getHostAddress())) {
+						return inetAddress;
+					}
+				}
+				return siteLocalAddressList.get(0);
+			}
+		} catch (Exception e) {
+			UnknownHostException unknownHostException = new UnknownHostException("Failed to get host address");
+			unknownHostException.initCause(e);
+			throw unknownHostException;
+		}
+	}
+
+	 /**
 	 * A factory for a local socket from port number.
 	 */
 	@FunctionalInterface

@@ -1094,6 +1094,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			FileSystemSafetyNet.initializeSafetyNetForThread();
 			try {
 
+				LOG.info("++++--- Start construct state handle for snapshot");
+
 				TaskStateSnapshot jobManagerTaskOperatorSubtaskStates =
 					new TaskStateSnapshot(operatorSnapshotsInProgress.size());
 
@@ -1117,6 +1119,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 						operatorID,
 						finalizedSnapshots.getTaskLocalState());
 				}
+
+				LOG.info("++++--- Complete the construction, start to report");
+
 
 				final long asyncEndNanos = System.nanoTime();
 				final long asyncDurationMillis = (asyncEndNanos - asyncStartNanos) / 1_000_000L;

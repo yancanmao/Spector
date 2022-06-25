@@ -18,8 +18,12 @@
 
 package org.apache.flink.runtime.checkpoint;
 
+import org.apache.flink.core.memory.DataInputView;
+import org.apache.flink.core.memory.DataOutputView;
+
 import static org.apache.flink.util.Preconditions.checkArgument;
 
+import java.io.DataInput;
 import java.io.Serializable;
 
 /**
@@ -134,5 +138,19 @@ public class CheckpointMetrics implements Serializable {
 				", syncDurationMillis=" + syncDurationMillis +
 				", asyncDurationMillis=" + asyncDurationMillis +
 				'}';
+	}
+
+	public void write(DataOutputView out) throws Exception {
+		out.writeLong(bytesBufferedInAlignment);
+		out.writeLong(alignmentDurationNanos);
+		out.writeLong(syncDurationMillis);
+		out.writeLong(asyncDurationMillis);
+	}
+
+	public void read(DataInputView in) throws Exception {
+		bytesBufferedInAlignment = in.readLong();
+		alignmentDurationNanos = in.readLong();
+		syncDurationMillis = in.readLong();
+		asyncDurationMillis = in.readLong();
 	}
 }

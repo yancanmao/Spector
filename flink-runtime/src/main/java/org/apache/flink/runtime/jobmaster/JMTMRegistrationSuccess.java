@@ -20,8 +20,11 @@ package org.apache.flink.runtime.jobmaster;
 
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.registration.RegistrationResponse;
+import org.apache.flink.runtime.spector.netty.data.CheckpointCoordinatorSocketAddress;
 import org.apache.flink.runtime.taskexecutor.TaskExecutor;
 import org.apache.flink.util.Preconditions;
+
+import javax.annotation.Nullable;
 
 /**
  * Message indicating a successful {@link JobMaster} and {@link TaskExecutor} registration.
@@ -31,11 +34,26 @@ public class JMTMRegistrationSuccess extends RegistrationResponse.Success {
 
 	private final ResourceID resourceID;
 
+	@Nullable
+	private final CheckpointCoordinatorSocketAddress checkpointCoordinatorSocketAddress;
+
 	public JMTMRegistrationSuccess(ResourceID resourceID) {
+		this(resourceID, null);
+	}
+
+	public JMTMRegistrationSuccess(
+		ResourceID resourceID,
+		@Nullable CheckpointCoordinatorSocketAddress checkpointCoordinatorSocketAddress) {
 		this.resourceID = Preconditions.checkNotNull(resourceID);
+		this.checkpointCoordinatorSocketAddress = checkpointCoordinatorSocketAddress;
 	}
 
 	public ResourceID getResourceID() {
 		return resourceID;
+	}
+
+	@Nullable
+	public CheckpointCoordinatorSocketAddress getCheckpointCoordinatorSocketAddress() {
+		return checkpointCoordinatorSocketAddress;
 	}
 }

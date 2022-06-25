@@ -833,7 +833,11 @@ public class CheckpointCoordinator {
 //						if (checkpointProgressListener != null) {
 //							checkpointProgressListener.onReceiveRescalepointAcknowledge(message.getTaskExecutionId(), checkpoint);
 //						}
+						LOG.info("++++++ Received Rescalepoint Acknowledgement {}", message.getTaskExecutionId());
+
+
 						if (checkpoint.isFullyAcknowledged()) {
+							LOG.info("++++++ Fully ACKed");
 							completePendingCheckpoint(checkpoint);
 						}
 						break;
@@ -920,6 +924,8 @@ public class CheckpointCoordinator {
 
 			// the pending checkpoint must be discarded after the finalization
 			Preconditions.checkState(pendingCheckpoint.isDiscarded() && completedCheckpoint != null);
+
+			LOG.info("++++++ Checkpoint Finalized");
 
 			try {
 				completedCheckpointStore.addCheckpoint(completedCheckpoint);

@@ -444,7 +444,7 @@ public class JobMasterTest extends TestLogger {
 
 			final SlotOffer slotOffer = new SlotOffer(new AllocationID(), 0, ResourceProfile.UNKNOWN);
 
-			final CompletableFuture<Collection<SlotOffer>> slotOfferFuture = jobMasterGateway.offerSlots(taskManagerLocation.getResourceID(), Collections.singleton(slotOffer), testingTimeout);
+			final CompletableFuture<Collection<SlotOffer>> slotOfferFuture = jobMasterGateway.offerSlots(taskManagerLocation.getResourceID(), Collections.singleton(slotOffer), testingTimeout, null);
 
 			assertThat(slotOfferFuture.get(), containsInAnyOrder(slotOffer));
 
@@ -911,7 +911,7 @@ public class JobMasterTest extends TestLogger {
 
 			final SlotOffer slotOffer = new SlotOffer(slotRequest.getAllocationId(), 0, ResourceProfile.UNKNOWN);
 
-			final CompletableFuture<Collection<SlotOffer>> acceptedSlotsFuture = jobMasterGateway.offerSlots(taskManagerLocation.getResourceID(), Collections.singleton(slotOffer), testingTimeout);
+			final CompletableFuture<Collection<SlotOffer>> acceptedSlotsFuture = jobMasterGateway.offerSlots(taskManagerLocation.getResourceID(), Collections.singleton(slotOffer), testingTimeout, null);
 
 			final Collection<SlotOffer> acceptedSlots = acceptedSlotsFuture.get();
 
@@ -1838,7 +1838,7 @@ public class JobMasterTest extends TestLogger {
 				})
 			.collect(Collectors.toList());
 
-		return jobMasterGateway.offerSlots(taskManagerLocation.getResourceID(), slotOffers, testingTimeout).get();
+		return jobMasterGateway.offerSlots(taskManagerLocation.getResourceID(), slotOffers, testingTimeout, null).get();
 	}
 
 	private static final class AllocationIdsResourceManagerGateway extends TestingResourceManagerGateway {

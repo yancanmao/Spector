@@ -31,9 +31,11 @@ import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.StackTraceSampleResponse;
 import org.apache.flink.runtime.spector.ReconfigOptions;
+import org.apache.flink.runtime.spector.netty.TaskExecutorNettyClient;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.util.Preconditions;
 
+import javax.annotation.Nullable;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -45,9 +47,25 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 
 	private final JobMasterId jobMasterId;
 
-	public RpcTaskManagerGateway(TaskExecutorGateway taskExecutorGateway, JobMasterId jobMasterId) {
+	private final boolean nettyStateTransmissionEnable;
+	@Nullable
+	private final TaskExecutorNettyClient taskExecutorNettyClient;
+
+	public RpcTaskManagerGateway(
+		TaskExecutorGateway taskExecutorGateway,
+		JobMasterId jobMasterId) {
+		this(taskExecutorGateway, jobMasterId, false, null);
+	}
+
+	public RpcTaskManagerGateway(
+		TaskExecutorGateway taskExecutorGateway,
+		JobMasterId jobMasterId,
+		boolean nettyStateTransmissionEnable,
+		@Nullable TaskExecutorNettyClient taskExecutorNettyClient) {
 		this.taskExecutorGateway = Preconditions.checkNotNull(taskExecutorGateway);
 		this.jobMasterId = Preconditions.checkNotNull(jobMasterId);
+		this.nettyStateTransmissionEnable = nettyStateTransmissionEnable;
+		this.taskExecutorNettyClient = taskExecutorNettyClient;
 	}
 
 	@Override
@@ -80,7 +98,11 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> reconfigTask(ExecutionAttemptID executionAttemptID, TaskDeploymentDescriptor tdd, ReconfigOptions reconfigOptions, Time timeout) {
-		return taskExecutorGateway.reconfigTask(executionAttemptID, tdd, jobMasterId, reconfigOptions, timeout);
+		if (nettyStateTransmissionEnable && taskExecutorNettyClient != null) {
+			return taskExecutorNettyClient.reconfigTask(executionAttemptID, tdd, jobMasterId, reconfigOptions, timeout);
+		} else {
+			return taskExecutorGateway.reconfigTask(executionAttemptID, tdd, jobMasterId, reconfigOptions, timeout);
+		}
 	}
 
 	@Override
@@ -127,6 +149,10 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, JobManagerTaskRestore taskRestore, Time timeout) {
-		return taskExecutorGateway.dispatchStateToStandbyTask(executionAttemptID, jobvertexId, taskRestore, timeout);
+		if (nettyStateTransmissionEnable && taskExecutorNettyClient != null) {
+			return taskExecutorNettyClient.dispatchStateToStandbyTask(executionAttemptID, jobvertexId, taskRestore, timeout);
+		} else {
+			return taskExecutorGateway.dispatchStateToStandbyTask(executionAttemptID, jobvertexId, taskRestore, timeout);
+		}
 	}
 }

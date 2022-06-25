@@ -297,12 +297,12 @@ public class JobExecutionPlan {
 		return alignedKeyGroupRanges.get(subTaskIndex);
 	}
 
-	public boolean isSubtaskModified(int subtaskIndex) {
+	public boolean isAffectedTask(int subtaskIndex) {
 		return modifiedSubtaskMap.getOrDefault(subtaskIndex, false);
 	}
 
 	public boolean isSourceSubtask(int subtaskIndex) {
-		checkState(isSubtaskModified(subtaskIndex),
+		checkState(isAffectedTask(subtaskIndex),
 			"++++++ a non-affected task cannot become a source/destination task");
 
 		return srcSubtaskMap.containsKey(subtaskIndex);

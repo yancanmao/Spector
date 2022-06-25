@@ -44,6 +44,7 @@ import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.OperatorBackPressureStatsResponse;
 import org.apache.flink.runtime.rpc.FencedRpcGateway;
 import org.apache.flink.runtime.rpc.RpcTimeout;
+import org.apache.flink.runtime.spector.netty.data.TaskExecutorSocketAddress;
 import org.apache.flink.runtime.taskexecutor.AccumulatorReport;
 import org.apache.flink.runtime.taskexecutor.slot.SlotOffer;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
@@ -184,7 +185,8 @@ public interface JobMasterGateway extends
 	CompletableFuture<Collection<SlotOffer>> offerSlots(
 			final ResourceID taskManagerId,
 			final Collection<SlotOffer> slots,
-			@RpcTimeout final Time timeout);
+			@RpcTimeout final Time timeout,
+			final TaskExecutorSocketAddress taskExecutorSocketAddress);
 
 	/**
 	 * Fails the slot with the given allocation id and cause.

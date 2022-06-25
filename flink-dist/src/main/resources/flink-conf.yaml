@@ -278,3 +278,20 @@ model.vertex: c21234bcbf1e8eb4c61f1927190efebd
 model.retrieve.interval: 100
 
 model.warmup: 10000
+
+#==============================================================================
+# Backpressure Configuration
+#==============================================================================
+#
+
+web.backpressure.refresh-interval: 600000000
+web.backpressure.num-samples: 10000000
+web.backpressure.delay-between-samples: 100000000
+#taskmanager.network.numberOfBuffers: 102400
+taskmanager.network.memory.buffers-per-channel: 10000000
+taskmanager.network.memory.floating-buffers-per-gate: 10000000
+taskmanager.network.memory.max: 10gb
+
+taskmanager.network.credit-model: false
+
+akka.framesize: 1048576000b
