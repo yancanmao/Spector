@@ -26,6 +26,7 @@ import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.runtime.checkpoint.MasterState;
 import org.apache.flink.runtime.checkpoint.OperatorState;
 import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
+import org.apache.flink.runtime.checkpoint.StateObjectCollection;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.IncrementalRemoteKeyedStateHandle;
 import org.apache.flink.runtime.state.OperatorStateHandle;
@@ -313,11 +314,27 @@ public class SavepointV2Serializer implements SavepointSerializer<SavepointV2> {
 			serializeOperatorStateHandle(operatorStateFromStream, out);
 		}
 
-		KeyedStateHandle keyedStateBackend = extractSingleton(subtaskState.getManagedKeyedState());
-		serializeKeyedStateHandle(keyedStateBackend, out);
+//		KeyedStateHandle keyedStateBackend = extractSingleton(subtaskState.getManagedKeyedState());
+//		serializeKeyedStateHandle(keyedStateBackend, out);
+//
+//		KeyedStateHandle keyedStateStream = extractSingleton(subtaskState.getRawKeyedState());
+//		serializeKeyedStateHandle(keyedStateStream, out);
 
-		KeyedStateHandle keyedStateStream = extractSingleton(subtaskState.getRawKeyedState());
-		serializeKeyedStateHandle(keyedStateStream, out);
+		int keyLength;
+
+		StateObjectCollection<KeyedStateHandle> keyedStateHandles = subtaskState.getManagedKeyedState();
+		keyLength = keyedStateHandles.size();
+		out.writeInt(keyLength);
+		for (KeyedStateHandle keyedStateHandle : keyedStateHandles) {
+			serializeKeyedStateHandle(keyedStateHandle, out);
+		}
+
+		StateObjectCollection<KeyedStateHandle> keyedStateStreams = subtaskState.getManagedKeyedState();
+		keyLength = keyedStateStreams.size();
+		out.writeInt(keyLength);
+		for (KeyedStateHandle keyedStateStream : keyedStateStreams) {
+			serializeKeyedStateHandle(keyedStateStream, out);
+		}
 	}
 
 	private static OperatorSubtaskState deserializeSubtaskState(DataInputStream dis) throws IOException {
@@ -381,15 +398,33 @@ public class SavepointV2Serializer implements SavepointSerializer<SavepointV2> {
 		len = in.readInt();
 		OperatorStateHandle operatorStateStream = len == 0 ? null : deserializeOperatorStateHandle(in);
 
-		KeyedStateHandle keyedStateBackend = deserializeKeyedStateHandle(in);
+//		KeyedStateHandle keyedStateBackend = deserializeKeyedStateHandle(in);
+//
+//		KeyedStateHandle keyedStateStream = deserializeKeyedStateHandle(in);
 
-		KeyedStateHandle keyedStateStream = deserializeKeyedStateHandle(in);
+//		return new OperatorSubtaskState(
+//			operatorStateBackend,
+//			operatorStateStream,
+//			keyedStateBackend,
+//			keyedStateStream);
+
+		int keyLength = in.readInt();
+		List<KeyedStateHandle> keyedStateHandles = new ArrayList<>(keyLength);
+		for (int i = 0; i < keyLength; i++) {
+			keyedStateHandles.add(deserializeKeyedStateHandle(in));
+		}
+
+		keyLength = in.readInt();
+		List<KeyedStateHandle> keyedStateStreams = new ArrayList<>(keyLength);
+		for (int i = 0; i < keyLength; i++) {
+			keyedStateStreams.add(deserializeKeyedStateHandle(in));
+		}
 
 		return new OperatorSubtaskState(
-			operatorStateBackend,
-			operatorStateStream,
-			keyedStateBackend,
-			keyedStateStream);
+			new StateObjectCollection<>(Collections.singletonList(operatorStateBackend)),
+			new StateObjectCollection<>(Collections.singletonList(operatorStateStream)),
+			new StateObjectCollection<>(keyedStateHandles),
+			new StateObjectCollection<>(keyedStateStreams));
 	}
 
 	@VisibleForTesting
@@ -439,10 +474,17 @@ public class SavepointV2Serializer implements SavepointSerializer<SavepointV2> {
 			out.writeByte(KEY_GROUPS_HANDLE);
 			out.writeInt(keyGroupsStateHandle.getKeyGroupRange().getStartKeyGroup());
 			out.writeInt(keyGroupsStateHandle.getKeyGroupRange().getNumberOfKeyGroups());
-			for (int keyGroup : keyGroupsStateHandle.getKeyGroupRange()) {
-				out.writeLong(keyGroupsStateHandle.getOffsetForKeyGroup(keyGroup));
-				// serialize changelogs
-				out.writeBoolean(keyGroupsStateHandle.getIsModified(keyGroup));
+			boolean containChangelogs = keyGroupsStateHandle.getChangelogs() != null;
+			out.writeBoolean(containChangelogs);
+			if (!containChangelogs) {
+				for (int keyGroup : keyGroupsStateHandle.getKeyGroupRange()) {
+					out.writeLong(keyGroupsStateHandle.getOffsetForKeyGroup(keyGroup));
+				}
+			} else {
+				for (int keyGroup : keyGroupsStateHandle.getKeyGroupRange()) {
+					out.writeLong(keyGroupsStateHandle.getOffsetForKeyGroup(keyGroup));
+					out.writeBoolean(keyGroupsStateHandle.getIsModified(keyGroup));
+				}
 			}
 			serializeStreamStateHandle(keyGroupsStateHandle.getDelegateStateHandle(), out);
 		} else if (stateHandle instanceof IncrementalRemoteKeyedStateHandle) {
@@ -580,13 +622,22 @@ public class SavepointV2Serializer implements SavepointSerializer<SavepointV2> {
 			int numKeyGroups = in.readInt();
 			KeyGroupRange keyGroupRange =
 				KeyGroupRange.of(startKeyGroup, startKeyGroup + numKeyGroups - 1);
+			boolean containChangelogs = in.readBoolean();
 			long[] offsets = new long[numKeyGroups];
-			boolean[] changelogs = new boolean[numKeyGroups];
-			for (int i = 0; i < numKeyGroups; ++i) {
-				offsets[i] = in.readLong();
-				// serialize changelogs
-				changelogs[i] = in.readBoolean();
+			boolean[] changelogs = null;
+			if (!containChangelogs) {
+				for (int i = 0; i < numKeyGroups; ++i) {
+					offsets[i] = in.readLong();
+				}
+			} else {
+				changelogs = new boolean[numKeyGroups];
+				for (int i = 0; i < numKeyGroups; ++i) {
+					offsets[i] = in.readLong();
+					// serialize changelogs
+					changelogs[i] = in.readBoolean();
+				}
 			}
+
 			KeyGroupRangeOffsets keyGroupRangeOffsets = new KeyGroupRangeOffsets(
 				keyGroupRange, offsets, changelogs);
 			StreamStateHandle stateHandle = deserializeStreamStateHandle(in);

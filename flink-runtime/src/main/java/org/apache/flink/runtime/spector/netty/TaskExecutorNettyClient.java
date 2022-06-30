@@ -8,6 +8,8 @@ import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobmaster.JobMasterId;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.spector.ReconfigOptions;
+import org.apache.flink.runtime.spector.netty.codec.TaskBackupStateDecoder;
+import org.apache.flink.runtime.spector.netty.codec.TaskBackupStateEncoder;
 import org.apache.flink.runtime.spector.netty.codec.TaskDeploymentDecoder;
 import org.apache.flink.runtime.spector.netty.codec.TaskDeploymentEncoder;
 import org.apache.flink.runtime.spector.netty.data.TaskBackupState;
@@ -62,8 +64,8 @@ public class TaskExecutorNettyClient implements Closeable {
 		Consumer<ChannelPipeline> channelPipelineConsumer;
 		if (taskDeploymentEnabled) {
 			channelPipelineConsumer = channelPipeline -> channelPipeline
-				.addLast(new TaskDeploymentEncoder())
-				.addLast(new TaskDeploymentDecoder());
+				.addLast(new TaskBackupStateEncoder())
+				.addLast(new TaskBackupStateDecoder());
 		} else {
 			channelPipelineConsumer = channelPipeline -> channelPipeline.addLast(
 				new ObjectEncoder(),

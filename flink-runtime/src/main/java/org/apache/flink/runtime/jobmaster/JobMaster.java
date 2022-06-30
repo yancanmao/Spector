@@ -831,7 +831,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 			int connectTimeoutMills = 10000;
 			int lowWaterMark = 10 * 1024 * 1024;
 			int highWaterMark = 50 * 1024 * 1024;
-			boolean taskDeploymentEnabled = false;
+			boolean taskDeploymentEnabled = true;
 			taskExecutorNettyClient = new TaskExecutorNettyClient(
 				taskExecutorSocketAddress,
 				channelCount,

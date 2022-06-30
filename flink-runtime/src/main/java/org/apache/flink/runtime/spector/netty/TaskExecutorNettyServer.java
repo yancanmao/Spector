@@ -1,7 +1,7 @@
 package org.apache.flink.runtime.spector.netty;
 
-import org.apache.flink.runtime.spector.netty.codec.TaskDeploymentDecoder;
-import org.apache.flink.runtime.spector.netty.codec.TaskDeploymentEncoder;
+import org.apache.flink.runtime.spector.netty.codec.TaskBackupStateDecoder;
+import org.apache.flink.runtime.spector.netty.codec.TaskBackupStateEncoder;
 import org.apache.flink.runtime.spector.netty.socket.NettySocketServer;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelPipeline;
@@ -24,8 +24,8 @@ public class TaskExecutorNettyServer implements Closeable {
 		Consumer<ChannelPipeline> channelPipelineConsumer;
 		if (taskDeploymentEnabled) {
 			channelPipelineConsumer = channelPipeline -> channelPipeline.addLast(
-				new TaskDeploymentEncoder(),
-				new TaskDeploymentDecoder(),
+				new TaskBackupStateEncoder(),
+				new TaskBackupStateDecoder(),
 				new TaskExecutorServerHandler(gatewaySupplier.get()));
 		} else {
 			channelPipelineConsumer = channelPipeline -> channelPipeline.addLast(

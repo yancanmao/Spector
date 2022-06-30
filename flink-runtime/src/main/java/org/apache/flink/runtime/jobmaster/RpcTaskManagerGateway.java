@@ -98,11 +98,11 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> reconfigTask(ExecutionAttemptID executionAttemptID, TaskDeploymentDescriptor tdd, ReconfigOptions reconfigOptions, Time timeout) {
-		if (nettyStateTransmissionEnable && taskExecutorNettyClient != null) {
-			return taskExecutorNettyClient.reconfigTask(executionAttemptID, tdd, jobMasterId, reconfigOptions, timeout);
-		} else {
+//		if (nettyStateTransmissionEnable && taskExecutorNettyClient != null) {
+//			return taskExecutorNettyClient.reconfigTask(executionAttemptID, tdd, jobMasterId, reconfigOptions, timeout);
+//		} else {
 			return taskExecutorGateway.reconfigTask(executionAttemptID, tdd, jobMasterId, reconfigOptions, timeout);
-		}
+//		}
 	}
 
 	@Override

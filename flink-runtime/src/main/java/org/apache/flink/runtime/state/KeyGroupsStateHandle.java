@@ -77,6 +77,10 @@ public class KeyGroupsStateHandle implements StreamStateHandle, KeyedStateHandle
 		return groupRangeOffsets.getKeyGroupOffset(keyGroupId);
 	}
 
+	public boolean[] getChangelogs() {
+		return groupRangeOffsets.getChangelogs();
+	}
+
 	public boolean getIsModified(int keyGroupId) {
 		return groupRangeOffsets.getIsModified(keyGroupId);
 	}
