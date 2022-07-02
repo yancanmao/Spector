@@ -903,7 +903,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 							notYetAcknowledgedTasks.remove(attemptID);
 
 							if (notYetAcknowledgedTasks.isEmpty()) {
-								// receive all required snapshot, force streamSwitch to update metrices
+								// receive all required snapshot, force streamSwitch to update metrics
 //								streamSwitchAdaptor.onForceRetrieveMetrics(targetVertex.getJobVertexId());
 								// only update executor mappings at this time.
 //								streamSwitchAdaptor.onMigrationExecutorsStopped(targetVertex.getJobVertexId());

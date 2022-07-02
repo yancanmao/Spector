@@ -1,6 +1,8 @@
 package org.apache.flink.runtime.spector.netty;
 
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.core.memory.DataOutputView;
+import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
@@ -24,8 +26,10 @@ import org.apache.commons.lang3.RandomUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
@@ -93,14 +97,48 @@ public class CheckpointCoordinatorNettyClient implements Closeable {
 		Channel channel = clientList.get(RandomUtils.nextInt(0, clientList.size())).getChannel();
 		while (true) {
 			if (channel.isWritable()) {
-				channel.writeAndFlush(new TaskAcknowledgement(jobID, executionAttemptID, checkpointId, checkpointMetrics, subtaskState))
-					.addListener((ChannelFutureListener) channelFuture -> {
-						if (channelFuture.isSuccess()) {
-							submitFuture.complete(Acknowledge.get());
-						} else {
-							submitFuture.completeExceptionally(channelFuture.cause());
-						}
-					});
+				try {
+					TaskAcknowledgement taskAcknowledgement = new TaskAcknowledgement(
+						jobID,
+						executionAttemptID,
+						checkpointId,
+						checkpointMetrics,
+						subtaskState);
+					ByteArrayOutputStream baos = new ByteArrayOutputStream();
+					DataOutputView dataOutputView = new DataOutputViewStreamWrapper(baos);
+					taskAcknowledgement.write(dataOutputView);
+					baos.flush();
+
+					byte[] data = baos.toByteArray();
+					byte[] chunk;
+					int dataSize = data.length;
+					int chunkSize = 32 * 1024;
+					int numOfChunk = (int) Math.ceil((double) dataSize / chunkSize);
+
+					channel.writeAndFlush("length:" + dataSize);
+					for (int i = 0; i < numOfChunk; i++) {
+						chunk = Arrays.copyOfRange(data, i*numOfChunk, Math.min(i * numOfChunk + chunkSize - 1, dataSize));
+						channel.writeAndFlush(chunk)
+							.addListener((ChannelFutureListener) channelFuture -> {
+								if (channelFuture.isSuccess()) {
+									submitFuture.complete(Acknowledge.get());
+								} else {
+									submitFuture.completeExceptionally(channelFuture.cause());
+								}
+							});
+					}
+					channel.writeAndFlush("length:" + dataSize);
+				} catch (Exception e) {
+					throw new RuntimeException(e);
+				}
+//					channel.writeAndFlush(new TaskAcknowledgement(jobID, executionAttemptID, checkpointId, checkpointMetrics, subtaskState))
+//						.addListener((ChannelFutureListener) channelFuture -> {
+//							if (channelFuture.isSuccess()) {
+//								submitFuture.complete(Acknowledge.get());
+//							} else {
+//								submitFuture.completeExceptionally(channelFuture.cause());
+//							}
+//						});
 				break;
 			}
 			try {

@@ -1458,15 +1458,14 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			int connectTimeoutMills = 10000;
 			int lowWaterMark = 10 * 1024 * 1024;
 			int highWaterMark = 50 * 1024 * 1024;
-			boolean taskAcknowledgementEnabled = true;
+			boolean taskAcknowledgementEnabled = false;
 			checkpointCoordinatorNettyClient = new CheckpointCoordinatorNettyClient(
 				checkpointCoordinatorSocketAddress,
 				channelCount,
 				connectTimeoutMills,
 				lowWaterMark,
 				highWaterMark,
-				taskAcknowledgementEnabled
-			);
+				taskAcknowledgementEnabled);
 			try {
 				checkpointCoordinatorNettyClient.start();
 			} catch (Exception e) {

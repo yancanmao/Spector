@@ -278,7 +278,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 			jobGraph, executionGraph, userCodeLoader);
 
 		try {
-			boolean taskAckEnable = true;
+			boolean taskAckEnable = false;
 			this.checkpointCoordinatorNettyServer = nettyStateTransmissionEnabled ?
 				new CheckpointCoordinatorNettyServer(
 					() -> this.getSelfGateway(CheckpointCoordinatorGateway.class),

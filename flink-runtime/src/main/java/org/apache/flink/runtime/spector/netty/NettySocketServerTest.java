@@ -16,35 +16,43 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.spector.netty.socket;
+package org.apache.flink.runtime.spector.netty;
 
 import org.apache.commons.lang.StringUtils;
+import org.apache.flink.runtime.spector.netty.socket.NettySocketClient;
+import org.apache.flink.runtime.spector.netty.socket.NettySocketServer;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelInboundHandlerAdapter;
-import org.apache.flink.shaded.netty4.io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ClassResolvers;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ObjectDecoder;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ObjectEncoder;
+import org.apache.flink.shaded.netty4.io.netty.handler.stream.ChunkedWriteHandler;
 
-import org.junit.Test;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
-
-import static org.junit.Assert.assertEquals;
 
 /**
  * Test case for netty socket server.
  */
 public class NettySocketServerTest {
-	@Test
-	public void testServerReceiveString() throws Exception {
-		int stringLength = 1024 * 1024 * 1024;
-		int chunkSize = 128 * 1024 * 1024;
 
-		String message = StringUtils.repeat("*", stringLength);
-		String chunk = StringUtils.repeat("*", chunkSize);
-		final StringBuilder recv = new StringBuilder();
-		CompletableFuture<String> receiveFuture = new CompletableFuture<>();
+	NettySocketServerTest() {
+
+	}
+
+	public void run() throws Exception {
+		int stringLength = 1024 * 1024 * 1024;
+		int chunkSize = 32 * 1024;
+
+//		String message = StringUtils.repeat("*", stringLength);
+		byte[] message = new byte[stringLength];
+		byte[] chunk;
+		final byte[][] recv = {new byte[0]};
+		final int[] position = {0};
+		CompletableFuture<byte[]> receiveFuture = new CompletableFuture<>();
 
 		try (NettySocketServer nettySocketServer = new NettySocketServer(
 			"test",
@@ -56,10 +64,16 @@ public class NettySocketServerTest {
 				new ChannelInboundHandlerAdapter() {
 					@Override
 					public void channelRead(ChannelHandlerContext ctx, Object msg) {
-						if (!msg.equals("-1")) {
-							recv.append(msg);
+						if (msg instanceof String) {
+							if (msg.equals("-1")) {
+								receiveFuture.complete(recv[0]);
+							} else {
+								int length = Integer.parseInt(((String) msg).split(":")[1]);
+								recv[0] = new byte[length];
+							}
 						} else {
-							receiveFuture.complete(recv.toString());
+							System.arraycopy((byte[]) msg, 0, recv[0], position[0], ((byte[]) msg).length);
+							position[0] += ((byte[]) msg).length;
 						}
 					}
 				}
@@ -81,16 +95,30 @@ public class NettySocketServerTest {
 
 				long start = System.currentTimeMillis();
 
-				for (int i = 0; i < stringLength / chunkSize; i++) {
+				int numOfChunk = (int) Math.ceil((double) stringLength / chunkSize);
+
+				nettySocketClient.getChannel().writeAndFlush("length:" + stringLength);
+
+				int from = 0;
+				int to = 0;
+				for (int i = 0; i < numOfChunk; i++) {
+					from = i*numOfChunk;
+					to = Math.min(i * numOfChunk + chunkSize - 1, stringLength);
+					chunk = Arrays.copyOfRange(message, from, to);
 					nettySocketClient.getChannel().writeAndFlush(chunk);
 				}
 
 				nettySocketClient.getChannel().writeAndFlush("-1");
 
-				assertEquals(message, receiveFuture.get());
+				System.out.println(Arrays.equals(message, receiveFuture.get()));
 
 				System.out.println(System.currentTimeMillis() - start);
 			}
 		}
+	}
+
+	public static void main(String[] args) throws Exception {
+		NettySocketServerTest nettySocketServerTest = new NettySocketServerTest();
+		nettySocketServerTest.run();
 	}
 }
