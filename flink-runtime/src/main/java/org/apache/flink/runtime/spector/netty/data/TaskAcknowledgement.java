@@ -9,7 +9,7 @@ import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 
 import java.io.Serializable;
 
-public class TaskAcknowledgement implements Serializable {
+public class TaskAcknowledgement implements Serializable, NettyMessage {
 	private JobID jobID;
 	private ExecutionAttemptID executionAttemptID;
 	private long checkpointId;
@@ -53,6 +53,7 @@ public class TaskAcknowledgement implements Serializable {
 		return subtaskState;
 	}
 
+	@Override
 	public void write(DataOutputView out) throws Exception {
 		out.writeLong(jobID.getLowerPart());
 		out.writeLong(jobID.getUpperPart());
@@ -63,6 +64,7 @@ public class TaskAcknowledgement implements Serializable {
 		subtaskState.write(out);
 	}
 
+	@Override
 	public void read(DataInputView in) throws Exception {
 		jobID = new JobID(in.readLong(), in.readLong());
 		executionAttemptID = new ExecutionAttemptID(in.readLong(), in.readLong());

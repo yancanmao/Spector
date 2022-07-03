@@ -12,6 +12,7 @@ import org.apache.flink.runtime.spector.netty.codec.TaskBackupStateDecoder;
 import org.apache.flink.runtime.spector.netty.codec.TaskBackupStateEncoder;
 import org.apache.flink.runtime.spector.netty.codec.TaskDeploymentDecoder;
 import org.apache.flink.runtime.spector.netty.codec.TaskDeploymentEncoder;
+import org.apache.flink.runtime.spector.netty.data.TaskAcknowledgement;
 import org.apache.flink.runtime.spector.netty.data.TaskBackupState;
 import org.apache.flink.runtime.spector.netty.data.TaskDeployment;
 import org.apache.flink.runtime.spector.netty.data.TaskExecutorSocketAddress;
@@ -32,6 +33,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
+
+import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.chunkedWriteAndFlush;
+import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.getBytes;
 
 public class TaskExecutorNettyClient implements Closeable {
 	private static final Logger LOG = LoggerFactory.getLogger(TaskExecutorNettyClient.class);
@@ -121,14 +125,26 @@ public class TaskExecutorNettyClient implements Closeable {
 		Channel channel = clientList.get(RandomUtils.nextInt(0, clientList.size())).getChannel();
 		while (true) {
 			if (channel.isWritable()) {
-				channel.writeAndFlush(new TaskBackupState(executionAttemptID, jobvertexId, taskRestore, timeout))
-					.addListener((ChannelFutureListener) channelFuture -> {
-						if (channelFuture.isSuccess()) {
-							submitFuture.complete(Acknowledge.get());
-						} else {
-							submitFuture.completeExceptionally(channelFuture.cause());
-						}
-					});
+				try {
+					TaskBackupState taskBackupState = new TaskBackupState(
+						executionAttemptID,
+						jobvertexId,
+						taskRestore,
+						timeout);
+					byte[] data = getBytes(taskBackupState);
+					chunkedWriteAndFlush(submitFuture, channel, data);
+				} catch (Exception e) {
+					throw new RuntimeException(e);
+				}
+
+//				channel.writeAndFlush(new TaskBackupState(executionAttemptID, jobvertexId, taskRestore, timeout))
+//					.addListener((ChannelFutureListener) channelFuture -> {
+//						if (channelFuture.isSuccess()) {
+//							submitFuture.complete(Acknowledge.get());
+//						} else {
+//							submitFuture.completeExceptionally(channelFuture.cause());
+//						}
+//					});
 				break;
 			}
 			try {

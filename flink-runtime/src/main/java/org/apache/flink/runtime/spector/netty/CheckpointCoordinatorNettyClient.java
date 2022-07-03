@@ -9,14 +9,10 @@ import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.spector.netty.codec.TaskAcknowledgementDecoder;
 import org.apache.flink.runtime.spector.netty.codec.TaskAcknowledgementEncoder;
-import org.apache.flink.runtime.spector.netty.codec.TaskDeploymentDecoder;
-import org.apache.flink.runtime.spector.netty.codec.TaskDeploymentEncoder;
 import org.apache.flink.runtime.spector.netty.data.CheckpointCoordinatorSocketAddress;
 import org.apache.flink.runtime.spector.netty.data.TaskAcknowledgement;
-import org.apache.flink.runtime.spector.netty.data.TaskExecutorSocketAddress;
 import org.apache.flink.runtime.spector.netty.socket.NettySocketClient;
 import org.apache.flink.shaded.netty4.io.netty.channel.Channel;
-import org.apache.flink.shaded.netty4.io.netty.channel.ChannelFutureListener;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelPipeline;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ClassResolvers;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ObjectDecoder;
@@ -29,10 +25,12 @@ import org.slf4j.LoggerFactory;
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
+
+import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.chunkedWriteAndFlush;
+import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.getBytes;
 
 public class CheckpointCoordinatorNettyClient implements Closeable {
 	private static final Logger LOG = LoggerFactory.getLogger(CheckpointCoordinatorNettyClient.class);
@@ -104,30 +102,8 @@ public class CheckpointCoordinatorNettyClient implements Closeable {
 						checkpointId,
 						checkpointMetrics,
 						subtaskState);
-					ByteArrayOutputStream baos = new ByteArrayOutputStream();
-					DataOutputView dataOutputView = new DataOutputViewStreamWrapper(baos);
-					taskAcknowledgement.write(dataOutputView);
-					baos.flush();
-
-					byte[] data = baos.toByteArray();
-					byte[] chunk;
-					int dataSize = data.length;
-					int chunkSize = 32 * 1024;
-					int numOfChunk = (int) Math.ceil((double) dataSize / chunkSize);
-
-					channel.writeAndFlush("length:" + dataSize);
-					for (int i = 0; i < numOfChunk; i++) {
-						chunk = Arrays.copyOfRange(data, i*numOfChunk, Math.min(i * numOfChunk + chunkSize - 1, dataSize));
-						channel.writeAndFlush(chunk)
-							.addListener((ChannelFutureListener) channelFuture -> {
-								if (channelFuture.isSuccess()) {
-									submitFuture.complete(Acknowledge.get());
-								} else {
-									submitFuture.completeExceptionally(channelFuture.cause());
-								}
-							});
-					}
-					channel.writeAndFlush("length:" + dataSize);
+					byte[] data = getBytes(taskAcknowledgement);
+					chunkedWriteAndFlush(submitFuture, channel, data);
 				} catch (Exception e) {
 					throw new RuntimeException(e);
 				}

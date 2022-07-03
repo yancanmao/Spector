@@ -29,6 +29,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
 
+import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.chunkedChannelRead;
+
 /**
  * Server handler in task executor netty server.
  */
@@ -59,26 +61,21 @@ public class CheckpointCoordinatorServerHandler extends ChannelInboundHandlerAda
 //		} else {
 //			throw new UnsupportedOperationException();
 //		}
-		if (msg instanceof String) {
-			if (msg.equals("-1")) {
-				TaskAcknowledgement taskAcknowledgement = new TaskAcknowledgement();
-				taskAcknowledgement.read(new DataInputViewStreamWrapper(new ByteArrayInputStream(recv[0])));
-				checkpointCoordinatorGateway.acknowledgeCheckpoint(
-					taskAcknowledgement.getJobID(),
-					taskAcknowledgement.getExecutionAttemptID(),
-					taskAcknowledgement.getCheckpointId(),
-					taskAcknowledgement.getCheckpointMetrics(),
-					taskAcknowledgement.getSubtaskState());
-				// release resource.
-				recv[0] = null;
-				position[0] = 0;
-			} else {
-				int length = Integer.parseInt(((String) msg).split(":")[1]);
-				recv[0] = new byte[length];
-			}
-		} else {
-			System.arraycopy((byte[]) msg, 0, recv[0], position[0], ((byte[]) msg).length);
-			position[0] += ((byte[]) msg).length;
+		chunkedChannelRead(msg, this::fireAck, recv, position);
+	}
+
+	public void fireAck(byte[] bytes) {
+		try {
+			TaskAcknowledgement taskAcknowledgement = new TaskAcknowledgement();
+			taskAcknowledgement.read(new DataInputViewStreamWrapper(new ByteArrayInputStream(bytes)));
+			checkpointCoordinatorGateway.acknowledgeCheckpoint(
+				taskAcknowledgement.getJobID(),
+				taskAcknowledgement.getExecutionAttemptID(),
+				taskAcknowledgement.getCheckpointId(),
+				taskAcknowledgement.getCheckpointMetrics(),
+				taskAcknowledgement.getSubtaskState());
+		} catch (Exception e) {
+			throw new RuntimeException(e);
 		}
 	}
 }

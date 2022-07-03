@@ -10,7 +10,7 @@ import org.apache.flink.runtime.jobgraph.JobVertexID;
 
 import java.io.Serializable;
 
-public class TaskBackupState implements Serializable {
+public class TaskBackupState implements NettyMessage, Serializable {
 	private ExecutionAttemptID executionAttemptID;
 	private JobVertexID jobvertexId;
 	private JobManagerTaskRestore taskRestore;

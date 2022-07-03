@@ -32,6 +32,7 @@ import org.apache.flink.shaded.netty4.io.netty.handler.stream.ChunkedWriteHandle
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -44,11 +45,13 @@ public class NettySocketServerTest {
 	}
 
 	public void run() throws Exception {
-		int stringLength = 1024 * 1024 * 1024;
+		int stringLength = 1023 * 1024 * 1024 + 256;
 		int chunkSize = 32 * 1024;
 
 //		String message = StringUtils.repeat("*", stringLength);
 		byte[] message = new byte[stringLength];
+		Random rd = new Random();
+		rd.nextBytes(message);
 		byte[] chunk;
 		final byte[][] recv = {new byte[0]};
 		final int[] position = {0};
@@ -102,8 +105,8 @@ public class NettySocketServerTest {
 				int from = 0;
 				int to = 0;
 				for (int i = 0; i < numOfChunk; i++) {
-					from = i*numOfChunk;
-					to = Math.min(i * numOfChunk + chunkSize - 1, stringLength);
+					from = i*chunkSize;
+					to = Math.min(i * chunkSize + chunkSize, stringLength);
 					chunk = Arrays.copyOfRange(message, from, to);
 					nettySocketClient.getChannel().writeAndFlush(chunk);
 				}
