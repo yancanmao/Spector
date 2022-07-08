@@ -21,6 +21,7 @@ package org.apache.flink.runtime.state;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.util.Preconditions;
 
+import javax.annotation.Nullable;
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -39,12 +40,15 @@ public class KeyGroupRangeOffsets implements Iterable<Tuple2<Integer, Long>> , S
 	/** the aligned array of offsets for the key-groups */
 	private final long[] offsets;
 
-	private boolean[] changelogs;
+	private final boolean[] changelogs;
 
-	public KeyGroupRangeOffsets(KeyGroupRange keyGroupRange, long[] offsets, boolean[] changelogs) {
+	public KeyGroupRangeOffsets(
+		KeyGroupRange keyGroupRange,
+		long[] offsets,
+		@Nullable boolean[] changelogs) {
 		this.keyGroupRange = Preconditions.checkNotNull(keyGroupRange);
 		this.offsets = Preconditions.checkNotNull(offsets);
-		this.changelogs = Preconditions.checkNotNull(changelogs);
+		this.changelogs = changelogs;
 		Preconditions.checkArgument(offsets.length == keyGroupRange.getNumberOfKeyGroups());
 	}
 
@@ -56,9 +60,10 @@ public class KeyGroupRangeOffsets implements Iterable<Tuple2<Integer, Long>> , S
 	 * @param offsets The aligned array of offsets for the given key-groups.
 	 */
 	public KeyGroupRangeOffsets(KeyGroupRange keyGroupRange, long[] offsets) {
-		this.keyGroupRange = Preconditions.checkNotNull(keyGroupRange);
-		this.offsets = Preconditions.checkNotNull(offsets);
-		Preconditions.checkArgument(offsets.length == keyGroupRange.getNumberOfKeyGroups());
+//		this.keyGroupRange = Preconditions.checkNotNull(keyGroupRange);
+//		this.offsets = Preconditions.checkNotNull(offsets);
+//		Preconditions.checkArgument(offsets.length == keyGroupRange.getNumberOfKeyGroups());
+		this(keyGroupRange, offsets, null);
 	}
 
 	/**
@@ -91,6 +96,10 @@ public class KeyGroupRangeOffsets implements Iterable<Tuple2<Integer, Long>> , S
 	 */
 	public KeyGroupRangeOffsets(KeyGroupRange keyGroupRange) {
 		this(keyGroupRange, new long[keyGroupRange.getNumberOfKeyGroups()]);
+	}
+
+	public boolean[] getChangelogs() {
+		return changelogs;
 	}
 
 	public boolean getIsModified(int keyGroup) {

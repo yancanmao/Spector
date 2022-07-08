@@ -24,6 +24,7 @@ import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.messages.checkpoint.DeclineCheckpoint;
+import org.apache.flink.runtime.spector.netty.CheckpointCoordinatorNettyClient;
 import org.apache.flink.runtime.taskmanager.CheckpointResponder;
 import org.apache.flink.util.Preconditions;
 
@@ -31,8 +32,21 @@ public class RpcCheckpointResponder implements CheckpointResponder {
 
 	private final CheckpointCoordinatorGateway checkpointCoordinatorGateway;
 
+	private final boolean nettyStateTransmissionEnabled;
+
+	private final CheckpointCoordinatorNettyClient checkpointCoordinatorNettyClient;
+
 	public RpcCheckpointResponder(CheckpointCoordinatorGateway checkpointCoordinatorGateway) {
+		this(checkpointCoordinatorGateway, false, null);
+	}
+
+	public RpcCheckpointResponder(
+		CheckpointCoordinatorGateway checkpointCoordinatorGateway,
+		boolean nettyStateTransmissionEnabled,
+		CheckpointCoordinatorNettyClient checkpointCoordinatorNettyClient) {
 		this.checkpointCoordinatorGateway = Preconditions.checkNotNull(checkpointCoordinatorGateway);
+		this.nettyStateTransmissionEnabled = nettyStateTransmissionEnabled;
+		this.checkpointCoordinatorNettyClient = checkpointCoordinatorNettyClient;
 	}
 
 	@Override
@@ -42,13 +56,21 @@ public class RpcCheckpointResponder implements CheckpointResponder {
 			long checkpointId,
 			CheckpointMetrics checkpointMetrics,
 			TaskStateSnapshot subtaskState) {
-
-		checkpointCoordinatorGateway.acknowledgeCheckpoint(
-			jobID,
-			executionAttemptID,
-			checkpointId,
-			checkpointMetrics,
-			subtaskState);
+		if (nettyStateTransmissionEnabled && checkpointCoordinatorNettyClient != null) {
+			checkpointCoordinatorNettyClient.acknowledgeCheckpoint(
+				jobID,
+				executionAttemptID,
+				checkpointId,
+				checkpointMetrics,
+				subtaskState);
+		} else {
+			checkpointCoordinatorGateway.acknowledgeCheckpoint(
+				jobID,
+				executionAttemptID,
+				checkpointId,
+				checkpointMetrics,
+				subtaskState);
+		}
 	}
 
 	@Override

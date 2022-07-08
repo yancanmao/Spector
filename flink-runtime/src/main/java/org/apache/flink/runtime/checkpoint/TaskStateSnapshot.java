@@ -18,6 +18,8 @@
 
 package org.apache.flink.runtime.checkpoint;
 
+import org.apache.flink.core.memory.DataInputView;
+import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.CompositeStateHandle;
 import org.apache.flink.runtime.state.SharedStateRegistry;
@@ -30,6 +32,9 @@ import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+
+import static org.apache.flink.runtime.checkpoint.savepoint.SavepointV2Serializer.deserializeSubtaskState;
+import static org.apache.flink.runtime.checkpoint.savepoint.SavepointV2Serializer.serializeSubtaskState;
 
 /**
  * This class encapsulates state handles to the snapshots of all operator instances executed within one task. A task
@@ -156,5 +161,26 @@ public class TaskStateSnapshot implements CompositeStateHandle {
 		return "TaskOperatorSubtaskStates{" +
 			"subtaskStatesByOperatorID=" + subtaskStatesByOperatorID +
 			'}';
+	}
+
+	public void write(DataOutputView out) throws Exception {
+		out.writeInt(this.subtaskStatesByOperatorID.size());
+		for (final Map.Entry<OperatorID, OperatorSubtaskState> entry : this.subtaskStatesByOperatorID.entrySet()) {
+			out.writeLong(entry.getKey().getLowerPart());
+			out.writeLong(entry.getKey().getUpperPart());
+//			entry.getValue().write(out);
+			serializeSubtaskState(entry.getValue(), out);
+		}
+	}
+
+	public void read(DataInputView in) throws Exception {
+		final int size = in.readInt();
+		for (int i = 0; i < size; ++i) {
+			OperatorID operatorID = new OperatorID(in.readLong(), in.readLong());
+//			OperatorSubtaskState operatorSubtaskState = new OperatorSubtaskState();
+//			operatorSubtaskState.read(in);
+			OperatorSubtaskState operatorSubtaskState = deserializeSubtaskState(in);
+			subtaskStatesByOperatorID.put(operatorID, operatorSubtaskState);
+		}
 	}
 }

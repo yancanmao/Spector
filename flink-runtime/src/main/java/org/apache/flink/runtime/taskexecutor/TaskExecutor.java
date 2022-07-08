@@ -79,6 +79,10 @@ import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils;
+import org.apache.flink.runtime.spector.netty.CheckpointCoordinatorNettyClient;
+import org.apache.flink.runtime.spector.netty.TaskExecutorNettyServer;
+import org.apache.flink.runtime.spector.netty.data.CheckpointCoordinatorSocketAddress;
+import org.apache.flink.runtime.spector.netty.data.TaskExecutorSocketAddress;
 import org.apache.flink.runtime.state.TaskExecutorLocalStateStoresManager;
 import org.apache.flink.runtime.state.TaskLocalStateStore;
 import org.apache.flink.runtime.state.TaskStateManager;
@@ -113,6 +117,7 @@ import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Sets;
+import org.apache.flink.util.NetUtils;
 import org.apache.flink.util.Preconditions;
 
 import javax.annotation.Nonnull;
@@ -121,7 +126,9 @@ import javax.annotation.Nullable;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -207,6 +214,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	/** The heartbeat manager for resource manager in the task manager. */
 	private HeartbeatManager<Void, SlotReport> resourceManagerHeartbeatManager;
 
+	private final TaskExecutorNettyServer taskExecutorNettyServer;
+
 	// --------- resource manager --------
 
 	@Nullable
@@ -227,6 +236,9 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	 * The component to manage replicated state that stored in standby tasks.
 	 */
 	private final BackupStateManager backupStateManager;
+
+	private final boolean nettyStateTransmissionEnabled = true;
+
 
 	public TaskExecutor(
 			RpcService rpcService,
@@ -272,6 +284,18 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		this.stackTraceSampleService = new StackTraceSampleService(rpcService.getScheduledExecutor());
 
 		this.backupStateManager = new BackupStateManager();
+
+		try {
+			boolean taskDeploymentEnable = true;
+			this.taskExecutorNettyServer = nettyStateTransmissionEnabled ?
+				new TaskExecutorNettyServer(
+					() -> this.getSelfGateway(TaskExecutorGateway.class),
+//					NetUtils.getLocalHostLANAddress().getHostAddress(),
+					InetAddress.getLocalHost().getHostAddress(),
+					taskDeploymentEnable) : null;
+		} catch (UnknownHostException e) {
+			throw new RuntimeException(e);
+		}
 	}
 
 	@Override
@@ -311,6 +335,10 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			jobLeaderService.start(getAddress(), getRpcService(), haServices, new JobLeaderListenerImpl());
 
 			fileCache = new FileCache(taskManagerConfiguration.getTmpDirectories(), blobCacheService.getPermanentBlobService());
+
+			if (taskExecutorNettyServer != null) {
+				taskExecutorNettyServer.start();
+			}
 		} catch (Exception e) {
 			handleStartTaskExecutorServicesException(e);
 		}
@@ -394,6 +422,14 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		taskManagerMetricGroup.close();
 
 		stopHeartbeatServices();
+
+		if (taskExecutorNettyServer != null) {
+			try {
+				taskExecutorNettyServer.close();
+			} catch (Exception e) {
+				exception = ExceptionUtils.firstOrSuppressed(e, exception);
+			}
+		}
 
 		ExceptionUtils.tryRethrowException(exception);
 	}
@@ -538,7 +574,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 				Preconditions.checkState(!backupStateManager.replicas.containsKey(taskInformation.getJobVertexId()),
 					"++++++backupStateManager should only maintain a replica for each jobVertex");
-				backupStateManager.replicas.put(taskInformation.getJobVertexId(), taskStateManager);
+				backupStateManager.put(taskInformation.getJobVertexId(), taskStateManager);
 
 				jobManagerConnection.getTaskManagerActions().updateTaskExecutionState(
 					new TaskExecutionState(jobId, tdd.getExecutionAttemptId(), ExecutionState.STANDBY));
@@ -672,8 +708,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				if (reconfigOptions.isUpdatingState()) {
 					log.info("++++++ update task state: " + tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId());
 
-//					JobManagerTaskRestore taskRestore = getTaskRestoreFromReplica(task);
-					JobManagerTaskRestore taskRestore = tdd.getTaskRestore();
+					JobManagerTaskRestore taskRestore = backupStateManager.getTaskRestoreFromReplica(task.getJobVertexId());
+//					JobManagerTaskRestore taskRestore = tdd.getTaskRestore();
 
 					task.assignNewState(
 						tdd.getKeyGroupRange(),
@@ -716,18 +752,6 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		}
 	}
 
-	/**
-	 * The API to retrieve task restore from the replica tasks.
-	 * @param reconfigTask
-	 * @return
-	 */
-	public JobManagerTaskRestore getTaskRestoreFromReplica(Task reconfigTask) {
-		TaskStateManager taskStateManager = backupStateManager.replicas.get(reconfigTask.getJobVertexId());
-		// directly assign backup taskrestore for the targeting task, and it will be updated in each operator during
-		// state initialization.
-		return ((TaskStateManagerImpl) taskStateManager).getTaskRestore();
-	}
-
 	@Override
 	public CompletableFuture<Acknowledge> cancelTask(ExecutionAttemptID executionAttemptID, Time timeout) {
 		final Task task = taskSlotTable.getTask(executionAttemptID);
@@ -768,23 +792,22 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	}
 
 	@Override
-	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, JobManagerTaskRestore taskRestore, Time timeout) {
-//		final Task task = taskSlotTable.getTask(executionAttemptID);
+	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(
+		ExecutionAttemptID executionAttemptID,
+		JobVertexID jobvertexId,
+		JobManagerTaskRestore taskRestore,
+		Time timeout) {
+//		if (backupStateManager.replicas.containsKey(jobvertexId)) {
+//			backupStateManager.mergeState(jobvertexId, taskRestore);
 //
-//		if (task != null) {
-//			try {
-//				task.dispatchStateToStandbyTask(taskRestore);
-//				return CompletableFuture.completedFuture(Acknowledge.get());
-//			} catch (Throwable t) {
-//				return FutureUtils.completedExceptionally(new TaskException("Cannot dispatch state snapshot to standby task " + executionAttemptID + '.', t));
-//			}
+//			return CompletableFuture.completedFuture(Acknowledge.get());
 //		} else {
 //			final String message = "Cannot find standby task " + executionAttemptID + " to dispatch state to it.";
-//
 //			log.debug(message);
 //			return FutureUtils.completedExceptionally(new TaskException(message));
 //		}
-		final TaskStateManager taskStateManager = backupStateManager.replicas.get(jobvertexId);
+
+		TaskStateManager taskStateManager = backupStateManager.replicas.get(jobvertexId);
 
 		if (taskStateManager != null) {
 			taskStateManager.setTaskRestore(taskRestore);
@@ -1256,7 +1279,10 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				CompletableFuture<Collection<SlotOffer>> acceptedSlotsFuture = jobMasterGateway.offerSlots(
 					getResourceID(),
 					reservedSlots,
-					taskManagerConfiguration.getTimeout());
+					taskManagerConfiguration.getTimeout(),
+					// pass taskExecutorNettyServer to JobMaster for the future data transmission.
+					 taskExecutorNettyServer == null ?
+						null : new TaskExecutorSocketAddress(taskExecutorNettyServer.getAddress(), taskExecutorNettyServer.getPort()));
 
 				acceptedSlotsFuture.whenCompleteAsync(
 					handleAcceptedSlotOffers(jobId, jobMasterGateway, jobMasterId, reservedSlots),
@@ -1344,7 +1370,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		JobManagerConnection newJobManagerConnection = associateWithJobManager(
 				jobId,
 				jobManagerResourceID,
-				jobMasterGateway);
+				jobMasterGateway,
+				registrationSuccess.getCheckpointCoordinatorSocketAddress());
 		jobManagerConnections.put(jobManagerResourceID, newJobManagerConnection);
 		jobManagerTable.put(jobId, newJobManagerConnection);
 
@@ -1415,16 +1442,41 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	}
 
 	private JobManagerConnection associateWithJobManager(
-			JobID jobID,
-			ResourceID resourceID,
-			JobMasterGateway jobMasterGateway) {
+		JobID jobID,
+		ResourceID resourceID,
+		JobMasterGateway jobMasterGateway,
+		CheckpointCoordinatorSocketAddress checkpointCoordinatorSocketAddress) {
 		checkNotNull(jobID);
 		checkNotNull(resourceID);
 		checkNotNull(jobMasterGateway);
 
 		TaskManagerActions taskManagerActions = new TaskManagerActionsImpl(jobMasterGateway);
 
-		CheckpointResponder checkpointResponder = new RpcCheckpointResponder(jobMasterGateway);
+		CheckpointCoordinatorNettyClient checkpointCoordinatorNettyClient = null;
+		if (nettyStateTransmissionEnabled) {
+			int channelCount = 10;
+			int connectTimeoutMills = 10000;
+			int lowWaterMark = 10 * 1024 * 1024;
+			int highWaterMark = 50 * 1024 * 1024;
+			boolean taskAcknowledgementEnabled = false;
+			checkpointCoordinatorNettyClient = new CheckpointCoordinatorNettyClient(
+				checkpointCoordinatorSocketAddress,
+				channelCount,
+				connectTimeoutMills,
+				lowWaterMark,
+				highWaterMark,
+				taskAcknowledgementEnabled);
+			try {
+				checkpointCoordinatorNettyClient.start();
+			} catch (Exception e) {
+				throw new RuntimeException(e);
+			}
+		}
+
+		CheckpointResponder checkpointResponder = new RpcCheckpointResponder(
+			jobMasterGateway,
+			nettyStateTransmissionEnabled,
+			checkpointCoordinatorNettyClient);
 		GlobalAggregateManager aggregateManager = new RpcGlobalAggregateManager(jobMasterGateway);
 
 		final LibraryCacheManager libraryCacheManager = new BlobLibraryCacheManager(

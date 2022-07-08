@@ -18,6 +18,9 @@
 
 package org.apache.flink.runtime.checkpoint;
 
+import org.apache.flink.core.memory.DataInputView;
+import org.apache.flink.core.memory.DataOutputView;
+
 import javax.annotation.Nonnegative;
 import javax.annotation.Nonnull;
 
@@ -31,10 +34,12 @@ public class JobManagerTaskRestore implements Serializable {
 	private static final long serialVersionUID = 1L;
 
 	/** The id of the checkpoint from which we restore. */
-	private final long restoreCheckpointId;
+	private long restoreCheckpointId;
 
 	/** The state for this task to restore. */
-	private final TaskStateSnapshot taskStateSnapshot;
+	private TaskStateSnapshot taskStateSnapshot;
+
+	public JobManagerTaskRestore() {}
 
 	public JobManagerTaskRestore(@Nonnegative long restoreCheckpointId, @Nonnull TaskStateSnapshot taskStateSnapshot) {
 		this.restoreCheckpointId = restoreCheckpointId;
@@ -56,5 +61,16 @@ public class JobManagerTaskRestore implements Serializable {
 			"restoreCheckpointId=" + restoreCheckpointId +
 			", taskStateSnapshot=" + taskStateSnapshot +
 			'}';
+	}
+
+	public void write(DataOutputView out) throws Exception {
+		out.writeLong(restoreCheckpointId);
+		taskStateSnapshot.write(out);
+	}
+
+	public void read(DataInputView in) throws Exception {
+		restoreCheckpointId = in.readLong();
+		taskStateSnapshot = new TaskStateSnapshot();
+		taskStateSnapshot.read(in);
 	}
 }

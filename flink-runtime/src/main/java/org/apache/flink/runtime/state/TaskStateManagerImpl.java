@@ -93,6 +93,8 @@ public class TaskStateManagerImpl implements TaskStateManager {
 
 		localStateStore.storeLocalState(checkpointId, localState);
 
+		LOG.info("++++--- Sending state to JobMaster");
+
 		checkpointResponder.acknowledgeCheckpoint(
 			jobId,
 			executionAttemptID,

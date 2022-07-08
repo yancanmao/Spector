@@ -209,7 +209,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 
 		StateAssignmentOperation stateAssignmentOperation =
 			new StateAssignmentOperation(checkpoint.getCheckpointID(), tasks, operatorStates,
-				true, DISPATCH_STATE_TO_STANDBY_TASK);
+				true, DISPATCH_STATE_TO_STANDBY_TASK, backupKeyGroups);
 		checkNotNull(jobExecutionPlan, "jobExecutionPlan should not be null.");
 		stateAssignmentOperation.setRedistributeStrategy(jobExecutionPlan);
 
@@ -414,7 +414,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 		for (int subtaskIndex = 0; subtaskIndex < targetVertex.getTaskVertices().length; subtaskIndex++) {
 			ExecutionVertex vertex = targetVertex.getTaskVertices()[subtaskIndex];
 			Execution execution = vertex.getCurrentExecutionAttempt();
-			if (!jobExecutionPlan.isSubtaskModified(subtaskIndex)) {
+			if (!jobExecutionPlan.isAffectedTask(subtaskIndex)) {
 				rescaleCandidatesFutures.add(
 					execution.scheduleReconfig(reconfigId, ReconfigOptions.UPDATE_BOTH,
 						null, null));
@@ -554,7 +554,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 					}
 
 					for (int subtaskIndex = 0; subtaskIndex < targetVertex.getTaskVertices().length; subtaskIndex++) {
-						if (!jobExecutionPlan.isSubtaskModified(subtaskIndex)) {
+						if (!jobExecutionPlan.isAffectedTask(subtaskIndex)) {
 							ExecutionVertex vertex = targetVertex.getTaskVertices()[subtaskIndex];
 							Execution execution = vertex.getCurrentExecutionAttempt();
 
@@ -700,13 +700,14 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 		Map<JobVertexID, ExecutionJobVertex> tasks = new HashMap<>();
 		tasks.put(targetVertex.getJobVertexId(), targetVertex);
 
-		StateAssignmentOperation stateAssignmentOperation =
-			new StateAssignmentOperation(checkpointId, tasks, operatorStates,
-				true, REPARTITION_STATE);
-		stateAssignmentOperation.setRedistributeStrategy(jobExecutionPlan);
-
-		LOG.info("++++++ start to assign states");
-		stateAssignmentOperation.assignStates();
+		// TODO: assign unreplicated states to tasks.
+//		StateAssignmentOperation stateAssignmentOperation =
+//			new StateAssignmentOperation(checkpointId, tasks, operatorStates,
+//				true, REPARTITION_STATE);
+//		stateAssignmentOperation.setRedistributeStrategy(jobExecutionPlan);
+//
+//		LOG.info("++++++ start to assign states");
+//		stateAssignmentOperation.assignStates();
 
 		Collection<CompletableFuture<Void>> rescaledFuture = new ArrayList<>(targetVertex.getTaskVertices().length);
 
@@ -716,12 +717,11 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 
 			CompletableFuture<Void> scheduledRescale;
 
-			if (jobExecutionPlan.isSubtaskModified(i)) {
+			if (jobExecutionPlan.isAffectedTask(i)) {
 				scheduledRescale = executionAttempt.scheduleReconfig(reconfigId,
 					ReconfigOptions.UPDATE_REDISTRIBUTE_STATE,
 					jobExecutionPlan.getAlignedKeyGroupRange(i),
 					jobExecutionPlan.getIdInModel(i));
-
 			} else {
 				scheduledRescale = executionAttempt.scheduleReconfig(reconfigId,
 					ReconfigOptions.UPDATE_KEYGROUP_RANGE_ONLY,
@@ -758,7 +758,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 
 		StateAssignmentOperation stateAssignmentOperation =
 			new StateAssignmentOperation(checkpointId, tasks, operatorStates,
-				true, REPARTITION_STATE);
+				true, REPARTITION_STATE, backupKeyGroups);
 		stateAssignmentOperation.setRedistributeStrategy(jobExecutionPlan);
 
 		LOG.info("++++++ start to assign states");
@@ -777,7 +777,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 
 			CompletableFuture<Void> scheduledRescale;
 
-			if (jobExecutionPlan.isSubtaskModified(i)) {
+			if (jobExecutionPlan.isAffectedTask(i)) {
 				int idInModel = jobExecutionPlan.getIdInModel(i);
 
 				if (createCandidates.contains(vertex)) {
@@ -826,7 +826,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 		tasks.put(targetVertex.getJobVertexId(), targetVertex);
 
 		StateAssignmentOperation stateAssignmentOperation =
-			new StateAssignmentOperation(checkpointId, tasks, operatorStates, true, REPARTITION_STATE);
+			new StateAssignmentOperation(checkpointId, tasks, operatorStates, true, REPARTITION_STATE, backupKeyGroups);
 		stateAssignmentOperation.setRedistributeStrategy(jobExecutionPlan);
 
 		LOG.info("++++++ start to assign states");
@@ -903,7 +903,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 							notYetAcknowledgedTasks.remove(attemptID);
 
 							if (notYetAcknowledgedTasks.isEmpty()) {
-								// receive all required snapshot, force streamSwitch to update metrices
+								// receive all required snapshot, force streamSwitch to update metrics
 //								streamSwitchAdaptor.onForceRetrieveMetrics(targetVertex.getJobVertexId());
 								// only update executor mappings at this time.
 //								streamSwitchAdaptor.onMigrationExecutorsStopped(targetVertex.getJobVertexId());

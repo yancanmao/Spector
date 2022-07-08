@@ -214,6 +214,7 @@ class HeapSnapshotStrategy<K>
 							}
 						}
 					}
+					LOG.info("++++--- Snapshot cleanup completed");
 				}
 
 				@Override
@@ -379,6 +380,7 @@ class HeapSnapshotStrategy<K>
 							}
 						}
 					}
+					LOG.info("++++--- Snapshot cleanup completed");
 				}
 
 				@Override

@@ -83,6 +83,7 @@ public class DummyStreamSwitch extends Thread implements FlinkOperatorController
 			LOG.info("------ dummy streamSwitch start to run");
 
 			// cool down time, wait for fully deployment
+//			Thread.sleep(20 * 1000);
 			Thread.sleep(5 * 1000);
 
 //			testRepartition();

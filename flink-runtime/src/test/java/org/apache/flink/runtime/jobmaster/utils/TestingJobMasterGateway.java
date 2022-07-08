@@ -28,6 +28,7 @@ import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
+import org.apache.flink.runtime.clusterframework.types.TaskManagerSlot;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.ArchivedExecutionGraph;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
@@ -47,6 +48,7 @@ import org.apache.flink.runtime.query.KvStateLocation;
 import org.apache.flink.runtime.registration.RegistrationResponse;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.OperatorBackPressureStatsResponse;
+import org.apache.flink.runtime.spector.netty.data.TaskExecutorSocketAddress;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.taskexecutor.AccumulatorReport;
 import org.apache.flink.runtime.taskexecutor.slot.SlotOffer;
@@ -276,7 +278,7 @@ public class TestingJobMasterGateway implements JobMasterGateway {
 	}
 
 	@Override
-	public CompletableFuture<Collection<SlotOffer>> offerSlots(ResourceID taskManagerId, Collection<SlotOffer> slots, Time timeout) {
+	public CompletableFuture<Collection<SlotOffer>> offerSlots(ResourceID taskManagerId, Collection<SlotOffer> slots, Time timeout, TaskExecutorSocketAddress taskExecutorSocketAddress) {
 		return offerSlotsFunction.apply(taskManagerId, slots);
 	}
 
@@ -286,7 +288,10 @@ public class TestingJobMasterGateway implements JobMasterGateway {
 	}
 
 	@Override
-	public CompletableFuture<RegistrationResponse> registerTaskManager(String taskManagerRpcAddress, TaskManagerLocation taskManagerLocation, Time timeout) {
+	public CompletableFuture<RegistrationResponse> registerTaskManager(
+		String taskManagerRpcAddress,
+		TaskManagerLocation taskManagerLocation,
+		Time timeout) {
 		return registerTaskManagerFunction.apply(taskManagerRpcAddress, taskManagerLocation);
 	}
 
@@ -373,5 +378,10 @@ public class TestingJobMasterGateway implements JobMasterGateway {
 	@Override
 	public CompletableFuture<Object> updateGlobalAggregate(String aggregateName, Object aggregand, byte[] serializedAggregateFunction) {
 		return updateAggregateFunction.apply(aggregateName, aggregand, serializedAggregateFunction);
+	}
+
+	@Override
+	public CompletableFuture<Collection<TaskManagerSlot>> getAllSlots() {
+		return null;
 	}
 }

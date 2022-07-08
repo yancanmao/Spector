@@ -32,7 +32,6 @@ import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.MetricGroup;
-import org.apache.flink.runtime.checkpoint.CheckpointException;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.PrioritizedOperatorSubtaskState;
 import org.apache.flink.runtime.checkpoint.StateObjectCollection;
@@ -61,7 +60,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
-import java.io.IOException;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.List;
@@ -279,7 +277,7 @@ public abstract class AbstractStreamOperator<OUT>
 	}
 
 	@Override
-	public void updateStateTable(KeyGroupRange keyGroupRange, int maxNumberOfParallelSubtasks) throws Exception {
+	public void updateStateTable(KeyGroupRange keyGroupRange, int maxNumberOfParallelSubtasks, Collection<Integer> migrateInKeygroup) throws Exception {
 		// TODO: follow the similar pattern as the restoration to initialize state backend
 		// step 1: get the task state manager which contains the state handles to restore
 		final TypeSerializer<?> keySerializer = config.getStateKeySerializer(getUserCodeClassloader());
@@ -291,6 +289,7 @@ public abstract class AbstractStreamOperator<OUT>
 			Preconditions.checkNotNull(containingTask.getCancelables());
 		final PrioritizedOperatorSubtaskState prioritizedOperatorSubtaskStates =
 			taskStateManager.prioritizedOperatorState(getOperatorID());
+		// TODO: managed tate handle also need to be updated.
 		List<StateObjectCollection<KeyedStateHandle>> stateHandlesList = prioritizedOperatorSubtaskStates.getPrioritizedManagedKeyedState();
 		int idx = 0;
 		while (idx < stateHandlesList.size()) {
@@ -303,7 +302,8 @@ public abstract class AbstractStreamOperator<OUT>
 					keySerializer,
 					keyGroupRange,
 					maxNumberOfParallelSubtasks,
-					streamTaskCloseableRegistry);
+					streamTaskCloseableRegistry,
+					migrateInKeygroup);
 				heapUpdateOperation.updateHeapState();
 			}
 		}

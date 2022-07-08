@@ -63,7 +63,6 @@ import java.util.Map;
  * @param <K> The data type that the serializer serializes.
  */
 public class HeapRestoreOperation<K> implements RestoreOperation<Void> {
-
 	private static final Logger LOG = LoggerFactory.getLogger(HeapRestoreOperation.class);
 
 	private final Collection<KeyedStateHandle> restoreStateHandles;
