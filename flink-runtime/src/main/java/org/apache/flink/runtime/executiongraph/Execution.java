@@ -448,7 +448,33 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			resourceProvider,
 			allowQueued,
 			LocationPreferenceConstraint.ANY,
-			Collections.emptySet());
+			Collections.emptySet(),
+			null);
+	}
+
+	public CompletableFuture<Void> scheduleForExecution(SlotID allocatedSlot) {
+		final ExecutionGraph executionGraph = getVertex().getExecutionGraph();
+		final SlotProvider resourceProvider = executionGraph.getSlotProvider();
+		final boolean allowQueued = executionGraph.isQueuedSchedulingAllowed();
+		return scheduleForExecution(
+			resourceProvider,
+			allowQueued,
+			LocationPreferenceConstraint.ANY,
+			Collections.emptySet(),
+			allocatedSlot);
+	}
+
+	public CompletableFuture<Void> scheduleForExecution(
+		SlotProvider slotProvider,
+		boolean queued,
+		LocationPreferenceConstraint locationPreferenceConstraint,
+		@Nonnull Set<AllocationID> allPreviousExecutionGraphAllocationIds) {
+		return scheduleForExecution(
+			slotProvider,
+			queued,
+			locationPreferenceConstraint,
+			allPreviousExecutionGraphAllocationIds,
+			null);
 	}
 
 	/**
@@ -468,7 +494,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			SlotProvider slotProvider,
 			boolean queued,
 			LocationPreferenceConstraint locationPreferenceConstraint,
-			@Nonnull Set<AllocationID> allPreviousExecutionGraphAllocationIds) {
+			@Nonnull Set<AllocationID> allPreviousExecutionGraphAllocationIds,
+			@Nullable SlotID slotId) {
 
 		assertRunningInJobMasterMainThread();
 		final ExecutionGraph executionGraph = vertex.getExecutionGraph();
@@ -479,7 +506,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				queued,
 				locationPreferenceConstraint,
 				allPreviousExecutionGraphAllocationIds,
-				allocationTimeout, null);
+				allocationTimeout, slotId);
 
 			final CompletableFuture<Void> deploymentFuture;
 

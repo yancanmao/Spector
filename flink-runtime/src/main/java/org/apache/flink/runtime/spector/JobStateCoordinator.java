@@ -21,17 +21,22 @@ package org.apache.flink.runtime.spector;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.checkpoint.*;
+import org.apache.flink.runtime.clusterframework.types.SlotID;
+import org.apache.flink.runtime.clusterframework.types.TaskManagerSlot;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.*;
+import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.jsonplan.JsonPlanGenerator;
+import org.apache.flink.runtime.jobmaster.slotpool.SchedulerImpl;
 import org.apache.flink.runtime.spector.streamswitch.ControllerAdaptor;
 import org.apache.flink.runtime.state.KeyGroupRange;
+import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,6 +52,7 @@ import java.util.function.Function;
 
 import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Operation.DISPATCH_STATE_TO_STANDBY_TASK;
 import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Operation.REPARTITION_STATE;
+import static org.apache.flink.runtime.clusterframework.types.TaskManagerSlot.State.FREE;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -101,11 +107,12 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 	 */
 	private final HashMap<JobVertexID, List<Integer>> backupKeyGroups;
 
+	private final Map<InstanceID, List<TaskManagerSlot>> slotsMap;
 
 	public JobStateCoordinator(
-			JobGraph jobGraph,
-			ExecutionGraph executionGraph,
-			ClassLoader userCodeLoader) {
+		JobGraph jobGraph,
+		ExecutionGraph executionGraph,
+		ClassLoader userCodeLoader) {
 
 		this.jobGraph = jobGraph;
 		this.executionGraph = executionGraph;
@@ -117,6 +124,19 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 
 		this.standbyExecutionVertexes = new HashMap<>();
 		this.backupKeyGroups = new HashMap<>();
+		this.slotsMap = new HashMap<>();
+	}
+
+	public void setSlotsMap(CompletableFuture<Collection<TaskManagerSlot>> allSlots) {
+		allSlots.thenAccept(taskManagerSlots -> {
+			// compute
+//			Map<String, List<TaskManagerSlot>> slotMap = new HashMap<>();
+			for (TaskManagerSlot taskManagerSlot : taskManagerSlots) {
+				InstanceID taskManagerId = taskManagerSlot.getInstanceId();
+				List<TaskManagerSlot> slots = slotsMap.computeIfAbsent(taskManagerId, k -> new ArrayList<>());
+				slots.add(taskManagerSlot);
+			}
+		});
 	}
 
 	//****************************Standby Task Creation****************************
@@ -154,26 +174,41 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 			}
 			// once all execution of current executionJobVertex are in running state, deploy backup executions
 			FutureUtils.combineAll(currentExecutionFutures).whenComplete((ignored, t) -> {
+				Preconditions.checkState(executionGraph.getSlotProvider() instanceof SchedulerImpl,
+					"++++++ slotProvider must be SchedulerImpl");
+
+				setSlotsMap(((SchedulerImpl) executionGraph.getSlotProvider()).getAllSlots());
+
+				Preconditions.checkState(slotsMap.size() > 0, "++++++ Empty slotsMap");
+
 				if (t == null) {
 					// create a set of executionVertex
-					int numBackupTasks = 1;
 					List<ExecutionVertex> createCandidates = executionJobVertex.addStandbyExecutionVertex(
 						executionGraph.getRpcTimeout(),
 						executionGraph.getGlobalModVersion(),
 						System.currentTimeMillis(),
-						1);
+						slotsMap.size());
 					// TODO: need to create number of tasks according to number of nodes in the cluster.
 					standbyExecutionVertexes.put(executionJobVertex.getJobVertexId(), createCandidates);
-					LOG.info("++++++ add standby task for: " + executionJobVertex.getJobVertexId());
+					LOG.info("++++++ add standby task for: " + executionJobVertex.getJobVertexId()
+						+ " number of backup tasks: " + createCandidates.size());
 
-					checkState(createCandidates.size() == numBackupTasks,
-						"Inconsistent number of execution vertices are created");
+					checkState(createCandidates.size() == slotsMap.size(),
+						"++++++ Inconsistent number of execution vertices are created");
 
 					// schedule for execution
-					for (ExecutionVertex vertex : createCandidates) {
-						Execution executionAttempt = vertex.getCurrentExecutionAttempt();
+					for (int i = 0; i < createCandidates.size(); i++) {
+						SlotID allocatedSlot = null;
+						Execution executionAttempt = createCandidates.get(i).getCurrentExecutionAttempt();
+						for (TaskManagerSlot taskManagerSlot : (List<TaskManagerSlot>) slotsMap.values().toArray()[i]) {
+							if (taskManagerSlot.getState() == FREE) {
+								allocatedSlot = taskManagerSlot.getSlotId();
+								break;
+							}
+						}
+						Preconditions.checkState(allocatedSlot != null);
 						// TODO: schedule backup tasks to different task managers for execution
-						schedulingFutures.add(executionAttempt.scheduleForExecution());
+						schedulingFutures.add(executionAttempt.scheduleForExecution(allocatedSlot));
 					}
 				} else {
 					schedulingFutures.add(

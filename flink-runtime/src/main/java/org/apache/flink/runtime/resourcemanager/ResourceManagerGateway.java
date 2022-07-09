@@ -35,6 +35,7 @@ import org.apache.flink.runtime.jobmaster.JobMasterId;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.metrics.dump.MetricQueryService;
 import org.apache.flink.runtime.registration.RegistrationResponse;
+import org.apache.flink.runtime.resourcemanager.slotmanager.TaskManagerRegistration;
 import org.apache.flink.runtime.rest.messages.taskmanager.TaskManagerInfo;
 import org.apache.flink.runtime.rpc.FencedRpcGateway;
 import org.apache.flink.runtime.rpc.RpcTimeout;
@@ -45,6 +46,7 @@ import org.apache.flink.runtime.taskexecutor.TaskExecutor;
 import javax.annotation.Nullable;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -246,4 +248,5 @@ public interface ResourceManagerGateway extends FencedRpcGateway<ResourceManager
 	CompletableFuture<TransientBlobKey> requestTaskManagerFileUpload(ResourceID taskManagerId, FileType fileType, @RpcTimeout Time timeout);
 
 	CompletableFuture<Collection<TaskManagerSlot>> getAllSlots();
+	CompletableFuture<HashMap<InstanceID, TaskManagerRegistration>> getAllSlotsByTaskManager();
 }

@@ -276,7 +276,20 @@ public class DummyStreamSwitch extends Thread implements FlinkOperatorController
 			"trigger 1 repartition",
 			() -> listener.remap(executorMapping),
 			executorMapping);
+
 //		sleep(10000);
+//
+//		preparePartitionAssignment("0", "1");
+//		for (int i = 0; i < 128; i++) {
+//			if (i >= 0 && i <= 63)
+//				executorMapping.get("0").add(i + "");
+//			else
+//				executorMapping.get("1").add(i + "");
+//		}
+//		triggerAction(
+//			"trigger 1 repartition",
+//			() -> listener.remap(executorMapping),
+//			executorMapping);
 //
 //		/*
 //		 * scale in to parallelism 1

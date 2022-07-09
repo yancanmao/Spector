@@ -27,6 +27,7 @@ import org.apache.flink.runtime.clusterframework.types.*;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
+import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.jobmanager.scheduler.NoResourceAvailableException;
 import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
 import org.apache.flink.runtime.jobmaster.AllocatedSlotInfo;
@@ -37,6 +38,7 @@ import org.apache.flink.runtime.jobmaster.SlotRequestId;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.resourcemanager.SlotRequest;
+import org.apache.flink.runtime.resourcemanager.slotmanager.TaskManagerRegistration;
 import org.apache.flink.runtime.taskexecutor.slot.SlotOffer;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.runtime.util.clock.Clock;
@@ -754,6 +756,15 @@ public class SlotPoolImpl implements SlotPool {
 		}
 		return resourceManagerGateway.getAllSlots();
 	}
+
+	@Override
+	public CompletableFuture<HashMap<InstanceID, TaskManagerRegistration>> getAllSlotsByTaskManager() {
+		if (resourceManagerGateway == null) {
+			return CompletableFuture.completedFuture(null);
+		}
+		return resourceManagerGateway.getAllSlotsByTaskManager();
+	}
+
 
 	/**
 	 * Register TaskManager to this pool, only those slots come from registered TaskManager will be considered valid.

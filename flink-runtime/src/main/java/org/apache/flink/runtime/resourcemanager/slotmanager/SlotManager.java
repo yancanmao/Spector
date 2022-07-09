@@ -96,6 +96,7 @@ public class SlotManager implements AutoCloseable {
 	/** All currently registered task managers. */
 	private final HashMap<InstanceID, TaskManagerRegistration> taskManagerRegistrations;
 
+
 	/** Map of fulfilled and active allocations for request deduplication purposes. */
 	private final HashMap<AllocationID, SlotID> fulfilledSlotRequests;
 
@@ -122,6 +123,8 @@ public class SlotManager implements AutoCloseable {
 
 	/** Release task executor only when each produced result partition is either consumed or failed. */
 	private final boolean waitResultConsumedBeforeRelease;
+
+	private int nextTaskManagerIndex = 0;
 
 	public SlotManager(
 			ScheduledExecutor scheduledExecutor,
@@ -276,6 +279,10 @@ public class SlotManager implements AutoCloseable {
 
 	public Collection<TaskManagerSlot> getAllSlots() {
 		return slots.values();
+	}
+
+	public HashMap<InstanceID, TaskManagerRegistration> getAllSlotsByTaskManager() {
+		return taskManagerRegistrations;
 	}
 
 	/**
@@ -507,6 +514,8 @@ public class SlotManager implements AutoCloseable {
 	protected TaskManagerSlot findMatchingSlot(ResourceProfile requestResourceProfile) {
 		Iterator<Map.Entry<SlotID, TaskManagerSlot>> iterator = freeSlots.entrySet().iterator();
 
+		TaskManagerRegistration nextTaskManager = getNextTaskManager();
+
 		while (iterator.hasNext()) {
 			TaskManagerSlot taskManagerSlot = iterator.next().getValue();
 
@@ -516,13 +525,33 @@ public class SlotManager implements AutoCloseable {
 				"TaskManagerSlot %s is not in state FREE but %s.",
 				taskManagerSlot.getSlotId(), taskManagerSlot.getState());
 
-			if (taskManagerSlot.getResourceProfile().isMatching(requestResourceProfile)) {
+			if (taskManagerSlot.getResourceProfile().isMatching(requestResourceProfile)
+				&& nextTaskManager.containsSlot(taskManagerSlot.getSlotId())) {
 				iterator.remove();
 				return taskManagerSlot;
 			}
 		}
 
 		return null;
+	}
+
+	private TaskManagerRegistration getNextTaskManager() {
+		try {
+			int totalTaskManager = taskManagerRegistrations.size();
+			nextTaskManagerIndex = (nextTaskManagerIndex + 1) % totalTaskManager;
+			TaskManagerRegistration nextTaskManagerRegistration =
+				(TaskManagerRegistration) taskManagerRegistrations.values().toArray()[nextTaskManagerIndex];
+			int count = 0;
+			while (nextTaskManagerRegistration.getNumberFreeSlots() == 0 && count <= totalTaskManager) {
+				nextTaskManagerIndex = nextTaskManagerIndex + 1 % taskManagerRegistrations.size();
+				nextTaskManagerRegistration =
+					(TaskManagerRegistration) taskManagerRegistrations.values().toArray()[nextTaskManagerIndex];
+				count++;
+			}
+			return nextTaskManagerRegistration;
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		}
 	}
 
 	// ---------------------------------------------------------------------------------------------
