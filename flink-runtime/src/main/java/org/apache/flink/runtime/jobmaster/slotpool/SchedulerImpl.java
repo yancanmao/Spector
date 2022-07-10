@@ -211,7 +211,7 @@ public class SchedulerImpl implements Scheduler {
 		} else if (allowQueuedScheduling) {
 			// we allocate by requesting a new slot
 			return slotPool
-				.requestNewAllocatedSlot(slotRequestId, slotProfile.getResourceProfile(), allocationTimeout)
+				.requestNewAllocatedSlot(slotRequestId, slotProfile.getResourceProfile(), allocationTimeout, slotId)
 				.thenApply((PhysicalSlot allocatedSlot) -> {
 					try {
 						return completeAllocationByAssigningPayload(slotRequestId, new SlotAndLocality(allocatedSlot, Locality.UNKNOWN));
@@ -287,13 +287,13 @@ public class SchedulerImpl implements Scheduler {
 	private Optional<SlotAndLocality> tryAllocateFromAvailable(
 		@Nonnull SlotRequestId slotRequestId,
 		SlotID slotId) {
-		Optional<SlotInfo> slotInfo = slotPool.getAvailableSlotsInformation().stream()
-			.filter(slotInfoWithUtilization -> slotInfoWithUtilization.getPhysicalSlotNumber() == slotId.getSlotNumber() &&
-				slotInfoWithUtilization.getTaskManagerLocation().getResourceID() == slotId.getResourceID())
+		Optional<SlotInfo> optionalSlotInfo = slotPool.getAvailableSlotsInformation().stream()
+			.filter(slotInfo -> slotInfo.getPhysicalSlotNumber() == slotId.getSlotNumber() ||
+				slotInfo.getTaskManagerLocation().getResourceID() == slotId.getResourceID())
 			.findFirst();
 
-		return slotInfo.flatMap(slotInfoWithUtilization -> {
-			Optional<PhysicalSlot> optionalAllocatedSlot = slotPool.allocateAvailableSlot(slotRequestId, slotInfoWithUtilization.getAllocationId());
+		return optionalSlotInfo.flatMap(slotInfo -> {
+			Optional<PhysicalSlot> optionalAllocatedSlot = slotPool.allocateAvailableSlot(slotRequestId, slotInfo.getAllocationId());
 
 			return optionalAllocatedSlot.map(
 				allocatedSlot -> new SlotAndLocality(allocatedSlot, Locality.UNKNOWN));

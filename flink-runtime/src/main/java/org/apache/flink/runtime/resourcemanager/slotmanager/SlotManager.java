@@ -499,6 +499,28 @@ public class SlotManager implements AutoCloseable {
 		return null;
 	}
 
+	protected TaskManagerSlot findMatchingSlot(ResourceProfile requestResourceProfile, TaskManagerRegistration taskManagerRegistration) {
+		Iterator<Map.Entry<SlotID, TaskManagerSlot>> iterator = freeSlots.entrySet().iterator();
+
+		while (iterator.hasNext()) {
+			TaskManagerSlot taskManagerSlot = iterator.next().getValue();
+
+			// sanity check
+			Preconditions.checkState(
+				taskManagerSlot.getState() == TaskManagerSlot.State.FREE,
+				"TaskManagerSlot %s is not in state FREE but %s.",
+				taskManagerSlot.getSlotId(), taskManagerSlot.getState());
+
+			if (taskManagerSlot.getResourceProfile().isMatching(requestResourceProfile)
+				&& taskManagerRegistration.containsSlot(taskManagerSlot.getSlotId())) {
+				iterator.remove();
+				return taskManagerSlot;
+			}
+		}
+
+		return null;
+	}
+
 	/**
 	 * Finds a matching slot for a given resource profile. A matching slot has at least as many
 	 * resources available as the given resource profile. If there is no such slot available, then
@@ -882,6 +904,11 @@ public class SlotManager implements AutoCloseable {
 		if (taskManagerSlot != null && taskManagerSlot.getState() == TaskManagerSlot.State.FREE) {
 			freeSlots.remove(taskManagerSlot.getSlotId());
 			allocateSlot(taskManagerSlot, pendingSlotRequest);
+		} else if (taskManagerSlot != null) {
+			TaskManagerSlot alternativeSlot = findMatchingSlot(pendingSlotRequest.getResourceProfile(),
+				taskManagerRegistrations.get(taskManagerSlot.getInstanceId()));
+			Preconditions.checkState(alternativeSlot != null, "++++++ Cannot allocate slots on the destination task manager");
+			allocateSlot(alternativeSlot, pendingSlotRequest);
 		} else {
 			try {
 				internalRequestSlot(pendingSlotRequest);
