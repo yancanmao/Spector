@@ -1,25 +1,23 @@
-package org.apache.flink.runtime.spector.streamswitch;
+package org.apache.flink.runtime.spector.controller.impl;
 
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
-import org.apache.flink.runtime.spector.controller.OperatorControllerListener;
+import org.apache.flink.runtime.spector.controller.ReconfigExecutor;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
+import org.apache.flink.runtime.util.profiling.ReconfigurationProfiler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
+import java.util.stream.Collectors;
 
-public class DummyStreamSwitch extends Thread implements FlinkOperatorController {
+public class DummyController extends Thread implements FlinkOperatorController {
 
-	private static final Logger LOG = LoggerFactory.getLogger(DummyStreamSwitch.class);
+	private static final Logger LOG = LoggerFactory.getLogger(DummyController.class);
 
-	private OperatorControllerListener listener;
+	private ReconfigExecutor listener;
 
 	Map<String, List<String>> executorMapping;
 
@@ -29,8 +27,23 @@ public class DummyStreamSwitch extends Thread implements FlinkOperatorController
 
 	private Random random;
 
+	private final ReconfigurationProfiler reconfigurationProfiler;
+
+	public final static String NUM_AFFECTED_KEYS = "spector.reconfig.affected_keys";
+
+	public final static String NUM_AFFECTED_TASKS = "spector.reconfig.affected_tasks";
+
+	private final int numAffectedKeys;
+	private final int numAffectedTasks;
+
+	public DummyController(Configuration configuration) {
+		this.numAffectedKeys = configuration.getInteger(NUM_AFFECTED_KEYS, 64);
+		this.numAffectedTasks = configuration.getInteger(NUM_AFFECTED_TASKS, 65535);
+		this.reconfigurationProfiler = new ReconfigurationProfiler(configuration);
+	}
+
 	@Override
-	public void init(OperatorControllerListener listener, List<String> executors, List<String> partitions) {
+	public void init(ReconfigExecutor listener, List<String> executors, List<String> partitions) {
 		this.listener = listener;
 
 		this.executorMapping = new HashMap<>();
@@ -89,10 +102,12 @@ public class DummyStreamSwitch extends Thread implements FlinkOperatorController
 //			testRepartition();
 //			testScaleOut();
 //			testScaleIn();
-			testCaseOneToOneChange();
+//			testCaseOneToOneChange();
 //			testJoin();
 //			testCaseScaleIn();
 //			testRandomScalePartitionAssignment();
+
+			stateMigration(numAffectedTasks, numAffectedKeys);
 
 			LOG.info("------ dummy streamSwitch finished");
 		} catch (Exception e) {
@@ -100,15 +115,66 @@ public class DummyStreamSwitch extends Thread implements FlinkOperatorController
 		}
 	}
 
+	/**
+	 * set number of keys to migrate and select equi-sized number of keys from each task to migrate.
+	 */
+	private void stateMigration(int numAffectedTasks, int numAffectedKeys) throws InterruptedException {
+		Map<String, List<String>> newExecutorMapping = deepCopy(executorMapping);
+		Map<String, List<String>> selectedTasks = selectAffectedTasks(numAffectedTasks, newExecutorMapping);
+		equiShuffle(numAffectedKeys, selectedTasks);
 
+		// run state migration
+		triggerAction(
+			"trigger 1 repartition",
+			() -> listener.remap(newExecutorMapping),
+			newExecutorMapping);
+	}
+
+	private Map<String, List<String>> selectAffectedTasks(int numAffectedTasks, Map<String, List<String>> newExecutorMapping) {
+		numAffectedTasks = Math.min(numAffectedTasks, newExecutorMapping.size());
+		Map<String, List<String>> selectedTasks = new HashMap<>(numAffectedTasks);
+		List<String> allTaskID = new ArrayList<>(newExecutorMapping.keySet());
+		Collections.shuffle(allTaskID);
+		for (int i = 0; i < numAffectedTasks; i++) {
+			selectedTasks.put(allTaskID.get(i), newExecutorMapping.get(allTaskID.get(i)));
+		}
+		return selectedTasks;
+	}
+
+	private static Map<String, List<String>> deepCopy(Map<String, List<String>> executorMapping) {
+		Map<String, List<String>> newExecutorMapping = new HashMap<>();
+		for (String taskId : executorMapping.keySet()) {
+			newExecutorMapping.put(taskId, new ArrayList<>(executorMapping.get(taskId)));
+		}
+		return newExecutorMapping;
+	}
+
+	private void equiShuffle(int numAffectedKeys, Map<String, List<String>> newExecutorMapping) {
+		int parallelism = newExecutorMapping.size();
+		List<String> tasks = new ArrayList<>(newExecutorMapping.keySet());
+		for (int i = 0; i < parallelism; i++) {
+			int start = (i * numAffectedKeys + parallelism - 1) / parallelism;
+			int end = ((i + 1) * numAffectedKeys - 1) / parallelism;
+			List<String> curTaskKeys = newExecutorMapping.get(tasks.get(i));
+			List<String> nextTaskKeys = newExecutorMapping.get(tasks.get((i + 1) % parallelism));
+			int keysToMigrate = Math.min(end - start + 1, curTaskKeys.size());
+			nextTaskKeys.addAll(curTaskKeys.subList(0, keysToMigrate));
+			curTaskKeys.subList(0, keysToMigrate).clear();
+		}
+	}
 
 	private void triggerAction(String logStr, Runnable runnable, Map<String, List<String>> partitionAssignment) throws InterruptedException {
 		LOG.info("------ " + logStr + "   partitionAssignment: " + partitionAssignment);
+		long start = System.currentTimeMillis();
+		reconfigurationProfiler.onReconfigurationStart();
 		waitForMigrationDeployed = true;
 
 		runnable.run();
 
 		while (waitForMigrationDeployed);
+		executorMapping = partitionAssignment;
+		reconfigurationProfiler.onReconfigurationEnd();
+		LOG.info("++++++ reconfig completion time: " + (System.currentTimeMillis() - start));
 	}
 
 	private void preparePartitionAssignment(int parallelism) {
@@ -470,5 +536,49 @@ public class DummyStreamSwitch extends Thread implements FlinkOperatorController
 			"trigger 4 scale out",
 			() -> listener.scale(3, executorMapping),
 			executorMapping);
+	}
+
+	public static void main(String[] args) {
+		Map<String, List<String>> oldExecutorMapping = new HashMap<>();
+
+		int numExecutors = 10;
+		int numPartitions = 128;
+		for (int executorId = 0; executorId < numExecutors; executorId++) {
+			List<String> executorPartitions = new ArrayList<>();
+			oldExecutorMapping.put(String.valueOf(executorId), executorPartitions);
+
+			KeyGroupRange keyGroupRange = KeyGroupRangeAssignment.computeKeyGroupRangeForOperatorIndex(
+				numPartitions, numExecutors, executorId);
+			for (int i = keyGroupRange.getStartKeyGroup(); i <= keyGroupRange.getEndKeyGroup(); i++) {
+				executorPartitions.add(String.valueOf(i));
+			}
+		}
+
+		int parallelism = oldExecutorMapping.size();
+		int numAffectedKeys = 100;
+
+		System.out.println(oldExecutorMapping);
+
+		Map<String, List<String>> executorMapping = deepCopy(oldExecutorMapping);
+
+		for (int i = 0; i < parallelism; i++) {
+			int start = (i * numAffectedKeys + parallelism - 1) / parallelism;
+			int end = ((i + 1) * numAffectedKeys - 1) / parallelism;
+			List<String> curTaskKeys = executorMapping.get(String.valueOf(i));
+			List<String> nextTaskKeys = executorMapping.get(String.valueOf((i + 1) % parallelism));
+			System.out.println(i + " => " + ((i + 1) % parallelism) + " : " + (end - start + 1));
+			nextTaskKeys.addAll(curTaskKeys.subList(0, end - start + 1));
+			curTaskKeys.subList(0, end - start + 1).clear();
+		}
+
+		// check modified sources and destinations
+		System.out.println(executorMapping);
+		List<String> modifiedIdList = executorMapping.keySet().stream()
+			.filter(id -> {
+				System.out.println(! new HashSet<>(executorMapping.get(id)).containsAll(oldExecutorMapping.get(id)));
+				return executorMapping.get(id).size() != oldExecutorMapping.get(id).size()
+				|| new HashSet<>(executorMapping.get(id)).containsAll(oldExecutorMapping.get(id));
+			}).collect(Collectors.toList());
+		System.out.println(modifiedIdList);
 	}
 }

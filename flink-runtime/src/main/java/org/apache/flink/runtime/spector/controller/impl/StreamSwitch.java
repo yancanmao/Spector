@@ -1,9 +1,9 @@
-package org.apache.flink.runtime.spector.streamswitch;
+package org.apache.flink.runtime.spector.controller.impl;
 
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
-import org.apache.flink.runtime.spector.controller.OperatorControllerListener;
+import org.apache.flink.runtime.spector.controller.ReconfigExecutor;
 import org.apache.flink.runtime.spector.metrics.KafkaMetricsRetriever;
 import org.apache.flink.runtime.spector.metrics.StockMetricsRetriever;
 import org.apache.flink.runtime.spector.metrics.StreamSwitchMetricsRetriever;
@@ -23,7 +23,7 @@ public abstract class StreamSwitch extends Thread implements FlinkOperatorContro
 
 	private static final Logger LOG = LoggerFactory.getLogger(StreamSwitch.class);
 
-	protected OperatorControllerListener listener;
+	protected ReconfigExecutor listener;
 
 	protected StreamSwitchMetricsRetriever metricsRetriever;
 
@@ -58,7 +58,7 @@ public abstract class StreamSwitch extends Thread implements FlinkOperatorContro
 
 
 	@Override
-	public void init(OperatorControllerListener listener, List<String> executors, List<String> partitions) {
+	public void init(ReconfigExecutor listener, List<String> executors, List<String> partitions) {
 		LOG.info("Initialize with executors: " + executors + "  partitions: " + partitions);
 
 		isMigrating = false;

@@ -1,7 +1,7 @@
-package org.apache.flink.runtime.spector.streamswitch;
+package org.apache.flink.runtime.spector.controller.impl;
 
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.runtime.spector.controller.OperatorControllerListener;
+import org.apache.flink.runtime.spector.controller.ReconfigExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,7 +38,7 @@ public class LatencyGuarantor extends StreamSwitch {
 	}
 
 	@Override
-	public void init(OperatorControllerListener listener, List<String> executors, List<String> substreams) {
+	public void init(ReconfigExecutor listener, List<String> executors, List<String> substreams) {
 		super.init(listener, executors, substreams);
 		examiner.init(executorMapping);
 	}

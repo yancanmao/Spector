@@ -4,7 +4,7 @@ import java.util.List;
 
 public interface OperatorController {
 
-	void init(OperatorControllerListener listener, List<String> executors, List<String> partitions);
+	void init(ReconfigExecutor listener, List<String> executors, List<String> partitions);
 
 	void start();
 

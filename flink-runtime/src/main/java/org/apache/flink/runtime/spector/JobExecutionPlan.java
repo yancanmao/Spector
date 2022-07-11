@@ -2,10 +2,7 @@ package org.apache.flink.runtime.spector;
 
 import org.apache.flink.runtime.state.KeyGroupRange;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -175,20 +172,27 @@ public class JobExecutionPlan {
 
 		List<Integer> modifiedIdList = executorMapping.keySet().stream()
 			.filter(id -> {
-				if (executorMapping.get(id).size() != oldExecutorMapping.get(id).size()) {
-					if (executorMapping.get(id).size() < oldExecutorMapping.get(id).size()) {
-						compareAndSetAffectedKeys(oldExecutorMapping, executorMapping, id, srcSubtaskMap);
-					} else {
-						compareAndSetAffectedKeys(executorMapping, oldExecutorMapping, id, dstSubtaskMap);
-					}
+				if (executorMapping.get(id).size() != oldExecutorMapping.get(id).size()
+					|| ! new HashSet<>(executorMapping.get(id)).containsAll(oldExecutorMapping.get(id))) {
+					compareAndSetAffectedKeys(oldExecutorMapping, executorMapping, id, srcSubtaskMap);
+					compareAndSetAffectedKeys(executorMapping, oldExecutorMapping, id, dstSubtaskMap);
 					return true;
-				} else {
+				}
+//				if (executorMapping.get(id).size() != oldExecutorMapping.get(id).size()) {
+//					if (executorMapping.get(id).size() < oldExecutorMapping.get(id).size()) {
+//						compareAndSetAffectedKeys(oldExecutorMapping, executorMapping, id, srcSubtaskMap);
+//					} else {
+//						compareAndSetAffectedKeys(executorMapping, oldExecutorMapping, id, dstSubtaskMap);
+//					}
+//					return true;
+//				}
+				else {
 					return false;
 				}
 			})
 			.collect(Collectors.toList());
 
-		checkState(modifiedIdList.size() == 2, "not exactly two are modified in repartition");
+//		checkState(modifiedIdList.size() == 2, "not exactly two are modified in repartition");
 
 		for (Map.Entry<Integer, List<Integer>> entry : executorMapping.entrySet()) {
 			int executorId = entry.getKey();
@@ -203,12 +207,11 @@ public class JobExecutionPlan {
 		}
 	}
 
-	private void compareAndSetAffectedKeys(Map<Integer, List<Integer>> executorMapping, Map<Integer, List<Integer>> oldExecutorMapping, Integer id, Map<Integer, List<Integer>> dstSubtaskMap) {
+	private void compareAndSetAffectedKeys(Map<Integer, List<Integer>> executorMapping, Map<Integer, List<Integer>> oldExecutorMapping, Integer id, Map<Integer, List<Integer>> subtaskMap) {
 		for (Integer hashedKeys : executorMapping.get(id)) {
 			if (!oldExecutorMapping.get(id).contains(hashedKeys)) {
-				List<Integer> keysToMigrateIn = dstSubtaskMap.getOrDefault(id, new ArrayList<>());
+				List<Integer> keysToMigrateIn = subtaskMap.computeIfAbsent(id, t -> new ArrayList<>());
 				keysToMigrateIn.add(hashedKeys);
-				dstSubtaskMap.put(id, keysToMigrateIn);
 			}
 		}
 	}

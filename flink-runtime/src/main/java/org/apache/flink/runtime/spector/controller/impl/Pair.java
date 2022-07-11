@@ -1,4 +1,4 @@
-package org.apache.flink.runtime.spector.streamswitch;
+package org.apache.flink.runtime.spector.controller.impl;
 
 import java.io.Serializable;
 

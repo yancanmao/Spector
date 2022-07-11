@@ -1,4 +1,4 @@
-package org.apache.flink.runtime.spector.streamswitch;
+package org.apache.flink.runtime.spector.controller.impl;
 
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
@@ -6,8 +6,9 @@ import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.spector.JobExecutionPlan;
 import org.apache.flink.runtime.spector.JobReconfigAction;
-import org.apache.flink.runtime.spector.controller.OperatorControllerListener;
+import org.apache.flink.runtime.spector.controller.ReconfigExecutor;
 import org.apache.flink.runtime.spector.controller.OperatorController;
+import org.apache.flink.runtime.util.profiling.ReconfigurationProfiler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,17 +46,19 @@ public class ControllerAdaptor {
 			int parallelism = entry.getValue().getParallelism();
 			int maxParallelism = entry.getValue().getMaxParallelism();
 
-			// TODO scaling: using DummyStreamSwitch for test purpose
+			// TODO scaling: using DummyController for test purpose
 //			if (!entry.getValue().getName().toLowerCase().contains("join") && !entry.getValue().getName().toLowerCase().contains("window")) {
 //				continue;
 //			}
 			if (entry.getValue().getName().toLowerCase().contains("flatmap")) {
-				FlinkOperatorController controller = new DummyStreamSwitch();
+				FlinkOperatorController controller = new DummyController(config);
 //				FlinkOperatorController controller = new LatencyGuarantor(config);
+				ReconfigExecutor executor = new ReconfigExecutorImpl(vertexID, parallelism, maxParallelism);
 
-				OperatorControllerListener listener = new OperatorControllerListenerImpl(vertexID, parallelism, maxParallelism);
-
-				controller.init(listener, generateExecutorDelegates(parallelism), generateFinestPartitionDelegates(maxParallelism));
+				controller.init(
+					executor,
+					generateExecutorDelegates(parallelism),
+					generateFinestPartitionDelegates(maxParallelism));
 				controller.initMetrics(rescaleAction.getJobGraph(), vertexID, config, parallelism);
 
 				this.controllers.put(vertexID, controller);
@@ -112,7 +115,7 @@ public class ControllerAdaptor {
 		return finestPartitions;
 	}
 
-	private class OperatorControllerListenerImpl implements OperatorControllerListener {
+	private class ReconfigExecutorImpl implements ReconfigExecutor {
 
 		public final JobVertexID jobVertexID;
 
@@ -122,7 +125,7 @@ public class ControllerAdaptor {
 
 		private Map<String, List<String>> oldExecutorMapping;
 
-		public OperatorControllerListenerImpl(JobVertexID jobVertexID, int parallelism, int maxParallelism) {
+		public ReconfigExecutorImpl(JobVertexID jobVertexID, int parallelism, int maxParallelism) {
 			this.jobVertexID = jobVertexID;
 			this.numOpenedSubtask = parallelism;
 		}
@@ -130,7 +133,11 @@ public class ControllerAdaptor {
 		@Override
 		public void setup(Map<String, List<String>> executorMapping) {
 			this.oldExecutionPlan = new JobExecutionPlan(executorMapping, numOpenedSubtask);
-			this.oldExecutorMapping = new HashMap<>(executorMapping);
+			// Deep copy
+			this.oldExecutorMapping = new HashMap<>();
+			for (String taskId : executorMapping.keySet()) {
+				oldExecutorMapping.put(taskId, new ArrayList<>(executorMapping.get(taskId)));
+			}
 			rescaleAction.setInitialJobExecutionPlan(jobVertexID, oldExecutionPlan);
 		}
 
