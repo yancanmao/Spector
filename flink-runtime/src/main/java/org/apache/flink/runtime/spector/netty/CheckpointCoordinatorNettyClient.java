@@ -90,7 +90,6 @@ public class CheckpointCoordinatorNettyClient implements Closeable {
 		long checkpointId,
 		CheckpointMetrics checkpointMetrics,
 		TaskStateSnapshot subtaskState) {
-		LOG.info("++++++ Sending acknowledgement");
 		CompletableFuture<Acknowledge> submitFuture = new CompletableFuture<>();
 		Channel channel = clientList.get(RandomUtils.nextInt(0, clientList.size())).getChannel();
 		while (true) {
@@ -103,6 +102,7 @@ public class CheckpointCoordinatorNettyClient implements Closeable {
 						checkpointMetrics,
 						subtaskState);
 					byte[] data = getBytes(taskAcknowledgement);
+					LOG.info("++++++ channel: "  + channel.id() + " Sending acknowledgement: " + data.length);
 					chunkedWriteAndFlush(submitFuture, channel, data);
 				} catch (Exception e) {
 					throw new RuntimeException(e);

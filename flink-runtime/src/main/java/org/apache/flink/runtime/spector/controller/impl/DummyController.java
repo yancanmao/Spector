@@ -32,13 +32,16 @@ public class DummyController extends Thread implements FlinkOperatorController {
 	public final static String NUM_AFFECTED_KEYS = "spector.reconfig.affected_keys";
 
 	public final static String NUM_AFFECTED_TASKS = "spector.reconfig.affected_tasks";
+	public final static String START_TIME = "spector.reconfig.start";
 
 	private final int numAffectedKeys;
 	private final int numAffectedTasks;
+	private final int start;
 
 	public DummyController(Configuration configuration) {
 		this.numAffectedKeys = configuration.getInteger(NUM_AFFECTED_KEYS, 64);
 		this.numAffectedTasks = configuration.getInteger(NUM_AFFECTED_TASKS, 65535);
+		this.start = configuration.getInteger(START_TIME, 5 * 1000);
 		this.reconfigurationProfiler = new ReconfigurationProfiler(configuration);
 	}
 
@@ -97,7 +100,7 @@ public class DummyController extends Thread implements FlinkOperatorController {
 
 			// cool down time, wait for fully deployment
 //			Thread.sleep(20 * 1000);
-			Thread.sleep(5 * 1000);
+			Thread.sleep(start);
 
 //			testRepartition();
 //			testScaleOut();

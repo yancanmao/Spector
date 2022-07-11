@@ -833,7 +833,9 @@ public class CheckpointCoordinator {
 //						if (checkpointProgressListener != null) {
 //							checkpointProgressListener.onReceiveRescalepointAcknowledge(message.getTaskExecutionId(), checkpoint);
 //						}
-						LOG.info("++++++ Received Rescalepoint Acknowledgement {}", message.getTaskExecutionId());
+						if (checkpointProgressListener != null) {
+							LOG.info("++++++ Received Rescalepoint Acknowledgement {}", message.getTaskExecutionId());
+						}
 
 
 						if (checkpoint.isFullyAcknowledged()) {

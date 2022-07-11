@@ -20,14 +20,15 @@ package org.apache.flink.runtime.spector.netty;
 
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
-import org.apache.flink.runtime.spector.netty.data.TaskAcknowledgement;
 import org.apache.flink.runtime.spector.netty.data.TaskBackupState;
-import org.apache.flink.runtime.spector.netty.data.TaskDeployment;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
+import org.apache.flink.shaded.netty4.io.netty.channel.ChannelId;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelInboundHandlerAdapter;
 
 import java.io.ByteArrayInputStream;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.chunkedChannelRead;
 
@@ -38,8 +39,8 @@ public class TaskExecutorServerHandler extends ChannelInboundHandlerAdapter {
 	private static final Time DEFAULT_RPC_TIMEOUT = Time.seconds(10);
 	private final TaskExecutorGateway taskExecutorGateway;
 
-	final byte[][] recv = {new byte[0]};
-	final int[] position = {0};
+	final Map<ChannelId, byte[]> recv = new ConcurrentHashMap<>();
+	final Map<ChannelId, Integer> position = new ConcurrentHashMap<>();
 
 	public TaskExecutorServerHandler(TaskExecutorGateway taskExecutorGateway) {
 		this.taskExecutorGateway = taskExecutorGateway;
@@ -66,7 +67,7 @@ public class TaskExecutorServerHandler extends ChannelInboundHandlerAdapter {
 //		}  else {
 //			throw new UnsupportedOperationException();
 //		}
-		chunkedChannelRead(msg, this::fireAck, recv, position);
+		chunkedChannelRead(msg, this::fireAck, ctx, recv, position);
 	}
 
 	private void fireAck(byte[] bytes) {
