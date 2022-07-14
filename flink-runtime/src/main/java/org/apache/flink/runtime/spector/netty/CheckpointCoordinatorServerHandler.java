@@ -21,6 +21,7 @@ package org.apache.flink.runtime.spector.netty;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.runtime.checkpoint.CheckpointCoordinatorGateway;
+import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.spector.netty.data.TaskAcknowledgement;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelId;
@@ -43,8 +44,8 @@ public class CheckpointCoordinatorServerHandler extends ChannelInboundHandlerAda
 	private static final Time DEFAULT_RPC_TIMEOUT = Time.seconds(10);
 	private final CheckpointCoordinatorGateway checkpointCoordinatorGateway;
 
-	final Map<ChannelId, byte[]> recv = new ConcurrentHashMap<>();
-	final Map<ChannelId, Integer> position = new ConcurrentHashMap<>();
+	final Map<String, byte[]> recv = new ConcurrentHashMap<>();
+	final Map<String, Integer> position = new ConcurrentHashMap<>();
 
 	public CheckpointCoordinatorServerHandler(CheckpointCoordinatorGateway checkpointCoordinatorGateway) {
 		this.checkpointCoordinatorGateway = checkpointCoordinatorGateway;

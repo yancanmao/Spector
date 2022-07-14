@@ -10,9 +10,6 @@ import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.spector.ReconfigOptions;
 import org.apache.flink.runtime.spector.netty.codec.TaskBackupStateDecoder;
 import org.apache.flink.runtime.spector.netty.codec.TaskBackupStateEncoder;
-import org.apache.flink.runtime.spector.netty.codec.TaskDeploymentDecoder;
-import org.apache.flink.runtime.spector.netty.codec.TaskDeploymentEncoder;
-import org.apache.flink.runtime.spector.netty.data.TaskAcknowledgement;
 import org.apache.flink.runtime.spector.netty.data.TaskBackupState;
 import org.apache.flink.runtime.spector.netty.data.TaskDeployment;
 import org.apache.flink.runtime.spector.netty.data.TaskExecutorSocketAddress;
@@ -132,7 +129,7 @@ public class TaskExecutorNettyClient implements Closeable {
 						taskRestore,
 						timeout);
 					byte[] data = getBytes(taskBackupState);
-					chunkedWriteAndFlush(submitFuture, channel, data);
+					chunkedWriteAndFlush(submitFuture, channel, data, executionAttemptID);
 				} catch (Exception e) {
 					throw new RuntimeException(e);
 				}

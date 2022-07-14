@@ -20,6 +20,7 @@ package org.apache.flink.runtime.spector.netty;
 
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
+import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.spector.netty.data.TaskBackupState;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
@@ -39,8 +40,8 @@ public class TaskExecutorServerHandler extends ChannelInboundHandlerAdapter {
 	private static final Time DEFAULT_RPC_TIMEOUT = Time.seconds(10);
 	private final TaskExecutorGateway taskExecutorGateway;
 
-	final Map<ChannelId, byte[]> recv = new ConcurrentHashMap<>();
-	final Map<ChannelId, Integer> position = new ConcurrentHashMap<>();
+	final Map<String, byte[]> recv = new ConcurrentHashMap<>();
+	final Map<String, Integer> position = new ConcurrentHashMap<>();
 
 	public TaskExecutorServerHandler(TaskExecutorGateway taskExecutorGateway) {
 		this.taskExecutorGateway = taskExecutorGateway;

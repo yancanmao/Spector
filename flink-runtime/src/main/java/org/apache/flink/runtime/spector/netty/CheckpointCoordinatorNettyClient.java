@@ -1,8 +1,6 @@
 package org.apache.flink.runtime.spector.netty;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.core.memory.DataOutputView;
-import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
@@ -22,7 +20,6 @@ import org.apache.commons.lang3.RandomUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.util.ArrayList;
 import java.util.List;
@@ -103,7 +100,7 @@ public class CheckpointCoordinatorNettyClient implements Closeable {
 						subtaskState);
 					byte[] data = getBytes(taskAcknowledgement);
 					LOG.info("++++++ channel: "  + channel.id() + " Sending acknowledgement: " + data.length);
-					chunkedWriteAndFlush(submitFuture, channel, data);
+					chunkedWriteAndFlush(submitFuture, channel, data, executionAttemptID);
 				} catch (Exception e) {
 					throw new RuntimeException(e);
 				}
