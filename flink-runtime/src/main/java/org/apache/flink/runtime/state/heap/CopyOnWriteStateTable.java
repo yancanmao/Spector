@@ -614,21 +614,21 @@ public class CopyOnWriteStateTable<K, N, S> extends StateTable<K, N, S> implemen
 			if (entry == null) {
 				continue;
 			}
-			checkToreleaseStateEntry(affectedKeygroups, entry, removableEntries);
+			checkToReleaseStateEntry(affectedKeygroups, entry, removableEntries);
 		}
 		for (StateTableEntry<K, N, S> entry : removableEntries) {
 			remove(entry.getKey(), entry.getNamespace());
 		}
 	}
 
-	private void checkToreleaseStateEntry(Collection<Integer> affectedKeygroups, StateTableEntry<K, N, S> entry, List<StateTableEntry<K, N, S>> removableEntries) {
+	private void checkToReleaseStateEntry(Collection<Integer> affectedKeygroups, StateTableEntry<K, N, S> entry, List<StateTableEntry<K, N, S>> removableEntries) {
 		int hashedKeyGroup = KeyGroupRangeAssignment.assignToKeyGroup(entry.key, keyContext.getNumberOfKeyGroups());
 		if (affectedKeygroups.contains(hashedKeyGroup)) {
 			removableEntries.add(entry);
 //			remove(entry.getKey(), entry.getNamespace());
 		}
 		if (entry.next != null) {
-			checkToreleaseStateEntry(affectedKeygroups, entry.next, removableEntries);
+			checkToReleaseStateEntry(affectedKeygroups, entry.next, removableEntries);
 		}
 	}
 
