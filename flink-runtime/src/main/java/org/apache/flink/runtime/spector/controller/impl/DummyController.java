@@ -110,7 +110,12 @@ public class DummyController extends Thread implements FlinkOperatorController {
 //			testCaseScaleIn();
 //			testRandomScalePartitionAssignment();
 
-			stateMigration(numAffectedTasks, numAffectedKeys);
+			isStopped = false;
+
+			while(!isStopped) {
+				stateMigration(numAffectedTasks, numAffectedKeys);
+				Thread.sleep(10*1000);
+			}
 
 			LOG.info("------ dummy streamSwitch finished");
 		} catch (Exception e) {
