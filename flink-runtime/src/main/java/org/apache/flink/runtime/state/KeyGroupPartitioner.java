@@ -161,9 +161,13 @@ public class KeyGroupPartitioner<T> {
 	 * This method reports in the bookkeeping data that the element at the given index belongs to the given key-group.
 	 */
 	protected void reportKeyGroupOfElementAtIndex(int index, int keyGroup) {
-		final int keyGroupIndex = keyGroup - firstKeyGroup;
-		elementKeyGroups[index] = keyGroupIndex;
-		++counterHistogram[keyGroupIndex];
+		try {
+			final int keyGroupIndex = keyGroup - firstKeyGroup;
+			elementKeyGroups[index] = keyGroupIndex;
+			++counterHistogram[keyGroupIndex];
+		} catch (Exception e) {
+			throw new RuntimeException();
+		}
 	}
 
 	/**

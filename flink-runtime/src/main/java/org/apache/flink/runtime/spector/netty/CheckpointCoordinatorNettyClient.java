@@ -11,6 +11,7 @@ import org.apache.flink.runtime.spector.netty.data.CheckpointCoordinatorSocketAd
 import org.apache.flink.runtime.spector.netty.data.TaskAcknowledgement;
 import org.apache.flink.runtime.spector.netty.socket.NettySocketClient;
 import org.apache.flink.shaded.netty4.io.netty.channel.Channel;
+import org.apache.flink.shaded.netty4.io.netty.channel.ChannelFutureListener;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelPipeline;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ClassResolvers;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ObjectDecoder;
@@ -91,27 +92,30 @@ public class CheckpointCoordinatorNettyClient implements Closeable {
 		Channel channel = clientList.get(RandomUtils.nextInt(0, clientList.size())).getChannel();
 		while (true) {
 			if (channel.isWritable()) {
-				try {
-					TaskAcknowledgement taskAcknowledgement = new TaskAcknowledgement(
-						jobID,
-						executionAttemptID,
-						checkpointId,
-						checkpointMetrics,
-						subtaskState);
-					byte[] data = getBytes(taskAcknowledgement);
-					LOG.info("++++++ channel: "  + channel.id() + " Sending acknowledgement: " + data.length);
-					chunkedWriteAndFlush(submitFuture, channel, data, executionAttemptID);
-				} catch (Exception e) {
-					throw new RuntimeException(e);
+				if (!taskAcknowledgementEnabled) {
+					try {
+						TaskAcknowledgement taskAcknowledgement = new TaskAcknowledgement(
+							jobID,
+							executionAttemptID,
+							checkpointId,
+							checkpointMetrics,
+							subtaskState);
+						byte[] data = getBytes(taskAcknowledgement);
+						LOG.info("++++++ channel: " + channel.id() + " Sending acknowledgement: " + data.length);
+						chunkedWriteAndFlush(submitFuture, channel, data, executionAttemptID);
+					} catch (Exception e) {
+						throw new RuntimeException(e);
+					}
+				} else {
+					channel.writeAndFlush(new TaskAcknowledgement(jobID, executionAttemptID, checkpointId, checkpointMetrics, subtaskState))
+						.addListener((ChannelFutureListener) channelFuture -> {
+							if (channelFuture.isSuccess()) {
+								submitFuture.complete(Acknowledge.get());
+							} else {
+								submitFuture.completeExceptionally(channelFuture.cause());
+							}
+						});
 				}
-//					channel.writeAndFlush(new TaskAcknowledgement(jobID, executionAttemptID, checkpointId, checkpointMetrics, subtaskState))
-//						.addListener((ChannelFutureListener) channelFuture -> {
-//							if (channelFuture.isSuccess()) {
-//								submitFuture.complete(Acknowledge.get());
-//							} else {
-//								submitFuture.completeExceptionally(channelFuture.cause());
-//							}
-//						});
 				break;
 			}
 			try {

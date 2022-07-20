@@ -122,26 +122,28 @@ public class TaskExecutorNettyClient implements Closeable {
 		Channel channel = clientList.get(RandomUtils.nextInt(0, clientList.size())).getChannel();
 		while (true) {
 			if (channel.isWritable()) {
-				try {
-					TaskBackupState taskBackupState = new TaskBackupState(
-						executionAttemptID,
-						jobvertexId,
-						taskRestore,
-						timeout);
-					byte[] data = getBytes(taskBackupState);
-					chunkedWriteAndFlush(submitFuture, channel, data, executionAttemptID);
-				} catch (Exception e) {
-					throw new RuntimeException(e);
+				if (!taskDeploymentEnabled) {
+					try {
+						TaskBackupState taskBackupState = new TaskBackupState(
+							executionAttemptID,
+							jobvertexId,
+							taskRestore,
+							timeout);
+						byte[] data = getBytes(taskBackupState);
+						chunkedWriteAndFlush(submitFuture, channel, data, executionAttemptID);
+					} catch (Exception e) {
+						throw new RuntimeException(e);
+					}
+				} else {
+					channel.writeAndFlush(new TaskBackupState(executionAttemptID, jobvertexId, taskRestore, timeout))
+						.addListener((ChannelFutureListener) channelFuture -> {
+							if (channelFuture.isSuccess()) {
+								submitFuture.complete(Acknowledge.get());
+							} else {
+								submitFuture.completeExceptionally(channelFuture.cause());
+							}
+						});
 				}
-
-//				channel.writeAndFlush(new TaskBackupState(executionAttemptID, jobvertexId, taskRestore, timeout))
-//					.addListener((ChannelFutureListener) channelFuture -> {
-//						if (channelFuture.isSuccess()) {
-//							submitFuture.complete(Acknowledge.get());
-//						} else {
-//							submitFuture.completeExceptionally(channelFuture.cause());
-//						}
-//					});
 				break;
 			}
 			try {

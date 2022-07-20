@@ -33,15 +33,18 @@ public class DummyController extends Thread implements FlinkOperatorController {
 
 	public final static String NUM_AFFECTED_TASKS = "spector.reconfig.affected_tasks";
 	public final static String START_TIME = "spector.reconfig.start";
+	public final static String RECONFIG_INTERVAL = "spector.reconfig.interval";
 
 	private final int numAffectedKeys;
 	private final int numAffectedTasks;
 	private final int start;
+	private final int interval;
 
 	public DummyController(Configuration configuration) {
 		this.numAffectedKeys = configuration.getInteger(NUM_AFFECTED_KEYS, 64);
 		this.numAffectedTasks = configuration.getInteger(NUM_AFFECTED_TASKS, 65535);
 		this.start = configuration.getInteger(START_TIME, 5 * 1000);
+		this.interval = configuration.getInteger(RECONFIG_INTERVAL, 10 * 1000);
 		this.reconfigurationProfiler = new ReconfigurationProfiler(configuration);
 	}
 
@@ -114,7 +117,7 @@ public class DummyController extends Thread implements FlinkOperatorController {
 
 			while(!isStopped) {
 				stateMigration(numAffectedTasks, numAffectedKeys);
-				Thread.sleep(10*1000);
+				Thread.sleep(interval);
 			}
 
 			LOG.info("------ dummy streamSwitch finished");

@@ -85,7 +85,11 @@ public class KeyGroupRange implements KeyGroupsList, Serializable {
 	}
 
 	public int mapFromHashedToAligned(int hashedKeyGroup) {
-		return fromHashedToAligned.isEmpty() ? hashedKeyGroup : fromHashedToAligned.get(hashedKeyGroup) + startKeyGroup;
+		try {
+			return fromHashedToAligned.isEmpty() ? hashedKeyGroup : fromHashedToAligned.get(hashedKeyGroup) + startKeyGroup;
+		} catch (Exception e) {
+			throw new RuntimeException("++++++Wrong processing hashed keygroup:" + hashedKeyGroup);
+		}
 	}
 
 	public void update(KeyGroupRange keyGroupRange) {
@@ -114,7 +118,7 @@ public class KeyGroupRange implements KeyGroupsList, Serializable {
 	}
 
 	public boolean containsHashedKeyGroup(int hashedKeyGroup) {
-		return fromAlignedToHashed.isEmpty() ? contains(hashedKeyGroup) : fromAlignedToHashed.containsKey(hashedKeyGroup);
+		return fromAlignedToHashed.isEmpty() ? contains(hashedKeyGroup) : fromHashedToAligned.containsKey(hashedKeyGroup);
 	}
 
 	/**

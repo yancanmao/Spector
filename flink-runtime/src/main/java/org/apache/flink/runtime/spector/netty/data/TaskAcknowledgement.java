@@ -61,7 +61,12 @@ public class TaskAcknowledgement implements Serializable, NettyMessage {
 		out.writeLong(executionAttemptID.getUpperPart());
 		out.writeLong(checkpointId);
 		checkpointMetrics.write(out);
-		subtaskState.write(out);
+		if (subtaskState != null) {
+			out.writeBoolean(true);
+			subtaskState.write(out);
+		} else {
+			out.writeBoolean(false);
+		}
 	}
 
 	@Override
@@ -71,7 +76,11 @@ public class TaskAcknowledgement implements Serializable, NettyMessage {
 		checkpointId = in.readLong();
 		checkpointMetrics = new CheckpointMetrics();
 		checkpointMetrics.read(in);
-		subtaskState = new TaskStateSnapshot();
-		subtaskState.read(in);
+		if (in.readBoolean()) {
+			subtaskState = new TaskStateSnapshot();
+			subtaskState.read(in);
+		} else {
+			subtaskState = null;
+		}
 	}
 }

@@ -245,6 +245,18 @@ public class CopyOnWriteStateTableSnapshot<K, N, S>
 		@Override
 		protected void reportAllElementKeyGroups() {
 			// In this step we i) 'flatten' the linked list of entries to a second array and ii) report key-groups.
+			int counter = 0;
+			for (CopyOnWriteStateTable.StateTableEntry<K, N, S> entry : partitioningDestination) {
+				while (null != entry) {
+					counter++;
+					entry = entry.next;
+				}
+			}
+
+			if (counter != numberOfElements) {
+				System.out.println("= =");
+			}
+
 			int flattenIndex = 0;
 			for (CopyOnWriteStateTable.StateTableEntry<K, N, S> entry : partitioningDestination) {
 				while (null != entry) {

@@ -286,7 +286,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		this.backupStateManager = new BackupStateManager();
 
 		try {
-			boolean taskDeploymentEnable = true;
+			boolean taskDeploymentEnable = false;
 			this.taskExecutorNettyServer = nettyStateTransmissionEnabled ?
 				new TaskExecutorNettyServer(
 					() -> this.getSelfGateway(TaskExecutorGateway.class),

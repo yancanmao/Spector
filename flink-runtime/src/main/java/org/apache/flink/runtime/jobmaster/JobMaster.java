@@ -825,13 +825,13 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		final TaskExecutorGateway taskExecutorGateway = taskManager.f1;
 
 		TaskExecutorNettyClient taskExecutorNettyClient = null;
-		boolean nettyStateTransmissionEnable = true;
+		boolean nettyStateTransmissionEnable = false;
 		if (nettyStateTransmissionEnable) {
 			int channelCount = 10;
 			int connectTimeoutMills = 10000;
 			int lowWaterMark = 10 * 1024 * 1024;
 			int highWaterMark = 50 * 1024 * 1024;
-			boolean taskDeploymentEnabled = true;
+			boolean taskDeploymentEnabled = false;
 			taskExecutorNettyClient = new TaskExecutorNettyClient(
 				taskExecutorSocketAddress,
 				channelCount,

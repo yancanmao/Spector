@@ -360,8 +360,10 @@ public class HeapKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 
 	public void updateStateTable(KeyGroupRange keyGroupRange, int numberOfKeyGroups) {
 		// TODO: update actual state table here
+		LOG.info("++++++ update keygrouprange: " + keyGroupRange);
 		this.keyGroupRange = keyGroupRange;
 		this.numberOfKeyGroups = numberOfKeyGroups;
+		LOG.info("++++++ complete:  " + keyGroupRange);
 //		InternalKeyContextImpl<K> keyContext = new InternalKeyContextImpl<>(
 //			keyGroupRange,
 //			numberOfKeyGroups
