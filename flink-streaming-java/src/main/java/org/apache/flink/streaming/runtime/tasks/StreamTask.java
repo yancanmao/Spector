@@ -978,15 +978,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		LOG.info("++++++ let's reinitialize state: " + this.toString() + "  " + keyGroupRange + "  idInModel: " + idInModel);
 		try {
 			synchronized (lock) {
-				List<Integer> migrateOutKeygroup = new ArrayList<>();
-				// find out the affected keys by checking the updated keygrouprange
-				for (int keyGroup = assignedKeyGroupRange.getStartKeyGroup(); keyGroup < assignedKeyGroupRange.getEndKeyGroup()+1; keyGroup++) {
-					int hashedKeygroup = assignedKeyGroupRange.mapFromAlignedToHashed(keyGroup);
-					if (!keyGroupRange.containsHashedKeyGroup(hashedKeygroup)) {
-						migrateOutKeygroup.add(hashedKeygroup);
-					}
-				}
-				// find out migrate in keygroup
+				// TODO: optimize this part by transfer in rather than sel-compute. find out migrate in keygroup
 				List<Integer> migrateInKeygroup = new ArrayList<>();
 				for (int keyGroup = keyGroupRange.getStartKeyGroup(); keyGroup < keyGroupRange.getEndKeyGroup()+1; keyGroup++) {
 					int hashedKeygroup = keyGroupRange.mapFromAlignedToHashed(keyGroup);
@@ -999,6 +991,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				this.idInModel = idInModel;
 
 				if (!migrateInKeygroup.isEmpty()) {
+					LOG.info("++++++ Migrated in: " + migrateInKeygroup);
+					System.out.println("++++++ Migrated in: " + migrateInKeygroup);
 					updateState(keyGroupRange, getEnvironment().getTaskInfo().getMaxNumberOfParallelSubtasks(), migrateInKeygroup);
 				}
 
