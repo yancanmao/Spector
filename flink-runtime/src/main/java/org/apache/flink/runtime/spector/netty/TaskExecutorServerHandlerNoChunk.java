@@ -19,56 +19,43 @@
 package org.apache.flink.runtime.spector.netty;
 
 import org.apache.flink.api.common.time.Time;
-import org.apache.flink.core.memory.DataInputViewStreamWrapper;
-import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
-import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.spector.netty.data.TaskBackupState;
+import org.apache.flink.runtime.spector.netty.data.TaskDeployment;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
-import org.apache.flink.shaded.netty4.io.netty.channel.ChannelId;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelInboundHandlerAdapter;
-
-import java.io.ByteArrayInputStream;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-
-import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.chunkedChannelRead;
 
 /**
  * Server handler in task executor netty server.
  */
-public class TaskExecutorServerHandler extends ChannelInboundHandlerAdapter {
+public class TaskExecutorServerHandlerNoChunk extends ChannelInboundHandlerAdapter {
+	private static final Time DEFAULT_RPC_TIMEOUT = Time.seconds(10);
 	private final TaskExecutorGateway taskExecutorGateway;
 
-	final Map<String, byte[]> recv = new ConcurrentHashMap<>();
-	final Map<String, Integer> position = new ConcurrentHashMap<>();
-
-	public TaskExecutorServerHandler(TaskExecutorGateway taskExecutorGateway) {
+	public TaskExecutorServerHandlerNoChunk(TaskExecutorGateway taskExecutorGateway) {
 		this.taskExecutorGateway = taskExecutorGateway;
 	}
 
 	@Override
 	public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-		chunkedChannelRead(msg, this::fireAck, ctx, recv, position);
-	}
-
-	private void fireAck(ChannelHandlerContext ctx, byte[] bytes) {
-		try {
-			TaskBackupState taskBackupState = new TaskBackupState();
-			taskBackupState.read(new DataInputViewStreamWrapper(new ByteArrayInputStream(bytes)));
-			CompletableFuture<Acknowledge> future = taskExecutorGateway.dispatchStateToStandbyTask(
+		if (msg instanceof TaskDeployment) {
+			TaskDeployment taskDeployment = (TaskDeployment) msg;
+			taskExecutorGateway.reconfigTask(
+				taskDeployment.getExecutionAttemptID(),
+				taskDeployment.getTaskDeploymentDescriptor(),
+				taskDeployment.getJobMasterId(),
+				taskDeployment.getReconfigOptions(),
+				DEFAULT_RPC_TIMEOUT);
+		} else if (msg instanceof TaskBackupState) {
+			TaskBackupState taskBackupState = (TaskBackupState) msg;
+			taskExecutorGateway.dispatchStateToStandbyTask(
 				taskBackupState.getExecutionAttemptID(),
 				taskBackupState.getJobvertexId(),
 				taskBackupState.getTaskRestore(),
-				taskBackupState.getTimeout());
-			future.whenCompleteAsync((ack, failure) -> {
-				if (failure != null) {
-					throw new RuntimeException();
-				}
-			});
-		} catch (Exception e) {
-			throw new RuntimeException(e);
+				taskBackupState.getTimeout()
+			);
+		}  else {
+			throw new UnsupportedOperationException();
 		}
 	}
 }

@@ -26,7 +26,7 @@ public class TaskExecutorNettyServer implements Closeable {
 			channelPipelineConsumer = channelPipeline -> channelPipeline.addLast(
 				new TaskBackupStateEncoder(),
 				new TaskBackupStateDecoder(),
-				new TaskExecutorServerHandler(gatewaySupplier.get()));
+				new TaskExecutorServerHandlerNoChunk(gatewaySupplier.get()));
 		} else {
 			channelPipelineConsumer = channelPipeline -> channelPipeline.addLast(
 				new ObjectEncoder(),

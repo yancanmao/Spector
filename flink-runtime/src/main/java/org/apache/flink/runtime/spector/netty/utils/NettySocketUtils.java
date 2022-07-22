@@ -16,9 +16,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 public class NettySocketUtils {
@@ -59,7 +62,7 @@ public class NettySocketUtils {
 			channel.writeAndFlush(newChunk);
 		}
 
-		// fire an identifier as end of fileo[
+		// fire an identifier as end of file
 		channel.writeAndFlush(executionAttemptID.toHexString() + ":-1").addListener((ChannelFutureListener) channelFuture -> {
 			if (channelFuture.isSuccess()) {
 				submitFuture.complete(Acknowledge.get());
@@ -71,7 +74,7 @@ public class NettySocketUtils {
 
 	public static void chunkedChannelRead(
 		Object msg,
-		Consumer<byte[]> consumer,
+		BiConsumer<ChannelHandlerContext, byte[]> consumer,
 		ChannelHandlerContext ctx,
 		Map<String, byte[]> recv,
 		Map<String, Integer> position) {
@@ -80,7 +83,7 @@ public class NettySocketUtils {
 			String executionAttemptId = msgArray[0];
 			if (msgArray[1].equals("-1")) {
 				byte[] bytes = recv.remove(executionAttemptId);
-				consumer.accept(bytes);
+				consumer.accept(ctx, bytes);
 				// release resource.
 				position.remove(executionAttemptId);
 

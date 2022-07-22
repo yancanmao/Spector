@@ -40,12 +40,7 @@ import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.function.Function;
@@ -53,6 +48,8 @@ import java.util.function.Function;
 import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Operation.DISPATCH_STATE_TO_STANDBY_TASK;
 import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Operation.REPARTITION_STATE;
 import static org.apache.flink.runtime.clusterframework.types.TaskManagerSlot.State.FREE;
+import static org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus.DONE;
+import static org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus.FAILED;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -109,6 +106,16 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 
 	private final Map<InstanceID, List<TaskManagerSlot>> slotsMap;
 
+	// for replicating states confirmation
+	private final Set<ExecutionAttemptID> acknowledgedStandbyTasks;
+	private final Map<ExecutionAttemptID, ExecutionVertex> pendingStandbyTasks;
+
+	public enum AckStatus {
+		DONE,
+		FAILED
+	}
+
+
 	public JobStateCoordinator(
 		JobGraph jobGraph,
 		ExecutionGraph executionGraph,
@@ -125,6 +132,8 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 		this.standbyExecutionVertexes = new HashMap<>();
 		this.backupKeyGroups = new HashMap<>();
 		this.slotsMap = new HashMap<>();
+		this.acknowledgedStandbyTasks = new HashSet<>();
+		this.pendingStandbyTasks = new HashMap<>();
 	}
 
 	public void setSlotsMap(CompletableFuture<Collection<TaskManagerSlot>> allSlots) {
@@ -239,6 +248,11 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 	public void dispatchLatestCheckpointedStateToStandbyTasks(
 		CompletedCheckpoint checkpoint) {
 		Map<JobVertexID, ExecutionJobVertex> tasks = executionGraph.getAllVertices();
+//		for (List<ExecutionVertex> executionVertices : standbyExecutionVertexes.values()) {
+//			executionVertices.forEach(executionVertex -> pendingStandbyTasks.put(
+//						executionVertex.getCurrentExecutionAttempt().getAttemptId(),
+//						executionVertex));
+//		}
 		// re-assign the task states
 		final Map<OperatorID, OperatorState> operatorStates = checkpoint.getOperatorStates();
 
@@ -247,6 +261,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 				true, DISPATCH_STATE_TO_STANDBY_TASK, backupKeyGroups);
 		checkNotNull(jobExecutionPlan, "jobExecutionPlan should not be null.");
 		stateAssignmentOperation.setRedistributeStrategy(jobExecutionPlan);
+		stateAssignmentOperation.setPendingStandbyTasks(pendingStandbyTasks);
 
 		stateAssignmentOperation.assignStates();
 	}
@@ -276,9 +291,29 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 		checkNotNull(checkpoint);
 		LOG.info("++++++ checkpoint complete, start to dispatch state to replica");
 		dispatchLatestCheckpointedStateToStandbyTasks(checkpoint);
-		if (checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT) {
-			LOG.info("++++++ redistribute operator states");
-			handleCollectedStates(new HashMap<>(checkpoint.getOperatorStates()));
+//		if (checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT) {
+//			LOG.info("++++++ redistribute operator states");
+//			handleCollectedStates(new HashMap<>(checkpoint.getOperatorStates()));
+//		}
+	}
+
+	public void onAckReplication(ExecutionAttemptID executionAttemptID, AckStatus ackStatus) {
+		if (ackStatus == DONE) {
+			acknowledgedStandbyTasks.add(executionAttemptID);
+			pendingStandbyTasks.remove(executionAttemptID);
+			LOG.info("++++++ Receive Ack from execution: " + executionAttemptID);
+			if (pendingStandbyTasks.isEmpty()) {
+				LOG.info("++++++ Dispatch state to replica completed.");
+				if (inProcess) {
+					try {
+						assignNewState();
+					} catch (ExecutionGraphException e) {
+						throw new RuntimeException(e);
+					}
+				}
+			}
+		} else if (ackStatus == FAILED) {
+			throw new RuntimeException("++++++ Replication failed for some reason.");
 		}
 	}
 
@@ -718,7 +753,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 	private void handleCollectedStates(Map<OperatorID, OperatorState> operatorStates) throws Exception {
 		switch (actionType) {
 			case REPARTITION:
-				assignNewState(operatorStates);
+				assignNewState();
 				break;
 			case SCALE_OUT:
 				deployCreatedExecution(operatorStates);
@@ -731,7 +766,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 		}
 	}
 
-	private void assignNewState(Map<OperatorID, OperatorState> operatorStates) throws ExecutionGraphException {
+	private void assignNewState() throws ExecutionGraphException {
 		Map<JobVertexID, ExecutionJobVertex> tasks = new HashMap<>();
 		tasks.put(targetVertex.getJobVertexId(), targetVertex);
 
@@ -918,6 +953,8 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 	private void clean() {
 		inProcess = false;
 		notYetAcknowledgedTasks.clear();
+		pendingStandbyTasks.clear();
+		acknowledgedStandbyTasks.clear();
 	}
 
 

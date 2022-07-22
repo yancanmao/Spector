@@ -174,7 +174,7 @@ public class TestTaskStateManager implements TaskStateManager {
 
 	}
 
-	public JobID getJobId() {
+	public JobID getJobID() {
 		return jobId;
 	}
 

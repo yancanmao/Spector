@@ -24,6 +24,7 @@ import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.runtime.executiongraph.Execution;
+import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.ExecutionVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
@@ -73,6 +74,8 @@ public class StateAssignmentOperation {
 	public final Operation operation;
 
 	private JobExecutionPlan jobExecutionPlan;
+
+	private Map<ExecutionAttemptID, ExecutionVertex> pendingStandbyTasks;
 
 	private final HashMap<JobVertexID, List<Integer>> backupKeyGroups;
 
@@ -144,6 +147,10 @@ public class StateAssignmentOperation {
 
 	public void setRedistributeStrategy(JobExecutionPlan jobExecutionPlan) {
 		this.jobExecutionPlan = jobExecutionPlan;
+	}
+
+	public void setPendingStandbyTasks(Map<ExecutionAttemptID, ExecutionVertex> pendingStandbyTasks) {
+		this.pendingStandbyTasks = pendingStandbyTasks;
 	}
 
 	private void assignAttemptState(ExecutionJobVertex executionJobVertex, List<OperatorState> operatorStates) {
@@ -444,6 +451,8 @@ public class StateAssignmentOperation {
 			}
 
 			if (!statelessTask) {
+				Preconditions.checkState(pendingStandbyTasks != null, "++++++ pending standby tasks are not set");
+				pendingStandbyTasks.put(currentExecutionAttempt.getAttemptId(), standbyExecutionVertex);
 				JobManagerTaskRestore taskRestore = new JobManagerTaskRestore(restoreCheckpointId, taskState);
 				currentExecutionAttempt.setInitialState(taskRestore);
 			}

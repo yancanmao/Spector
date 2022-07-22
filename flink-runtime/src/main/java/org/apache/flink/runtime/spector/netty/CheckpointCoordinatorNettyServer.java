@@ -26,7 +26,7 @@ public class CheckpointCoordinatorNettyServer implements Closeable {
 			channelPipelineConsumer = channelPipeline -> channelPipeline.addLast(
 				new TaskAcknowledgementEncoder(),
 				new TaskAcknowledgementDecoder(),
-				new CheckpointCoordinatorServerHandler(gatewaySupplier.get()));
+				new CheckpointCoordinatorServerHandlerNoChunk(gatewaySupplier.get()));
 		} else {
 			channelPipelineConsumer = channelPipeline -> channelPipeline.addLast(
 				new ObjectEncoder(),

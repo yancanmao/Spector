@@ -48,6 +48,7 @@ import org.apache.flink.runtime.query.KvStateLocation;
 import org.apache.flink.runtime.registration.RegistrationResponse;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.OperatorBackPressureStatsResponse;
+import org.apache.flink.runtime.spector.JobStateCoordinator;
 import org.apache.flink.runtime.spector.netty.data.TaskExecutorSocketAddress;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.taskexecutor.AccumulatorReport;
@@ -383,5 +384,10 @@ public class TestingJobMasterGateway implements JobMasterGateway {
 	@Override
 	public CompletableFuture<Collection<TaskManagerSlot>> getAllSlots() {
 		return null;
+	}
+
+	@Override
+	public void acknowledgeReplication(JobID jobID, ExecutionAttemptID executionAttemptID, JobStateCoordinator.AckStatus ackStatus) {
+
 	}
 }

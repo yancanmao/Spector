@@ -117,7 +117,6 @@ import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Sets;
-import org.apache.flink.util.NetUtils;
 import org.apache.flink.util.Preconditions;
 
 import javax.annotation.Nonnull;
@@ -145,6 +144,8 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
+import static org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus.DONE;
+import static org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus.FAILED;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -237,7 +238,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	 */
 	private final BackupStateManager backupStateManager;
 
-	private final boolean nettyStateTransmissionEnabled = true;
+	private final boolean nettyStateTransmissionEnabled;
 
 
 	public TaskExecutor(
@@ -285,14 +286,17 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 		this.backupStateManager = new BackupStateManager();
 
+		nettyStateTransmissionEnabled = taskManagerConfiguration.getConfiguration().getBoolean("netty.state.transmission.enabled", true);
+
 		try {
-			boolean taskDeploymentEnable = false;
+			boolean taskDeploymentEnabled =
+				taskManagerConfiguration.getConfiguration().getBoolean("netty.optimized.deployment.enabled", true);
 			this.taskExecutorNettyServer = nettyStateTransmissionEnabled ?
 				new TaskExecutorNettyServer(
 					() -> this.getSelfGateway(TaskExecutorGateway.class),
 //					NetUtils.getLocalHostLANAddress().getHostAddress(),
 					InetAddress.getLocalHost().getHostAddress(),
-					taskDeploymentEnable) : null;
+					taskDeploymentEnabled) : null;
 		} catch (UnknownHostException e) {
 			throw new RuntimeException(e);
 		}
@@ -807,16 +811,30 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 //			return FutureUtils.completedExceptionally(new TaskException(message));
 //		}
 
+
+
+
+		log.info("++++++ " + jobvertexId + " Receive backup state");
 		TaskStateManager taskStateManager = backupStateManager.replicas.get(jobvertexId);
 
 		if (taskStateManager != null) {
+			JobID jobID = taskStateManager.getJobID();
+			JobManagerConnection jobManagerConnection = jobManagerTable.get(jobID);
+
 			taskStateManager.setTaskRestore(taskRestore);
+
+			jobManagerConnection.getJobManagerGateway().acknowledgeReplication(
+				jobID,
+				executionAttemptID,
+				DONE);
 
 			return CompletableFuture.completedFuture(Acknowledge.get());
 		} else {
 			final String message = "Cannot find standby task " + executionAttemptID + " to dispatch state to it.";
 			log.debug(message);
-			return FutureUtils.completedExceptionally(new TaskException(message));
+
+			throw new RuntimeException("++++++ Cannot find the corresponding taskStateManager");
+//			return FutureUtils.completedExceptionally(new TaskException(message));
 		}
 	}
 
@@ -1458,7 +1476,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			int connectTimeoutMills = 10000;
 			int lowWaterMark = 10 * 1024 * 1024;
 			int highWaterMark = 50 * 1024 * 1024;
-			boolean taskAcknowledgementEnabled = false;
+			boolean taskAcknowledgementEnabled =
+				taskManagerConfiguration.getConfiguration().getBoolean("netty.optimized.acknowledgement.enabled", false);
 			checkpointCoordinatorNettyClient = new CheckpointCoordinatorNettyClient(
 				checkpointCoordinatorSocketAddress,
 				channelCount,

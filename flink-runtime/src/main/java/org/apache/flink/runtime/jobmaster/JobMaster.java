@@ -83,6 +83,7 @@ import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.RpcUtils;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils;
 import org.apache.flink.runtime.spector.JobStateCoordinator;
+import org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus;
 import org.apache.flink.runtime.spector.netty.CheckpointCoordinatorNettyServer;
 import org.apache.flink.runtime.spector.netty.TaskExecutorNettyClient;
 import org.apache.flink.runtime.spector.netty.data.CheckpointCoordinatorSocketAddress;
@@ -94,10 +95,7 @@ import org.apache.flink.runtime.taskexecutor.slot.SlotOffer;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.runtime.webmonitor.WebMonitorUtils;
-import org.apache.flink.util.ExceptionUtils;
-import org.apache.flink.util.FlinkException;
-import org.apache.flink.util.InstantiationUtil;
-import org.apache.flink.util.NetUtils;
+import org.apache.flink.util.*;
 import org.slf4j.Logger;
 
 import javax.annotation.Nullable;
@@ -202,7 +200,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 	private Map<String, Object> accumulators;
 
-	private final boolean nettyStateTransmissionEnabled = true;
+	private final boolean nettyStateTransmissionEnabled;
 
 	private final CheckpointCoordinatorNettyServer checkpointCoordinatorNettyServer;
 
@@ -277,14 +275,19 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		this.jobStateCoordinator = new JobStateCoordinator(
 			jobGraph, executionGraph, userCodeLoader);
 
+		nettyStateTransmissionEnabled =
+			jobMasterConfiguration.getConfiguration().getBoolean("netty.state.transmission.enabled", true);
+
+
 		try {
-			boolean taskAckEnable = false;
+			boolean taskAckEnabled =
+				jobMasterConfiguration.getConfiguration().getBoolean("netty.optimized.acknowledgement.enabled", false);
 			this.checkpointCoordinatorNettyServer = nettyStateTransmissionEnabled ?
 				new CheckpointCoordinatorNettyServer(
 					() -> this.getSelfGateway(CheckpointCoordinatorGateway.class),
 //					NetUtils.getLocalHostLANAddress().getHostAddress(),
 					InetAddress.getLocalHost().getHostAddress(),
-					taskAckEnable) : null;
+					taskAckEnabled) : null;
 		} catch (UnknownHostException e) {
 			throw new RuntimeException(e);
 		}
@@ -701,6 +704,14 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		}
 	}
 
+	@Override
+	public void acknowledgeReplication(
+		final JobID jobID,
+		final ExecutionAttemptID executionAttemptID,
+		final AckStatus ackStatus) {
+		jobStateCoordinator.onAckReplication(executionAttemptID, ackStatus);
+	}
+
 	// TODO: This method needs a leader session ID
 	@Override
 	public void declineCheckpoint(DeclineCheckpoint decline) {
@@ -825,13 +836,13 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		final TaskExecutorGateway taskExecutorGateway = taskManager.f1;
 
 		TaskExecutorNettyClient taskExecutorNettyClient = null;
-		boolean nettyStateTransmissionEnable = false;
-		if (nettyStateTransmissionEnable) {
-			int channelCount = 10;
+		if (nettyStateTransmissionEnabled) {
+			int channelCount = 32;
 			int connectTimeoutMills = 10000;
 			int lowWaterMark = 10 * 1024 * 1024;
 			int highWaterMark = 50 * 1024 * 1024;
-			boolean taskDeploymentEnabled = false;
+			boolean taskDeploymentEnabled =
+				jobMasterConfiguration.getConfiguration().getBoolean("netty.optimized.deployment.enabled", false);
 			taskExecutorNettyClient = new TaskExecutorNettyClient(
 				taskExecutorSocketAddress,
 				channelCount,
@@ -849,7 +860,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		final RpcTaskManagerGateway rpcTaskManagerGateway = new RpcTaskManagerGateway(
 			taskExecutorGateway,
 			getFencingToken(),
-			nettyStateTransmissionEnable,
+			nettyStateTransmissionEnabled,
 			taskExecutorNettyClient);
 
 		return CompletableFuture.completedFuture(

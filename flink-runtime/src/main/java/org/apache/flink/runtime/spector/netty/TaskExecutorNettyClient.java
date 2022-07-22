@@ -45,6 +45,8 @@ public class TaskExecutorNettyClient implements Closeable {
 	private final List<NettySocketClient> clientList;
 	private final boolean taskDeploymentEnabled;
 
+	private final Object lock = new Object();
+
 	public TaskExecutorNettyClient(
 		TaskExecutorSocketAddress socketAddress,
 		int channelCount,
@@ -68,7 +70,8 @@ public class TaskExecutorNettyClient implements Closeable {
 				.addLast(new TaskBackupStateEncoder())
 				.addLast(new TaskBackupStateDecoder());
 		} else {
-			channelPipelineConsumer = channelPipeline -> channelPipeline.addLast(
+			channelPipelineConsumer = channelPipeline -> channelPipeline
+				.addLast(
 				new ObjectEncoder(),
 				new ObjectDecoder(Integer.MAX_VALUE, ClassResolvers.cacheDisabled(null)));
 		}
@@ -122,20 +125,20 @@ public class TaskExecutorNettyClient implements Closeable {
 		Channel channel = clientList.get(RandomUtils.nextInt(0, clientList.size())).getChannel();
 		while (true) {
 			if (channel.isWritable()) {
+				TaskBackupState taskBackupState = new TaskBackupState(
+					executionAttemptID,
+					jobvertexId,
+					taskRestore,
+					timeout);
 				if (!taskDeploymentEnabled) {
 					try {
-						TaskBackupState taskBackupState = new TaskBackupState(
-							executionAttemptID,
-							jobvertexId,
-							taskRestore,
-							timeout);
 						byte[] data = getBytes(taskBackupState);
 						chunkedWriteAndFlush(submitFuture, channel, data, executionAttemptID);
 					} catch (Exception e) {
 						throw new RuntimeException(e);
 					}
 				} else {
-					channel.writeAndFlush(new TaskBackupState(executionAttemptID, jobvertexId, taskRestore, timeout))
+					channel.writeAndFlush(taskBackupState)
 						.addListener((ChannelFutureListener) channelFuture -> {
 							if (channelFuture.isSuccess()) {
 								submitFuture.complete(Acknowledge.get());
@@ -152,6 +155,7 @@ public class TaskExecutorNettyClient implements Closeable {
 		}
 		return submitFuture;
 	}
+
 
 	@Override
 	public void close() {

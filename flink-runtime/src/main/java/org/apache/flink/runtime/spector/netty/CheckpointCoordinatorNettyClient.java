@@ -92,14 +92,14 @@ public class CheckpointCoordinatorNettyClient implements Closeable {
 		Channel channel = clientList.get(RandomUtils.nextInt(0, clientList.size())).getChannel();
 		while (true) {
 			if (channel.isWritable()) {
+				TaskAcknowledgement taskAcknowledgement = new TaskAcknowledgement(
+					jobID,
+					executionAttemptID,
+					checkpointId,
+					checkpointMetrics,
+					subtaskState);
 				if (!taskAcknowledgementEnabled) {
 					try {
-						TaskAcknowledgement taskAcknowledgement = new TaskAcknowledgement(
-							jobID,
-							executionAttemptID,
-							checkpointId,
-							checkpointMetrics,
-							subtaskState);
 						byte[] data = getBytes(taskAcknowledgement);
 						LOG.info("++++++ channel: " + channel.id() + " Sending acknowledgement: " + data.length);
 						chunkedWriteAndFlush(submitFuture, channel, data, executionAttemptID);
@@ -107,7 +107,7 @@ public class CheckpointCoordinatorNettyClient implements Closeable {
 						throw new RuntimeException(e);
 					}
 				} else {
-					channel.writeAndFlush(new TaskAcknowledgement(jobID, executionAttemptID, checkpointId, checkpointMetrics, subtaskState))
+					channel.writeAndFlush(taskAcknowledgement)
 						.addListener((ChannelFutureListener) channelFuture -> {
 							if (channelFuture.isSuccess()) {
 								submitFuture.complete(Acknowledge.get());

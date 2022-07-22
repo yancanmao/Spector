@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.state;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.checkpoint.*;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 
@@ -77,4 +78,6 @@ public interface TaskStateManager extends CheckpointListener {
 	 * Retrieve the checkpointID of the latest restored checkpoint
 	 */
 	long getCurrentCheckpointRestoreID();
+
+	JobID getJobID();
 }
