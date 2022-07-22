@@ -248,11 +248,6 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 	public void dispatchLatestCheckpointedStateToStandbyTasks(
 		CompletedCheckpoint checkpoint) {
 		Map<JobVertexID, ExecutionJobVertex> tasks = executionGraph.getAllVertices();
-//		for (List<ExecutionVertex> executionVertices : standbyExecutionVertexes.values()) {
-//			executionVertices.forEach(executionVertex -> pendingStandbyTasks.put(
-//						executionVertex.getCurrentExecutionAttempt().getAttemptId(),
-//						executionVertex));
-//		}
 		// re-assign the task states
 		final Map<OperatorID, OperatorState> operatorStates = checkpoint.getOperatorStates();
 

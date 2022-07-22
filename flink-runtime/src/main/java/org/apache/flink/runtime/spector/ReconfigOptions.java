@@ -96,6 +96,10 @@ public class ReconfigOptions implements Serializable {
 
 	@Override
 	public String toString() {
-		return "repartition: " + updateState + ", rescale partition: " + updatePartitions + ", rescale gate: " + updateGates;
+		return "update partitions: " + updatePartitions
+			+ " update gates: " + updateGates
+			+ " update state: " + updateState
+			+ " update keygroup range: " + updateKeyGroupRange
+			+ " set affected keys: " + setAffectedKeys;
 	}
 }

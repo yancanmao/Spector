@@ -110,6 +110,36 @@ public class StateAssignmentOperation {
 
 		checkStateMappingCompleteness(allowNonRestoredState, operatorStates, tasks);
 
+		if (pendingStandbyTasks != null) {
+			for (Map.Entry<JobVertexID, ExecutionJobVertex> task : this.tasks.entrySet()) {
+				final ExecutionJobVertex executionJobVertex = task.getValue();
+				// find the states of all operators belonging to this task
+				List<OperatorID> operatorIDs = executionJobVertex.getOperatorIDs();
+				List<OperatorID> altOperatorIDs = executionJobVertex.getUserDefinedOperatorIDs();
+				boolean statelessTask = true;
+				for (int x = 0; x < operatorIDs.size(); x++) {
+					OperatorID operatorID = altOperatorIDs.get(x) == null
+						? operatorIDs.get(x)
+						: altOperatorIDs.get(x);
+
+					OperatorState operatorState = localOperators.get(operatorID);
+					if (operatorState != null) {
+						statelessTask = false;
+					}
+				}
+
+				if (!statelessTask) {
+					for (ExecutionVertex standbyExecutionVertex : executionJobVertex.getStandbyExecutionVertexs()) {
+						pendingStandbyTasks.put(
+							standbyExecutionVertex.getCurrentExecutionAttempt().getAttemptId(),
+							standbyExecutionVertex);
+					}
+				}
+			}
+			LOG.info("++++++ pending standby tasks: " + pendingStandbyTasks);
+		}
+
+
 		for (Map.Entry<JobVertexID, ExecutionJobVertex> task : this.tasks.entrySet()) {
 			final ExecutionJobVertex executionJobVertex = task.getValue();
 
@@ -451,8 +481,6 @@ public class StateAssignmentOperation {
 			}
 
 			if (!statelessTask) {
-				Preconditions.checkState(pendingStandbyTasks != null, "++++++ pending standby tasks are not set");
-				pendingStandbyTasks.put(currentExecutionAttempt.getAttemptId(), standbyExecutionVertex);
 				JobManagerTaskRestore taskRestore = new JobManagerTaskRestore(restoreCheckpointId, taskState);
 				currentExecutionAttempt.setInitialState(taskRestore);
 			}
