@@ -311,15 +311,20 @@ public class JobExecutionPlan {
 		return srcSubtaskMap.containsKey(subtaskIndex);
 	}
 
+	public boolean isDestinationSubtask(int subtaskIndex) {
+		checkState(isAffectedTask(subtaskIndex),
+			"++++++ a non-affected task cannot become a source/destination task");
+
+		return dstSubtaskMap.containsKey(subtaskIndex);
+	}
+
 	public List<Integer> getAffectedKeygroupsForSource(int subtaskIndex) {
-		checkState(srcSubtaskMap.containsKey(subtaskIndex),
-			"++++++ not a source task");
+		checkState(srcSubtaskMap.containsKey(subtaskIndex), "++++++ not a source task");
 		return srcSubtaskMap.get(subtaskIndex);
 	}
 
 	public List<Integer> getAffectedKeygroupsForDestination(int subtaskIndex) {
-		checkState(dstSubtaskMap.containsKey(subtaskIndex),
-			"++++++ not a source task");
+		checkState(dstSubtaskMap.containsKey(subtaskIndex), "++++++ not a destination task");
 		return dstSubtaskMap.get(subtaskIndex);
 	}
 

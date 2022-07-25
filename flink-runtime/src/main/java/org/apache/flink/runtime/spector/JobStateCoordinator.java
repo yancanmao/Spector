@@ -173,6 +173,8 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 	public void notifyNewVertices(List<ExecutionJobVertex> newExecutionJobVerticesTopological) {
 		final ArrayList<CompletableFuture<Void>> schedulingFutures = new ArrayList<>();
 
+		LOG.info("++++++ Waiting for standby tasks for: " + newExecutionJobVerticesTopological);
+
 		final Collection<CompletableFuture<Void>> currentExecutionFutures = new ArrayList<>();
 
 		for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
@@ -181,8 +183,11 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 					// TODO: Anti-affinity constraint
 					CompletableFuture.runAsync(() -> waitForExecutionToReachRunningState(executionVertex)));
 			}
-			// once all execution of current executionJobVertex are in running state, deploy backup executions
-			FutureUtils.combineAll(currentExecutionFutures).whenComplete((ignored, t) -> {
+		}
+
+		// once all execution of current executionJobVertex are in running state, deploy backup executions
+		FutureUtils.combineAll(currentExecutionFutures).whenComplete((ignored, t) -> {
+			for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
 				Preconditions.checkState(executionGraph.getSlotProvider() instanceof SchedulerImpl,
 					"++++++ slotProvider must be SchedulerImpl");
 
@@ -225,19 +230,19 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 					schedulingFutures.get(schedulingFutures.size() - 1)
 						.completeExceptionally(t);
 				}
-			});
-
-			currentExecutionFutures.clear();
-		}
-
-		final CompletableFuture<Void> allSchedulingFutures = FutureUtils.waitForAll(schedulingFutures);
-		allSchedulingFutures.whenComplete((Void ignored, Throwable t) -> {
-			if (t != null) {
-				LOG.warn("Scheduling of standby tasks failed. Cancelling the scheduling of standby tasks.");
-				for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
-					cancelStandbyExecution(executionJobVertex);
-				}
 			}
+		}).thenRunAsync(() -> {
+			final CompletableFuture<Void> allSchedulingFutures = FutureUtils.waitForAll(schedulingFutures);
+			allSchedulingFutures.whenComplete((Void ignored2, Throwable t2) -> {
+				Preconditions.checkState(standbyExecutionVertexes.size() == newExecutionJobVerticesTopological.size(),
+					"++++++ Inconsistent standby tasks number");
+				if (t2 != null) {
+					LOG.warn("Scheduling of standby tasks failed. Cancelling the scheduling of standby tasks.");
+					for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
+						cancelStandbyExecution(executionJobVertex);
+					}
+				}
+			});
 		});
 	}
 
@@ -461,7 +466,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 			for (ExecutionVertex vertex : tasks.get(jobId).getTaskVertices()) {
 				Execution execution = vertex.getCurrentExecutionAttempt();
 				rescaleCandidatesFutures.add(execution.scheduleReconfig(
-					reconfigId, ReconfigOptions.UPDATE_PARTITIONS_ONLY, null, null));
+					reconfigId, ReconfigOptions.UPDATE_PARTITIONS_ONLY, null, null, null));
 			}
 		}
 
@@ -472,7 +477,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 				Execution execution = vertex.getCurrentExecutionAttempt();
 				notYetAcknowledgedTasks.add(execution.getAttemptId());
 				rescaleCandidatesFutures.add(execution.scheduleReconfig(
-					reconfigId, ReconfigOptions.UPDATE_GATES_ONLY, null, null));
+					reconfigId, ReconfigOptions.UPDATE_GATES_ONLY, null, null, null));
 			}
 		}
 
@@ -482,20 +487,23 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 			if (!jobExecutionPlan.isAffectedTask(subtaskIndex)) {
 				rescaleCandidatesFutures.add(
 					execution.scheduleReconfig(reconfigId, ReconfigOptions.UPDATE_BOTH,
-						null, null));
+						null, null, null));
 			} else {
-				if (jobExecutionPlan.isSourceSubtask(subtaskIndex)) {
+				if (jobExecutionPlan.isSourceSubtask(subtaskIndex) || jobExecutionPlan.isDestinationSubtask(subtaskIndex)) {
+					List<Integer> srcKeygroups = jobExecutionPlan.isSourceSubtask(subtaskIndex) ?
+						jobExecutionPlan.getAffectedKeygroupsForSource(subtaskIndex) : null;
+					List<Integer> dstKeygroups = jobExecutionPlan.isDestinationSubtask(subtaskIndex) ?
+						jobExecutionPlan.getAffectedKeygroupsForDestination(subtaskIndex) : null;
 					// if is source, set keygroups to be checkpointed
-					LOG.info("++++++ Task " + subtaskIndex + " set affected keys: "
-						+ jobExecutionPlan.getAffectedKeygroupsForSource(subtaskIndex));
-					rescaleCandidatesFutures.add(
-						execution.scheduleReconfig(reconfigId, ReconfigOptions.PREPARE_AFFECTED_KEYGROUPS,
-							null, jobExecutionPlan.getAffectedKeygroupsForSource(subtaskIndex)));
-				} else {
-					// if is destination, set the affected keygroups for destination
-					rescaleCandidatesFutures.add(
-						execution.scheduleReconfig(reconfigId, ReconfigOptions.PREPARE_AFFECTED_KEYGROUPS,
-							null, jobExecutionPlan.getAffectedKeygroupsForDestination(subtaskIndex)));
+					LOG.info("++++++ Task " + subtaskIndex + " set affected keys: migrate out => "
+						+ jobExecutionPlan.getAffectedKeygroupsForSource(subtaskIndex) + " : in => "
+						+ jobExecutionPlan.getAffectedKeygroupsForDestination(subtaskIndex));
+					rescaleCandidatesFutures.add(execution.scheduleReconfig(
+							reconfigId,
+							ReconfigOptions.PREPARE_AFFECTED_KEYGROUPS,
+							null,
+							jobExecutionPlan.getAffectedKeygroupsForSource(subtaskIndex),
+							jobExecutionPlan.getAffectedKeygroupsForDestination(subtaskIndex)));
 				}
 			}
 		}
@@ -614,7 +622,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 						for (ExecutionVertex vertex : entry.getValue()) {
 							Execution execution = vertex.getCurrentExecutionAttempt();
 							rescaleCandidatesFutures.add(execution.scheduleReconfig(reconfigId, entry.getKey(),
-								null, null));
+								null, null, null));
 						}
 					}
 
@@ -625,7 +633,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 
 							rescaleCandidatesFutures.add(execution
 								.scheduleReconfig(reconfigId, ReconfigOptions.UPDATE_BOTH,
-									null, null));
+									null, null, null));
 						}
 					}
 
@@ -706,7 +714,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 				Execution execution = vertex.getCurrentExecutionAttempt();
 				rescaleCandidatesFutures.add(execution
 					.scheduleReconfig(reconfigId, ReconfigOptions.UPDATE_PARTITIONS_ONLY,
-						null, null));
+						null, null, null));
 			}
 		}
 
@@ -718,7 +726,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 				notYetAcknowledgedTasks.add(execution.getAttemptId());
 				rescaleCandidatesFutures.add(execution
 					.scheduleReconfig(reconfigId, ReconfigOptions.UPDATE_GATES_ONLY,
-						null, null));
+						null, null, null));
 			}
 		}
 
@@ -790,7 +798,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 			} else {
 				scheduledRescale = executionAttempt.scheduleReconfig(reconfigId,
 					ReconfigOptions.UPDATE_KEYGROUP_RANGE_ONLY,
-					jobExecutionPlan.getAlignedKeyGroupRange(i), null);
+					jobExecutionPlan.getAlignedKeyGroupRange(i), null, null);
 			}
 
 			rescaledFuture.add(scheduledRescale);
@@ -859,7 +867,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 
 				scheduledRescale = executionAttempt.scheduleReconfig(reconfigId,
 					ReconfigOptions.UPDATE_KEYGROUP_RANGE_ONLY,
-					keyGroupRange, null);
+					keyGroupRange, null, null);
 			}
 
 			rescaledFuture.add(scheduledRescale);
@@ -909,11 +917,11 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 			if (partitionAssignment.get(i).size() == 0) {
 				System.out.println("none keygroup assigned for current jobvertex: " + vertex.toString());
 				scheduledRescale = executionAttempt.scheduleReconfig(reconfigId,
-					ReconfigOptions.UPDATE_REDISTRIBUTE_STATE, null, null);
+					ReconfigOptions.UPDATE_REDISTRIBUTE_STATE, null, null, null);
 			} else {
 				scheduledRescale = executionAttempt.scheduleReconfig(reconfigId,
 					ReconfigOptions.UPDATE_REDISTRIBUTE_STATE,
-					jobExecutionPlan.getAlignedKeyGroupRange(i), null);
+					jobExecutionPlan.getAlignedKeyGroupRange(i), null, null);
 			}
 			rescaledFuture.add(scheduledRescale);
 		}

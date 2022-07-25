@@ -314,14 +314,33 @@ public class CopyOnWriteStateTable<K, N, S> extends StateTable<K, N, S> implemen
 	}
 
 	@Override
-	public void put(K key, int keyGroup, N namespace, S state) {
-		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
+	public void put(K key, int alignedKeyGroup, N namespace, S state) {
+		tryAddToChangelogs(keyContext.getKeyGroupRange().mapFromAlignedToHashed(alignedKeyGroup));
 		put(key, namespace, state);
+	}
+
+	private void tryAddToChangelogs(int hashedKeyGroup) {
+		if (!keyContext.getKeyGroupRange().containsHashedKeyGroup(hashedKeyGroup)) {
+			System.out.println("++++++ No such keygroup index: " + keyContext.getCurrentKeyGroupIndex()
+				+ " " + keyContext.getKeyGroupRange());
+		}
+		changelogs.put(hashedKeyGroup, true);
+	}
+
+	private void tryAddToChangelogs() {
+		if (!keyContext.getKeyGroupRange().containsHashedKeyGroup(keyContext.getCurrentKeyGroupIndex())) {
+			System.out.println("++++++ No such keygroup index: " + keyContext.getCurrentKeyGroupIndex()
+				+ " " + keyContext.getKeyGroupRange());
+		}
+//		Preconditions.checkState(
+//			keyContext.getKeyGroupRange().containsHashedKeyGroup(keyContext.getCurrentKeyGroupIndex()),
+//			"++++++ Cannot find the keygroup in the keygroup range.");
+		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
 	}
 
 	@Override
 	public S get(N namespace) {
-		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
+		tryAddToChangelogs();
 		return get(keyContext.getCurrentKey(), namespace);
 	}
 
@@ -332,31 +351,31 @@ public class CopyOnWriteStateTable<K, N, S> extends StateTable<K, N, S> implemen
 
 	@Override
 	public void put(N namespace, S state) {
-		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
+		tryAddToChangelogs();
 		put(keyContext.getCurrentKey(), namespace, state);
 	}
 
 	@Override
 	public S putAndGetOld(N namespace, S state) {
-		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
+		tryAddToChangelogs();
 		return putAndGetOld(keyContext.getCurrentKey(), namespace, state);
 	}
 
 	@Override
 	public void remove(N namespace) {
-		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
+		tryAddToChangelogs();
 		remove(keyContext.getCurrentKey(), namespace);
 	}
 
 	@Override
 	public S removeAndGetOld(N namespace) {
-		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
+		tryAddToChangelogs();
 		return removeAndGetOld(keyContext.getCurrentKey(), namespace);
 	}
 
 	@Override
 	public <T> void transform(N namespace, T value, StateTransformationFunction<S, T> transformation) throws Exception {
-		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
+		tryAddToChangelogs();
 		transform(keyContext.getCurrentKey(), namespace, value, transformation);
 	}
 
@@ -619,6 +638,7 @@ public class CopyOnWriteStateTable<K, N, S> extends StateTable<K, N, S> implemen
 		for (StateTableEntry<K, N, S> entry : removableEntries) {
 			remove(entry.getKey(), entry.getNamespace());
 		}
+		removableEntries.clear();
 	}
 
 	private void checkToReleaseStateEntry(Collection<Integer> affectedKeygroups, StateTableEntry<K, N, S> entry, List<StateTableEntry<K, N, S>> removableEntries) {

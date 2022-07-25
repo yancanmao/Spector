@@ -1369,18 +1369,19 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	}
 
 	public void prepareReconfigComponent(
-			ReconfigID reconfigId,
-			ReconfigOptions reconfigOptions,
-			Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
-			Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
-			Collection<Integer> affectedKeygroups) {
+		ReconfigID reconfigId,
+		ReconfigOptions reconfigOptions,
+		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
+		Collection<Integer> srcAffectedKeygroups, Collection<Integer> dstAffectedKeygroups) {
 
 		taskConfigManager.prepareReconfigMeta(
 			reconfigId,
 			reconfigOptions,
 			resultPartitionDeploymentDescriptors,
 			inputGateDeploymentDescriptors,
-			affectedKeygroups);
+			srcAffectedKeygroups,
+			dstAffectedKeygroups);
 	}
 
 	public void assignNewState(KeyGroupRange keyGroupRange, int idInModel, JobManagerTaskRestore taskRestore) {

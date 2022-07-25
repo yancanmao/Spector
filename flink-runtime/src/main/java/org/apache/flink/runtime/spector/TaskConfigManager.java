@@ -91,18 +91,20 @@ public class TaskConfigManager {
 	}
 
 	public void prepareReconfigMeta(
-			ReconfigID reconfigId,
-			ReconfigOptions reconfigOptions,
-			Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
-			Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
-			Collection<Integer> affectedKeygroups) {
+		ReconfigID reconfigId,
+		ReconfigOptions reconfigOptions,
+		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
+		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
+		Collection<Integer> srcAffectedKeygroups,
+		Collection<Integer> dstAffectedKeygroups) {
 
 		TaskReconfigMeta meta = new TaskReconfigMeta(
 			reconfigId,
 			reconfigOptions,
 			resultPartitionDeploymentDescriptors,
 			inputGateDeploymentDescriptors,
-			affectedKeygroups);
+			srcAffectedKeygroups,
+			dstAffectedKeygroups);
 
 		long timeStart = System.currentTimeMillis();
 		while (reconfigMeta != null) {
@@ -119,7 +121,23 @@ public class TaskConfigManager {
 
 	public boolean isSourceOrDestination() {
 		try {
-			return reconfigMeta.getAffectedKeygroups() != null;
+			return reconfigMeta.getSrcAffectedKeygroups() != null || reconfigMeta.getDstAffectedKeygroups() != null;
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	public boolean isSource() {
+		try {
+			return reconfigMeta.getSrcAffectedKeygroups() != null;
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	public boolean isDestination() {
+		try {
+			return reconfigMeta.getDstAffectedKeygroups() != null;
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}
@@ -235,8 +253,11 @@ public class TaskConfigManager {
 		return network;
 	}
 
-	public Collection<Integer> getAffectedKeygroups() {
-		return reconfigMeta.getAffectedKeygroups();
+	public Collection<Integer> getSrcAffectedKeygroups() {
+		return reconfigMeta.getSrcAffectedKeygroups();
 	}
 
+	public Collection<Integer> getDstAffectedKeygroups() {
+		return reconfigMeta.getDstAffectedKeygroups();
+	}
 }

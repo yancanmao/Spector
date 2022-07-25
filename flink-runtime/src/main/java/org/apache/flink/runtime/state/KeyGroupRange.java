@@ -118,7 +118,7 @@ public class KeyGroupRange implements KeyGroupsList, Serializable {
 	}
 
 	public boolean containsHashedKeyGroup(int hashedKeyGroup) {
-		return fromAlignedToHashed.isEmpty() ? contains(hashedKeyGroup) : fromHashedToAligned.containsKey(hashedKeyGroup);
+		return fromHashedToAligned.isEmpty() ? contains(hashedKeyGroup) : fromHashedToAligned.containsKey(hashedKeyGroup);
 	}
 
 	/**

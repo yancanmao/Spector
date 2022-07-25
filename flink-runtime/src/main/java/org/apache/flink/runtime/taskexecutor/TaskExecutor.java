@@ -145,7 +145,6 @@ import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
 import static org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus.DONE;
-import static org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus.FAILED;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -725,12 +724,14 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 						reconfigOptions,
 						tdd.getProducedPartitions(),
 						tdd.getInputGates(),
-						tdd.getAffectedKeygroups());
+						tdd.getSrcAffectedKeygroups(),
+						tdd.getDstAffectedKeygroups());
 
 					if (reconfigOptions.isSettingAffectedkeys()) {
 						log.info("++++++ set affected keys for this source subtask "
 							+ tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId()
-							+ " afffected keygroups: " + tdd.getAffectedKeygroups());
+							+ " afffected keygroups src: " + tdd.getSrcAffectedKeygroups()
+							+ " dst: " + tdd.getDstAffectedKeygroups());
 					}
 
 					if (reconfigOptions.isUpdatingPartitions()) {

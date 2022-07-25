@@ -19,14 +19,16 @@ class TaskReconfigMeta {
 
 	private final ResultPartition[] newPartitions;
 
-	private final Collection<Integer> affectedKeygroups;
+	private final Collection<Integer> srcAffectedKeygroups;
+	private final Collection<Integer> dstAffectedKeygroups;
 
 	TaskReconfigMeta(
 		ReconfigID reconfigId,
 		ReconfigOptions reconfigOptions,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
-		Collection<Integer> affectedKeygroups) {
+		Collection<Integer> srcAffectedKeygroups,
+		Collection<Integer> dstAffectedKeygroups) {
 
 		this.reconfigId = checkNotNull(reconfigId);
 		this.reconfigOptions = checkNotNull(reconfigOptions);
@@ -36,7 +38,8 @@ class TaskReconfigMeta {
 
 		this.newPartitions = new ResultPartition[resultPartitionDeploymentDescriptors.size()];
 
-		this.affectedKeygroups = affectedKeygroups;
+		this.srcAffectedKeygroups = srcAffectedKeygroups;
+		this.dstAffectedKeygroups = dstAffectedKeygroups;
 	}
 
 	public ReconfigID getReconfigId() {
@@ -67,8 +70,12 @@ class TaskReconfigMeta {
 		newPartitions[index] = partition;
 	}
 
-	public Collection<Integer> getAffectedKeygroups() {
-		return affectedKeygroups;
+	public Collection<Integer> getSrcAffectedKeygroups() {
+		return srcAffectedKeygroups;
+	}
+
+	public Collection<Integer> getDstAffectedKeygroups() {
+		return dstAffectedKeygroups;
 	}
 
 	public InputGateDeploymentDescriptor getMatchedInputGateDescriptor(SingleInputGate gate) {

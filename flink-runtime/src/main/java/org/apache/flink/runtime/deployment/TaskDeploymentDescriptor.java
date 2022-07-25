@@ -159,7 +159,8 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 	/** Whether the deployment concerns a standby task. */
 	private final boolean isStandby;
-	private final Collection<Integer> affectedKeygroups;
+	private final Collection<Integer> srcAffectedKeygroups;
+	private final Collection<Integer> dstAffectedKeygroups;
 
 	public TaskDeploymentDescriptor(
 		JobID jobId,
@@ -180,7 +181,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		this(jobId, serializedJobInformation, serializedTaskInformation,
 			executionAttemptId, allocationId, reconfigId, subtaskIndex, attemptNumber,
 			targetSlotNumber, taskRestore, keyGroupRange, idInModel, resultPartitionDeploymentDescriptors,
-			inputGateDeploymentDescriptors, null, false);
+			inputGateDeploymentDescriptors, null, null, false);
 	}
 
 	public TaskDeploymentDescriptor(
@@ -198,7 +199,9 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		int idInModel,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
-		@Nullable Collection<Integer> affectedKeygroups, boolean isStandby) {
+		@Nullable Collection<Integer> srcAffectedKeygroups,
+		@Nullable Collection<Integer> dstAffectedKeygroups,
+		boolean isStandby) {
 
 		this.jobId = Preconditions.checkNotNull(jobId);
 
@@ -228,7 +231,8 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 		this.isStandby = isStandby;
 
-		this.affectedKeygroups = affectedKeygroups;
+		this.srcAffectedKeygroups = srcAffectedKeygroups;
+		this.dstAffectedKeygroups = dstAffectedKeygroups;
 	}
 
 	/**
@@ -413,7 +417,11 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		return isStandby;
 	}
 
-	public Collection<Integer> getAffectedKeygroups() {
-		return affectedKeygroups;
+	public Collection<Integer> getSrcAffectedKeygroups() {
+		return srcAffectedKeygroups;
+	}
+
+	public Collection<Integer> getDstAffectedKeygroups() {
+		return dstAffectedKeygroups;
 	}
 }

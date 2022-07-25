@@ -888,7 +888,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		@Nullable JobManagerTaskRestore taskRestore,
 		int attemptNumber,
 		boolean isStandby,
-		@Nullable List<Integer> affectedKeygroups) throws ExecutionGraphException {
+		@Nullable List<Integer> srcAffectedKeygroups,
+		List<Integer> dstAffectedKeygroups) throws ExecutionGraphException {
 
 		// Produced intermediate results
 		List<ResultPartitionDeploymentDescriptor> producedPartitions = new ArrayList<>(resultPartitions.size());
@@ -983,7 +984,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			idInModel,
 			producedPartitions,
 			consumedPartitions,
-			affectedKeygroups,
+			srcAffectedKeygroups,
+			dstAffectedKeygroups,
 			isStandby);
 	}
 

@@ -726,7 +726,9 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				slot,
 				taskRestore,
 				attemptNumber,
-				isStandby, null);
+				isStandby,
+				null,
+				null);
 
 			// null taskRestore to let it be GC'ed
 			taskRestore = null;
@@ -1009,7 +1011,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		ReconfigID reconfigId,
 		ReconfigOptions reconfigOptions,
 		@Nullable KeyGroupRange keyGroupRange,
-		@Nullable List<Integer> affectedKeygroups) throws ExecutionGraphException {
+		@Nullable List<Integer> srcAffectedKeygroups,
+		List<Integer> dstAffectedKeygroups) throws ExecutionGraphException {
 
 		getVertex().updateReconfigId(reconfigId);
 		getVertex().assignKeyGroupRange(keyGroupRange);
@@ -1029,7 +1032,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			taskRestore,
 			attemptNumber,
 			isStandby,
-			affectedKeygroups);
+			srcAffectedKeygroups,
+			dstAffectedKeygroups);
 
 		// null taskRestore to let it be GC'ed
 		taskRestore = null;
@@ -1059,7 +1063,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 		getVertex().setIdInModel(idInModel);
 
-		return scheduleReconfig(reconfigId, reconfigOptions, keyGroupRange, null);
+		return scheduleReconfig(reconfigId, reconfigOptions, keyGroupRange, null, null);
 	}
 
 	public CompletableFuture<Void> deploy(KeyGroupRange keyGroupRange, int idInModel) throws JobException {
