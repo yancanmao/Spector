@@ -26,6 +26,8 @@ import javax.annotation.Nonnegative;
 import javax.annotation.Nonnull;
 
 import java.io.IOException;
+import java.util.Collection;
+import java.util.HashMap;
 
 /**
  * General interface for state snapshots that should be written partitioned by key-groups.
@@ -58,6 +60,12 @@ public interface StateSnapshot {
 	 * after calling this method.
 	 */
 	void release();
+
+	HashMap<Integer, Boolean> getChangelogs();
+
+	void releaseChangeLogs();
+
+	void releaseChangeLogs(Collection<Integer> affectedKeygroups);
 
 	/**
 	 * Interface for writing a snapshot that is partitioned into key-groups.

@@ -129,6 +129,7 @@ public class CopyOnWriteStateTableSnapshot<K, N, S>
 		this.changelogs = owningStateTable.getChangeLogs();
 	}
 
+	@Override
 	public HashMap<Integer, Boolean> getChangelogs() {
 		return changelogs;
 	}

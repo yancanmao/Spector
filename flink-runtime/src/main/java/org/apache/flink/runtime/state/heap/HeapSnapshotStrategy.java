@@ -207,11 +207,9 @@ class HeapSnapshotStrategy<K>
 				protected void cleanupProvidedResources() {
 					for (StateSnapshot tableSnapshot : cowStateStableSnapshots.values()) {
 						tableSnapshot.release();
-						if (tableSnapshot instanceof CopyOnWriteStateTableSnapshot) {
-							// reset changelogs for current checkpoint.
-							if (((CopyOnWriteStateTableSnapshot<?, ?, ?>) tableSnapshot).getChangelogs() != null) {
-								((CopyOnWriteStateTableSnapshot<?, ?, ?>) tableSnapshot).releaseChangeLogs();
-							}
+						// reset changelogs for current checkpoint.
+						if (tableSnapshot.getChangelogs() != null) {
+							tableSnapshot.releaseChangeLogs();
 						}
 					}
 					LOG.info("++++--- Snapshot cleanup completed");
@@ -336,12 +334,10 @@ class HeapSnapshotStrategy<K>
 
 									stateSnapshot.getValue().getKeyGroupWriter();
 
-								if (stateSnapshot.getValue() instanceof CopyOnWriteStateTableSnapshot) {
-									if (((CopyOnWriteStateTableSnapshot<?, ?, ?>) stateSnapshot.getValue()).getChangelogs() != null) {
-										if (((CopyOnWriteStateTableSnapshot<?, ?, ?>) stateSnapshot.getValue()).getChangelogs()
-											.containsKey(hashedKeyGroup)) {
-											changelogs[keyGroupPos] = true;
-										}
+								if ((stateSnapshot.getValue()).getChangelogs() != null) {
+									if (stateSnapshot.getValue().getChangelogs()
+										.containsKey(hashedKeyGroup)) {
+										changelogs[keyGroupPos] = true;
 									}
 								}
 
@@ -371,13 +367,11 @@ class HeapSnapshotStrategy<K>
 				protected void cleanupProvidedResources() {
 					for (StateSnapshot tableSnapshot : cowStateStableSnapshots.values()) {
 						tableSnapshot.release();
-						if (tableSnapshot instanceof CopyOnWriteStateTableSnapshot) {
 							// reset changelogs for current checkpoint.
-							if (((CopyOnWriteStateTableSnapshot<?, ?, ?>) tableSnapshot).getChangelogs() != null
-								&& affectedKeygroups != null) {
-								((CopyOnWriteStateTableSnapshot<?, ?, ?>) tableSnapshot).releaseChangeLogs(affectedKeygroups);
-								// TODO: remove the corresponding keygroups from state table.
-							}
+						if (tableSnapshot.getChangelogs() != null
+							&& affectedKeygroups != null) {
+							tableSnapshot.releaseChangeLogs(affectedKeygroups);
+							// TODO: remove the corresponding keygroups from state table.
 						}
 					}
 					LOG.info("++++--- Snapshot cleanup completed");

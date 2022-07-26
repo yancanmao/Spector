@@ -825,8 +825,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
 		List<Integer> affectedKeygroups = new ArrayList<>();
 		if (taskConfigManager.isReconfigTarget()) {
-			if (taskConfigManager.isSourceOrDestination()) {
-				affectedKeygroups.addAll(taskConfigManager.getAffectedKeygroups());
+			if (taskConfigManager.isSource()) {
+				affectedKeygroups.addAll(taskConfigManager.getSrcAffectedKeygroups());
 			}
 		}
 

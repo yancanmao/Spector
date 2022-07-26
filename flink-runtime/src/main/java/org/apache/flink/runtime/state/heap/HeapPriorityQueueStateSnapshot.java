@@ -31,6 +31,8 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import java.lang.reflect.Array;
+import java.util.Collection;
+import java.util.HashMap;
 
 /**
  * This class represents the snapshot of an {@link HeapPriorityQueueSet}.
@@ -114,5 +116,20 @@ public class HeapPriorityQueueStateSnapshot<T> implements StateSnapshot {
 
 	@Override
 	public void release() {
+	}
+
+	@Override
+	public HashMap<Integer, Boolean> getChangelogs() {
+		return null;
+	}
+
+	@Override
+	public void releaseChangeLogs() {
+
+	}
+
+	@Override
+	public void releaseChangeLogs(Collection<Integer> affectedKeygroups) {
+
 	}
 }

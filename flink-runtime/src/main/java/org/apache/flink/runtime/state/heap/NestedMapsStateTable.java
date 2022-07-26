@@ -35,6 +35,7 @@ import org.apache.flink.runtime.state.metainfo.StateMetaInfoSnapshot;
 import org.apache.flink.util.Preconditions;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -64,6 +65,7 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 	/**
 	 * Map for holding the actual state objects. The outer array represents the key-groups. The nested maps provide
 	 * an outer scope by namespace and an inner scope by key.
+	 * hashedKeyGroup => Compute => Index
 	 */
 	private final Map<N, Map<K, S>>[] state;
 
@@ -71,6 +73,8 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 	 * The offset to the contiguous key groups.
 	 */
 	private final int keyGroupOffset;
+
+	private HashMap<Integer, Boolean> changelogs;
 
 	// ------------------------------------------------------------------------
 
@@ -85,11 +89,31 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 		this.keyGroupOffset = keyContext.getKeyGroupRange().getStartKeyGroup();
 
 		@SuppressWarnings("unchecked")
-		Map<N, Map<K, S>>[] state = (Map<N, Map<K, S>>[]) new Map[keyContext.getKeyGroupRange().getNumberOfKeyGroups()];
+		Map<N, Map<K, S>>[] state = (Map<N, Map<K, S>>[]) new Map[keyContext.getNumberOfKeyGroups()];
 		this.state = state;
+
+		this.changelogs = new HashMap<>(keyContext.getNumberOfKeyGroups());
 	}
 
-	// ------------------------------------------------------------------------
+	public void tryAddToChangelogs() {
+		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
+	}
+
+	public HashMap<Integer, Boolean> getChangeLogs() {
+		return changelogs;
+	}
+
+	public void releaseChangeLogs() {
+		changelogs.clear();
+	}
+
+	public void releaseChangeLogs(Collection<Integer> affectedKeygroups) {
+		affectedKeygroups.forEach(keyGroupId -> {
+			changelogs.remove(keyGroupId);
+			state[indexToOffset(keyGroupId)] = null;
+		});
+	}
+
 	//  access to maps
 	// ------------------------------------------------------------------------
 
@@ -103,7 +127,9 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 
 	@VisibleForTesting
 	Map<N, Map<K, S>> getMapForKeyGroup(int keyGroupIndex) {
-		final int pos = indexToOffset(keyGroupIndex);
+//		final int pos = indexToOffset(keyGroupIndex);
+		// every state table will initialize with entire keygroup range, no need to calculate offset.
+		final int pos = keyGroupIndex;
 		if (pos >= 0 && pos < state.length) {
 			return state[pos];
 		} else {
@@ -149,6 +175,7 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 
 	@Override
 	public S get(N namespace) {
+		tryAddToChangelogs();
 		return get(keyContext.getCurrentKey(), keyContext.getCurrentKeyGroupIndex(), namespace);
 	}
 
@@ -159,26 +186,31 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 
 	@Override
 	public void put(N namespace, S state) {
+		tryAddToChangelogs();
 		put(keyContext.getCurrentKey(), keyContext.getCurrentKeyGroupIndex(), namespace, state);
 	}
 
 	@Override
 	public S putAndGetOld(N namespace, S state) {
+		tryAddToChangelogs();
 		return putAndGetOld(keyContext.getCurrentKey(), keyContext.getCurrentKeyGroupIndex(), namespace, state);
 	}
 
 	@Override
 	public void remove(N namespace) {
+		tryAddToChangelogs();
 		remove(keyContext.getCurrentKey(), keyContext.getCurrentKeyGroupIndex(), namespace);
 	}
 
 	@Override
 	public S removeAndGetOld(N namespace) {
+		tryAddToChangelogs();
 		return removeAndGetOld(keyContext.getCurrentKey(), keyContext.getCurrentKeyGroupIndex(), namespace);
 	}
 
 	@Override
 	public S get(K key, N namespace) {
+		tryAddToChangelogs();
 		int keyGroup = KeyGroupRangeAssignment.assignToKeyGroup(key, keyContext.getNumberOfKeyGroups());
 		return get(key, keyGroup, namespace);
 	}
@@ -238,6 +270,7 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 	}
 
 	private S putAndGetOld(K key, int keyGroupIndex, N namespace, S value) {
+		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
 
 		checkKeyNamespacePreconditions(key, namespace);
 
@@ -254,10 +287,13 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 	}
 
 	private void remove(K key, int keyGroupIndex, N namespace) {
+		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
 		removeAndGetOld(key, keyGroupIndex, namespace);
 	}
 
 	private S removeAndGetOld(K key, int keyGroupIndex, N namespace) {
+		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
+
 
 		checkKeyNamespacePreconditions(key, namespace);
 
@@ -314,6 +350,7 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 		}
 
 		Map<K, S> keyedMap = namespaceMap.computeIfAbsent(namespace, k -> new HashMap<>());
+		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
 		keyedMap.put(key, transformation.apply(keyedMap.get(key), value));
 	}
 
@@ -349,6 +386,9 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 		private final TypeSerializer<S> stateSerializer;
 		private final StateSnapshotTransformer<S> snapshotFilter;
 
+		@Nullable
+		private final HashMap<Integer, Boolean> changelogs;
+
 		NestedMapsStateTableSnapshot(
 			NestedMapsStateTable<K, N, S> owningTable, StateSnapshotTransformFactory<S> snapshotTransformFactory) {
 
@@ -357,6 +397,8 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 			this.keySerializer = owningStateTable.keyContext.getKeySerializer();
 			this.namespaceSerializer = owningStateTable.metaInfo.getNamespaceSerializer();
 			this.stateSerializer = owningStateTable.metaInfo.getStateSerializer();
+
+			this.changelogs = owningStateTable.getChangeLogs();
 		}
 
 		@Nonnull
@@ -369,6 +411,21 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 		@Override
 		public StateMetaInfoSnapshot getMetaInfoSnapshot() {
 			return owningStateTable.metaInfo.snapshot();
+		}
+
+		@Override
+		public HashMap<Integer, Boolean> getChangelogs() {
+			return changelogs;
+		}
+
+		@Override
+		public void releaseChangeLogs() {
+			owningStateTable.releaseChangeLogs();
+		}
+
+		@Override
+		public void releaseChangeLogs(Collection<Integer> affectedKeygroups) {
+			owningStateTable.releaseChangeLogs(affectedKeygroups);
 		}
 
 		/**
