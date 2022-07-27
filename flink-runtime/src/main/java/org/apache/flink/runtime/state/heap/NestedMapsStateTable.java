@@ -153,7 +153,8 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 	 * Translates a key-group id to the internal array offset.
 	 */
 	private int indexToOffset(int index) {
-		return index - keyGroupOffset;
+//		return index - keyGroupOffset;
+		return index;
 	}
 
 	// ------------------------------------------------------------------------
