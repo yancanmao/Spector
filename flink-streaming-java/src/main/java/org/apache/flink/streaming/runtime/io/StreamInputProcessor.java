@@ -258,7 +258,6 @@ public class StreamInputProcessor<IN> {
 						if (migratingKeys.contains(keyGroup)) {
 							// buffer the records for migrating keys
 							bufferedRecord.add(record);
-							return true;
 						} else {
 							synchronized (lock) {
 								numRecordsIn.inc();
@@ -284,8 +283,8 @@ public class StreamInputProcessor<IN> {
 //							endToEndLatency = 0;
 								deserializationDuration = 0;
 							}
-							return true;
 						}
+						return true;
 					}
 				}
 			}

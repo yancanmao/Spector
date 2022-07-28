@@ -825,8 +825,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
 		List<Integer> affectedKeygroups = new ArrayList<>();
 		if (taskConfigManager.isReconfigTarget()) {
-			if (taskConfigManager.isSourceOrDestination()) {
-				affectedKeygroups.addAll(taskConfigManager.getAffectedKeygroups());
+			if (taskConfigManager.isSource()) {
+				affectedKeygroups.addAll(taskConfigManager.getSrcAffectedKeygroups());
 			}
 		}
 
@@ -991,8 +991,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				this.idInModel = idInModel;
 
 				if (!migrateInKeygroup.isEmpty()) {
-					LOG.info("++++++ Migrated in: " + migrateInKeygroup);
-					System.out.println("++++++ Migrated in: " + migrateInKeygroup);
+					LOG.info("++++++ " + this + " Migrated in: " + migrateInKeygroup);
+					System.out.println("++++++ " + this + " Migrated in: " + migrateInKeygroup);
 					updateState(keyGroupRange, getEnvironment().getTaskInfo().getMaxNumberOfParallelSubtasks(), migrateInKeygroup);
 				}
 
@@ -1010,7 +1010,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			throw new RuntimeException(e);
 		} finally {
 			TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
-			Preconditions.checkState(taskConfigManager.isSourceOrDestination(), "++++++ Cannot reinitialize state for an unaffected task.");
+			Preconditions.checkState(taskConfigManager.isDestination(), "++++++ Cannot reinitialize state for an unaffected task.");
 			taskConfigManager.finish();
 		}
 	}
@@ -1028,7 +1028,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	@Override
 	public void updateKeyGroupRange(KeyGroupRange keyGroupRange) {
-		LOG.info("++++++ updateKeyGroupRange: "  + this.toString() + "  " + keyGroupRange);
+		LOG.info("++++++ updateKeyGroupRange: "  + this + "  " + keyGroupRange);
 
 		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
 
@@ -1088,7 +1088,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			FileSystemSafetyNet.initializeSafetyNetForThread();
 			try {
 
-				LOG.info("++++--- Start construct state handle for snapshot");
+				LOG.debug("++++--- Start construct state handle for snapshot");
 
 				TaskStateSnapshot jobManagerTaskOperatorSubtaskStates =
 					new TaskStateSnapshot(operatorSnapshotsInProgress.size());
@@ -1114,7 +1114,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 						finalizedSnapshots.getTaskLocalState());
 				}
 
-				LOG.info("++++--- Complete the construction, start to report");
+				LOG.debug("++++--- Complete the construction, start to report");
 
 
 				final long asyncEndNanos = System.nanoTime();
