@@ -145,7 +145,7 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 	public void resume() {
 		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
 
-		if (taskConfigManager.isSource()) {
+		if (taskConfigManager.isDestination()) {
 			inputProcessor.completeMigration();
 		}
 	}
