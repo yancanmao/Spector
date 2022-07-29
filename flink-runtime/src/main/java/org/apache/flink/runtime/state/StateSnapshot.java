@@ -76,9 +76,9 @@ public interface StateSnapshot {
 		 * before first calling this method.
 		 *
 		 * @param dov        the output.
-		 * @param keyGroupId the key-group to write.
+		 * @param alignedKeyGroupId the key-group to write.
 		 * @throws IOException on write-related problems.
 		 */
-		void writeStateInKeyGroup(@Nonnull DataOutputView dov, @Nonnegative int keyGroupId) throws IOException;
+		void writeStateInKeyGroup(@Nonnull DataOutputView dov, @Nonnegative int alignedKeyGroupId) throws IOException;
 	}
 }

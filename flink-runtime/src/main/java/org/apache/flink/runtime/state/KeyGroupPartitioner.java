@@ -254,10 +254,10 @@ public class KeyGroupPartitioner<T> {
 		}
 
 		@Override
-		public void writeStateInKeyGroup(@Nonnull DataOutputView dov, int keyGroupId) throws IOException {
+		public void writeStateInKeyGroup(@Nonnull DataOutputView dov, int alignedKeyGroupId) throws IOException {
 
-			int startOffset = getKeyGroupStartOffsetInclusive(keyGroupId);
-			int endOffset = getKeyGroupEndOffsetExclusive(keyGroupId);
+			int startOffset = getKeyGroupStartOffsetInclusive(alignedKeyGroupId);
+			int endOffset = getKeyGroupEndOffsetExclusive(alignedKeyGroupId);
 
 			// write number of mappings in key-group
 			dov.writeInt(endOffset - startOffset);

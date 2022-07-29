@@ -133,9 +133,9 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 
 	@VisibleForTesting
 	Map<N, Map<K, S>> getMapForKeyGroup(int keyGroupIndex) {
-//		final int pos = indexToOffset(keyGroupIndex);
+		final int pos = indexToOffset(keyGroupIndex);
 		// every state table will initialize with entire keygroup range, no need to calculate offset.
-		final int pos = keyGroupIndex;
+//		final int pos = keyGroupIndex;
 		if (pos >= 0 && pos < state.length) {
 			return state[pos];
 		} else {
@@ -390,9 +390,6 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 		private final TypeSerializer<S> stateSerializer;
 		private final StateSnapshotTransformer<S> snapshotFilter;
 
-		@Nullable
-		private final HashMap<Integer, Boolean> changelogs;
-
 		NestedMapsStateTableSnapshot(
 			NestedMapsStateTable<K, N, S> owningTable, StateSnapshotTransformFactory<S> snapshotTransformFactory) {
 
@@ -401,8 +398,6 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 			this.keySerializer = owningStateTable.keyContext.getKeySerializer();
 			this.namespaceSerializer = owningStateTable.metaInfo.getNamespaceSerializer();
 			this.stateSerializer = owningStateTable.metaInfo.getStateSerializer();
-
-			this.changelogs = owningStateTable.getChangeLogs();
 		}
 
 		@Nonnull
@@ -419,7 +414,7 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 
 		@Override
 		public HashMap<Integer, Boolean> getChangelogs() {
-			return changelogs;
+			return owningStateTable.getChangeLogs();
 		}
 
 		@Override
@@ -442,8 +437,9 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 		 * implementations).
 		 */
 		@Override
-		public void writeStateInKeyGroup(@Nonnull DataOutputView dov, int keyGroupId) throws IOException {
-			final Map<N, Map<K, S>> keyGroupMap = owningStateTable.getMapForKeyGroup(keyGroupId);
+		public void writeStateInKeyGroup(@Nonnull DataOutputView dov, int alignedKeyGroupId) throws IOException {
+			int hashedKeyGroupId = owningStateTable.keyContext.getKeyGroupRange().mapFromAlignedToHashed(alignedKeyGroupId);
+			final Map<N, Map<K, S>> keyGroupMap = owningStateTable.getMapForKeyGroup(hashedKeyGroupId);
 			if (null != keyGroupMap) {
 				Map<N, Map<K, S>> filteredMappings = filterMappingsInKeyGroupIfNeeded(keyGroupMap);
 				dov.writeInt(countMappingsInKeyGroup(filteredMappings));
