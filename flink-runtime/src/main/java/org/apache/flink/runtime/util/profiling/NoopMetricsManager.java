@@ -15,6 +15,11 @@ public class NoopMetricsManager implements Serializable, MetricsManager {
 	}
 
 	@Override
+	public void groundTruth(long arrivalTs, long latency) {
+
+	}
+
+	@Override
 	public void newInputBuffer(long timestamp) {
 
 	}

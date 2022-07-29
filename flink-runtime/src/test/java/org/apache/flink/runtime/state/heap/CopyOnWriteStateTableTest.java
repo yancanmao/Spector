@@ -462,7 +462,7 @@ public class CopyOnWriteStateTableTest extends TestLogger {
 			}
 
 			@Override
-			public int getCurrentKeyGroupIndex() {
+			public int getCurrentHashedKeyGroupIndex() {
 				return 0;
 			}
 
@@ -591,7 +591,7 @@ public class CopyOnWriteStateTableTest extends TestLogger {
 		}
 
 		@Override
-		public int getCurrentKeyGroupIndex() {
+		public int getCurrentHashedKeyGroupIndex() {
 			return 0;
 		}
 

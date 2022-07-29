@@ -3,6 +3,8 @@ package org.apache.flink.runtime.util.profiling;
 public interface MetricsManager {
 	void updateTaskId(String taskDescription, Integer idInModel);
 
+	void groundTruth(long arrivalTs, long latency);
+
 	void newInputBuffer(long timestamp);
 
 	String getJobVertexId();

@@ -38,6 +38,8 @@ public class ReconfigurationProfiler {
 	private final Timer syncTimer;
 	private final Timer updateTimer;
 
+	private final Timer replicationTimer;
+
 	private final Map<String, Timer> otherTimers;
 	OutputStream outputStream;
 
@@ -50,8 +52,9 @@ public class ReconfigurationProfiler {
 			outputStream = System.out;
 		}
 		endToEndTimer = new Timer("endToEndTimer", outputStream);
-		syncTimer = new Timer("syncTimer");
-		updateTimer = new Timer("updateTimer");
+		syncTimer = new Timer("syncTimer", outputStream);
+		updateTimer = new Timer("updateTimer", outputStream);
+		replicationTimer = new Timer("replicationTimer", outputStream);
 		otherTimers = new HashMap<>();
 	}
 
@@ -67,13 +70,26 @@ public class ReconfigurationProfiler {
 		updateTimer.startMeasure();
 	}
 
+	public void onReplicationStart() {
+		replicationTimer.startMeasure();
+	}
+
+
 	public void onReconfigurationEnd() {
 		endToEndTimer.endMeasure();
 		endToEndTimer.finish();
 	}
 
+	public void onSyncEnd() {
+		syncTimer.endMeasure();
+	}
+
 	public void onUpdateEnd() {
 		updateTimer.endMeasure();
+	}
+
+	public void onReplicationEnd() {
+		replicationTimer.endMeasure();
 	}
 
 	public void onOtherStart(String timerName) {
@@ -115,7 +131,7 @@ public class ReconfigurationProfiler {
 		}
 
 		private void finish() {
-			outputStream.println("cur time in ms: " + System.currentTimeMillis());
+			outputStream.println("+++++++ cur time in ms: " + System.currentTimeMillis());
 			outputStream.println("\n");
 		}
 	}

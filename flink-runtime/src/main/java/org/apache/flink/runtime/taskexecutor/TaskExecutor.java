@@ -812,9 +812,6 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 //			return FutureUtils.completedExceptionally(new TaskException(message));
 //		}
 
-
-
-
 		log.info("++++++ " + jobvertexId + " Receive backup state");
 		TaskStateManager taskStateManager = backupStateManager.replicas.get(jobvertexId);
 
@@ -824,6 +821,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 			taskStateManager.setTaskRestore(taskRestore);
 
+			log.info("++++++ " + jobvertexId + " Acking to the jobmaster");
 			jobManagerConnection.getJobManagerGateway().acknowledgeReplication(
 				jobID,
 				executionAttemptID,

@@ -145,6 +145,11 @@ public class KafkaMetricsManager implements Serializable, MetricsManager {
 	}
 
 	@Override
+	public void groundTruth(long arrivalTs, long latency) {
+
+	}
+
+	@Override
 	public String getJobVertexId() {
 		return workerName + "-" + instanceId;
 	}

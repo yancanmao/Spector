@@ -216,7 +216,7 @@ public abstract class AbstractKeyedStateBackend<K> implements
 	 * @see KeyedStateBackend
 	 */
 	@Override
-	public int getCurrentKeyGroupIndex() {
+	public int getCurrentHashedKeyGroupIndex() {
 		return currentKeyGroup;
 	}
 

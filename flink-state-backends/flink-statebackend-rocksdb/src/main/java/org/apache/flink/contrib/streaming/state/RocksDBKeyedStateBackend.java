@@ -292,7 +292,7 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 	@Override
 	public void setCurrentKey(K newKey) {
 		super.setCurrentKey(newKey);
-		sharedRocksKeyBuilder.setKeyAndKeyGroup(getCurrentKey(), getCurrentKeyGroupIndex());
+		sharedRocksKeyBuilder.setKeyAndKeyGroup(getCurrentKey(), getCurrentHashedKeyGroupIndex());
 	}
 
 	/**

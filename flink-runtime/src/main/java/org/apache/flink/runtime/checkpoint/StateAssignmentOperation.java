@@ -136,7 +136,7 @@ public class StateAssignmentOperation {
 					}
 				}
 			}
-			LOG.info("++++++ pending standby tasks: " + pendingStandbyTasks);
+			LOG.info("++++++ Pending standby tasks: " + pendingStandbyTasks);
 		}
 
 

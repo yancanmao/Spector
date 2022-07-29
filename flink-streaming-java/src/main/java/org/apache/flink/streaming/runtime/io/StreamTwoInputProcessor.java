@@ -268,7 +268,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 
 								processingDuration += curTime - processingStart;
 								recordsProcessed++;
-								endToEndLatency += System.currentTimeMillis() - record.getLatenyTimestamp();
+								endToEndLatency += System.currentTimeMillis() - record.getLatencyTimestamp();
 								recordsProcessed++;
 							}
 							return true;
@@ -308,10 +308,10 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 								processingDuration += curTime - processingStart;
 								recordsProcessed++;
 								long curMsTime = System.currentTimeMillis();
-								endToEndLatency += curMsTime - record.getLatenyTimestamp();
+								endToEndLatency += curMsTime - record.getLatencyTimestamp();
 
 								// ground truth dump
-								System.out.println("keygroup: " + record.getKeyGroup() + " arrival_ts: " + record.getLatenyTimestamp() + " completion_ts: " + curMsTime);
+								System.out.println("keygroup: " + record.getKeyGroup() + " arrival_ts: " + record.getLatencyTimestamp() + " completion_ts: " + curMsTime);
 
 								// inform the MetricsManager that the buffer is consumed
 								metricsManager.inputBufferConsumed(System.nanoTime(), deserializationDuration, processingDuration, recordsProcessed, endToEndLatency);

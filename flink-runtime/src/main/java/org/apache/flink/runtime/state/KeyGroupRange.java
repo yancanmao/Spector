@@ -81,7 +81,11 @@ public class KeyGroupRange implements KeyGroupsList, Serializable {
 	}
 
 	public int mapFromAlignedToHashed(int alignedKeyGroup) {
-		return fromAlignedToHashed.isEmpty() ? alignedKeyGroup : fromAlignedToHashed.get(alignedKeyGroup - startKeyGroup);
+		try {
+			return fromAlignedToHashed.isEmpty() ? alignedKeyGroup : fromAlignedToHashed.get(alignedKeyGroup - startKeyGroup);
+		} catch (Exception e) {
+			throw new RuntimeException("++++++Wrong processing aligned keygroup:" + alignedKeyGroup);
+		}
 	}
 
 	public int mapFromHashedToAligned(int hashedKeyGroup) {

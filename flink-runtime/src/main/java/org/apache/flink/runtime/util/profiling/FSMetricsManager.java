@@ -28,7 +28,6 @@ import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.io.Serializable;
 import java.util.HashMap;
-import java.util.Map;
 
 /**
  * The MetricsManager is responsible for logging activity profiling information (except for messages).
@@ -157,125 +156,15 @@ public class FSMetricsManager implements Serializable, MetricsManager {
 	 */
 	@Override
 	public void inputBufferConsumed(long timestamp, long deserializationDuration, long processing, long numRecords, long endToEndLatency) {
-//		synchronized (status) {
-//			if (currentWindowStart == 0) {
-//				currentWindowStart = timestamp;
-//			}
-//
-//			status.setProcessingEnd(timestamp);
-//
-//			// aggregate the metrics
-//			recordsIn += numRecords;
-//			latency += endToEndLatency;
-//			recordsOut += status.getNumRecordsOut();
-////			usefulTime += processing + deserializationDuration;
-////				usefulTime += processing + status.getSerializationDuration()
-////					- status.getWaitingForWriteBufferDuration();
-//			usefulTime += processing + status.getSerializationDuration() + deserializationDuration
-////				+ status.getDeserializationDuration()
-//				- status.getWaitingForWriteBufferDuration();
-//
-////			outputStreamDecorator.println(String.format("%d+%d+%d-%d",
-////				processing, status.getSerializationDuration(), deserializationDuration, status.getWaitingForWriteBufferDuration()));
-//
-//			// clear status counters
-//			status.clearCounters();
-//
-//			// if window size is reached => output
-//			if (timestamp - currentWindowStart > windowSize) {
-//				// compute rates
-//				long duration = timestamp - currentWindowStart;
-//				double trueProcessingRate = (recordsIn / (usefulTime / 1000.0)) * 1000000;
-//				double trueOutputRate = (recordsOut / (usefulTime / 1000.0)) * 1000000;
-//				double observedProcessingRate = (recordsIn / (duration / 1000.0)) * 1000000;
-//				double observedOutputRate = (recordsOut / (duration / 1000.0)) * 1000000;
-//				outputStreamDecorator.println(latency + " : " + recordsIn);
-//				float endToEndLantecy = (float) latency/recordsIn;
-//
-//				double utilization = (double) usefulTime / duration;
-//
-//				// for network calculus
-////				totalRecordsIn += recordsIn;
-////				totalRecordsOut += recordsOut;
-//
-//				StringBuilder keyGroupOutput = new StringBuilder();
-//				if (!status.outputKeyGroup.isEmpty()) {
-//					for (Map.Entry<Integer, Long> entry : status.outputKeyGroupState.entrySet()) {
-//						int partitionId = entry.getKey();
-//						keyGroupOutput.append(partitionId).append(":").append(status.outputKeyGroup.getOrDefault(partitionId, 0L)).append("&");
-//						totalRecordsOut += status.outputKeyGroup.getOrDefault(partitionId, 0L);
-//					}
-//					keyGroupOutput = new StringBuilder(keyGroupOutput.substring(0, keyGroupOutput.length() - 1));
-//				} else {
-//					keyGroupOutput = new StringBuilder("0");
-//				}
-//
-//				StringBuilder keyGroupinput = new StringBuilder();
-//				if (!status.inputKeyGroup.isEmpty()) {
-//					for (Map.Entry<Integer, Long> entry : status.inputKeyGroupState.entrySet()) {
-//						int partitionId = entry.getKey();
-//						keyGroupinput.append(partitionId).append(":").append(status.inputKeyGroup.getOrDefault(partitionId, 0L)).append("&");
-//
-//						totalRecordsIn += status.inputKeyGroup.getOrDefault(partitionId, 0L);
-//					}
-//					keyGroupinput = new StringBuilder(keyGroupinput.substring(0, keyGroupinput.length() - 1));
-//				} else {
-//					keyGroupinput = new StringBuilder("0");
-//				}
-//
-//					String ratesLine = jobVertexId + ","
-//						+ workerName + "-" + instanceId + ","
-//						+ " observedProcessingRate: " + observedProcessingRate + ","
-//						+ " trueProcessingRate: " + trueProcessingRate + ","
-////						+ " observedOutputRate: " + observedOutputRate + ","
-////						+ " trueOutputRate: " + trueOutputRate + ","
-//						+ " endToEndLantecy: " + endToEndLantecy + ","
-//						+ " utilization: " + String.format("%.2f", utilization);
-////						+ " totalRecordsIn: " + totalRecordsIn + ","
-////						+ " totalRecordsOut: " + totalRecordsOut;
-//
-//					outputStreamDecorator.println(ratesLine);
-////					System.out.println("workername: " + getJobVertexId() + " epoch: " + epoch + " keygroups: " + status.inputKeyGroup.keySet());
-//
-//
-//				// clear counters
-//				recordsIn = 0;
-//				recordsOut = 0;
-//				usefulTime = 0;
-//				currentWindowStart = 0;
-//				latency = 0;
-//				epoch++;
-//				// clear keygroups every time, because we are using delta here
-////				status.clearKeygroups();
-//			}
-//		}
 	}
 
 	@Override
 	public void groundTruth(int keyGroup, long arrivalTs, long completionTs) {
-//		if (completionTs - lastTimeSlot >= 1000) {
-//			// print out to stdout, and clear the state
-//			Iterator it = kgLatencyMap.entrySet().iterator();
-//			while (it.hasNext()) {
-//				Map.Entry kv = (Map.Entry)it.next();
-//				int curKg = (int) kv.getKey();
-//				long sumLatency = (long) kv.getValue();
-//				int nRecords = kgNRecordsMap.get(curKg);
-//				float avgLatency = (float) sumLatency / nRecords;
-////				System.out.println("timeslot: " + lastTimeSlot + " keygroup: "
-////					+ curKg + " records: " + nRecords + " avglatency: " + avgLatency);
-//				System.out.println(String.format(jobVertexId.toString() + " GroundTruth: %d %d %d %f", lastTimeSlot, curKg, nRecords, avgLatency));
-//			}
-//			kgLatencyMap.clear();
-//			kgNRecordsMap.clear();
-//			lastTimeSlot = completionTs / 1000 * 1000;
-//		}
-//		kgNRecordsMap.put(keyGroup,
-//			kgNRecordsMap.getOrDefault(keyGroup, 0)+1);
-//		kgLatencyMap.put(keyGroup,
-//			kgLatencyMap.getOrDefault(keyGroup, 0L)+(completionTs - arrivalTs));
-//		System.out.printf("++++++" + getJobVertexId() + " keygroup: %d, latency: %d%n", keyGroup, (completionTs - arrivalTs));
-//		outputStreamDecorator.println(String.format("ts: %d endToEnd latency: %d", arrivalTs, (completionTs - arrivalTs)));
+	}
+
+	@Override
+	public void groundTruth(long arrivalTs, long latency) {
+		outputStreamDecorator.println(String.format("ts: %d endToEnd latency: %d", arrivalTs, latency));
 	}
 
 	/**
@@ -320,84 +209,6 @@ public class FSMetricsManager implements Serializable, MetricsManager {
 	 */
 	@Override
 	public void outputBufferFull(long timestamp) {
-//		if (taskId.contains("Source")) {
-//
-//			synchronized (status) {
-//
-//				if (currentWindowStart == 0) {
-//					currentWindowStart = timestamp;
-//				}
-//
-//				setOutBufferStart(timestamp);
-//
-//				// aggregate the metrics
-//				recordsOut += status.getNumRecordsOut();
-//				if (status.getWaitingForWriteBufferDuration() > 0) {
-//					waitingTime += status.getWaitingForWriteBufferDuration();
-//				}
-//
-//				// clear status counters
-//				status.clearCounters();
-//
-//				// if window size is reached => output
-//				if (timestamp - currentWindowStart > windowSize) {
-//
-//					// compute rates
-//					long duration = timestamp - currentWindowStart;
-//					usefulTime = duration - waitingTime;
-//					double trueOutputRate = (recordsOut / (usefulTime / 1000.0)) * 1000000;
-//					double observedOutputRate = (recordsOut / (duration / 1000.0)) * 1000000;
-//	//				totalRecordsOut += recordsOut;
-//
-//					StringBuilder keyGroupOutput = new StringBuilder("");
-//					if (!status.outputKeyGroup.isEmpty()) {
-//						for (Map.Entry<Integer, Long> entry : status.outputKeyGroupState.entrySet()) {
-//							int partitionId = entry.getKey();
-//							keyGroupOutput.append(partitionId).append(":").append(status.outputKeyGroup.getOrDefault(partitionId, 0L)).append("&");
-//							totalRecordsOut += status.outputKeyGroup.getOrDefault(partitionId, 0L);
-//						}
-//						keyGroupOutput = new StringBuilder(keyGroupOutput.substring(0, keyGroupOutput.length() - 1));
-//					} else {
-//						keyGroupOutput = new StringBuilder("0");
-//					}
-//
-//					// log the rates: one file per epoch
-////					String ratesLine = jobVertexId + ","
-////						+ workerName + "-" + instanceId + ","
-////						+ numInstances  + ","
-////						+ currentWindowStart + ","
-////						+ 0 + ","
-////	//						+ trueOutputRate + ","
-////						+ 0 + ","
-////						+ observedOutputRate + ","
-////						+ 0 + "," // end to end latency should be 0.
-////						+ 0 + ","
-////						+ totalRecordsOut + ","
-////						+ 0 + ","
-////						+ keyGroupOutput + ","
-////						+ 0 + ","
-////						+ System.currentTimeMillis();
-////					List<String> rates = Arrays.asList(ratesLine);
-//
-//					String ratesLine = jobVertexId + ","
-//						+ workerName + "-" + instanceId + ","
-//						+ " observedOutputRate: " + observedOutputRate + ","
-//						+ " totalRecordsOut: " + totalRecordsOut + ","
-//						+ " trueOutputRate: " + trueOutputRate;
-//
-//					outputStreamDecorator.println(ratesLine);
-//
-//					// clear counters
-//					recordsOut = 0;
-//					usefulTime = 0;
-//					waitingTime = 0;
-//					currentWindowStart = 0;
-//					epoch++;
-//					// clear keygroups for delta
-////					status.clearKeygroups();
-//				}
-//			}
-//		}
 	}
 
 	private void setOutBufferStart(long start) {
@@ -407,99 +218,5 @@ public class FSMetricsManager implements Serializable, MetricsManager {
 
 	@Override
 	public void updateMetrics() {
-//		if (instanceId == Integer.MAX_VALUE/2) {
-//			return;
-//		}
-//
-//		synchronized (status) {
-//
-//			// compute rates
-//			// for network calculus
-//			totalRecordsIn += recordsIn;
-//			totalRecordsOut += recordsOut;
-//
-//
-//			// compute rates
-//			long duration = System.nanoTime() - currentWindowStart;
-//			double trueProcessingRate = (recordsIn / (usefulTime / 1000.0)) * 1000;
-//			double trueOutputRate = (recordsOut / (usefulTime / 1000.0)) * 1000;
-//			double observedProcessingRate = (recordsIn / (duration / 1000.0)) * 1000;
-//			double observedOutputRate = (recordsOut / (duration / 1000.0)) * 1000;
-//			float endToEndLantecy = (float) latency/recordsIn;
-//
-//			double utilization = (double) usefulTime / duration;
-//
-//			StringBuilder keyGroupOutput = new StringBuilder();
-//			if (!status.outputKeyGroup.isEmpty()) {
-//				for (Map.Entry<Integer, Long> entry : status.outputKeyGroupState.entrySet()) {
-//					int partitionId = entry.getKey();
-//					keyGroupOutput.append(partitionId).append(":").append(status.outputKeyGroup.getOrDefault(partitionId, 0L)).append("&");
-//					totalRecordsOut += status.outputKeyGroup.getOrDefault(partitionId, 0L);
-//				}
-//				keyGroupOutput = new StringBuilder(keyGroupOutput.substring(0, keyGroupOutput.length() - 1));
-//			} else {
-//				keyGroupOutput = new StringBuilder("0");
-//			}
-//
-//			StringBuilder keyGroupinput = new StringBuilder("");
-//			if (!status.inputKeyGroup.isEmpty()) {
-//				for (Map.Entry<Integer, Long> entry : status.inputKeyGroupState.entrySet()) {
-//					int partitionId = entry.getKey();
-//					keyGroupinput.append(partitionId).append(":").append(status.inputKeyGroup.getOrDefault(partitionId, 0L)).append("&");
-//					totalRecordsIn += status.inputKeyGroup.getOrDefault(partitionId, 0L);
-//				}
-//				keyGroupinput = new StringBuilder(keyGroupinput.substring(0, keyGroupinput.length() - 1));
-//			} else {
-//				keyGroupinput = new StringBuilder("0");
-//			}
-//
-//			// log the rates: one file per epoch
-////			String ratesLine = jobVertexId + ","
-////				+ workerName + "-" + instanceId  + ","
-////				+ numInstances  + ","
-////				+ trueProcessingRate + ","
-////				+ 0 + ","
-////				+ 0 + ","
-////				+ 0 + ","
-////				+ 0 + ","
-////				+ totalRecordsIn + ","
-////				+ totalRecordsOut + ","
-////				+ 0.1 + ","
-////				+ keyGroupOutput + ","
-////				+ keyGroupinput + ","
-////				+ System.currentTimeMillis();
-//
-//			String ratesLine = jobVertexId + ","
-//				+ workerName + "-" + instanceId + ","
-////						+ " trueProcessingRate: " + trueProcessingRate + ","
-//				+ " observedProcessingRate: " + observedProcessingRate;
-////				+ ","
-////				+ " endToEndLantecy: " + endToEndLantecy;
-////						+ ","
-////						+ " totalRecordsIn: " + totalRecordsIn + ","
-////						+ " totalRecordsOut: " + totalRecordsOut;
-//
-//			LOG.info("###### " + getJobVertexId() + ": receive barrier, dump current metrics");
-//			outputStreamDecorator.println(ratesLine);
-//			System.out.println(ratesLine);
-//
-////			if (taskId.contains("MatchMaker")) {
-////				LOG.info("++++++force update - worker: " + workerName + "-" + instanceId + " keygroups processed:" + keyGroupinput);
-////			} else if (taskId.contains("Source")) {
-////				LOG.info("++++++force update - worker: " + workerName + "-" + instanceId + " keygroups output:" + keyGroupOutput);
-////			}
-////			if (taskId.contains("MatchMaker") || taskId.contains("Source")) {
-////				LOG.info("++++++force update - worker: " + workerName + "-" + instanceId + " Completed!");
-////			}
-//			// clear counters
-//			recordsIn = 0;
-//			recordsOut = 0;
-//			usefulTime = 0;
-//			currentWindowStart = 0;
-//			latency = 0;
-//			epoch++;
-//			// clear keygroups for delta7
-//			status.clearKeygroups();
-//		}
 	}
 }

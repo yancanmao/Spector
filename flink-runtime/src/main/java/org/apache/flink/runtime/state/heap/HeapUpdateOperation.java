@@ -177,7 +177,7 @@ public class HeapUpdateOperation<K> {
 	private void readKeyGroupStateData(
 		InputStream inputStream,
 		Map<Integer, StateMetaInfoSnapshot> kvStatesById,
-		int keyGroupIndex,
+		int alignedKeyGroupIndex,
 		int numStates,
 		int readVersion) throws IOException {
 
@@ -201,7 +201,7 @@ public class HeapUpdateOperation<K> {
 
 			//TODO: avoid redundant write.
 			StateSnapshotKeyGroupReader keyGroupReader = registeredState.keyGroupReader(readVersion);
-			keyGroupReader.readMappingsInKeyGroup(inView, keyGroupIndex);
+			keyGroupReader.readMappingsInKeyGroup(inView, keyGroupRange.mapFromAlignedToHashed(alignedKeyGroupIndex));
 		}
 	}
 }

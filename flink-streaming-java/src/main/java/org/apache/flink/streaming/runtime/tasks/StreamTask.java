@@ -979,21 +979,24 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		try {
 			synchronized (lock) {
 				// TODO: optimize this part by transfer in rather than sel-compute. find out migrate in keygroup
-				List<Integer> migrateInKeygroup = new ArrayList<>();
-				for (int keyGroup = keyGroupRange.getStartKeyGroup(); keyGroup < keyGroupRange.getEndKeyGroup()+1; keyGroup++) {
-					int hashedKeygroup = keyGroupRange.mapFromAlignedToHashed(keyGroup);
-					if (!assignedKeyGroupRange.containsHashedKeyGroup(hashedKeygroup)) {
-						migrateInKeygroup.add(hashedKeygroup);
-					}
-				}
+//				List<Integer> migrateInKeygroup = new ArrayList<>();
+//				for (int keyGroup = keyGroupRange.getStartKeyGroup(); keyGroup < keyGroupRange.getEndKeyGroup()+1; keyGroup++) {
+//					int hashedKeygroup = keyGroupRange.mapFromAlignedToHashed(keyGroup);
+//					if (!assignedKeyGroupRange.containsHashedKeyGroup(hashedKeygroup)) {
+//						migrateInKeygroup.add(hashedKeygroup);
+//					}
+//				}
 
 				this.assignedKeyGroupRange.update(keyGroupRange);
 				this.idInModel = idInModel;
 
-				if (!migrateInKeygroup.isEmpty()) {
-					LOG.info("++++++ " + this + " Migrated in: " + migrateInKeygroup);
-					System.out.println("++++++ " + this + " Migrated in: " + migrateInKeygroup);
-					updateState(keyGroupRange, getEnvironment().getTaskInfo().getMaxNumberOfParallelSubtasks(), migrateInKeygroup);
+				TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
+
+
+				if (taskConfigManager.getDstAffectedKeygroups() != null) {
+					LOG.info("++++++ " + this + " Migrated in: " + taskConfigManager.getDstAffectedKeygroups());
+					System.out.println("++++++ " + this + " Migrated in: " + taskConfigManager.getDstAffectedKeygroups());
+					updateState(keyGroupRange, getEnvironment().getTaskInfo().getMaxNumberOfParallelSubtasks(), taskConfigManager.getDstAffectedKeygroups());
 				}
 
 //				initializeState();
@@ -1010,7 +1013,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			throw new RuntimeException(e);
 		} finally {
 			TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
-			Preconditions.checkState(taskConfigManager.isDestination(), "++++++ Cannot reinitialize state for an unaffected task.");
+			Preconditions.checkState(taskConfigManager.isSourceOrDestination(), "++++++ Cannot reinitialize state for an unaffected task.");
 			taskConfigManager.finish();
 		}
 	}

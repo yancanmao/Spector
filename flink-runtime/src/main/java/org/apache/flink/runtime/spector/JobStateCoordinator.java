@@ -36,6 +36,7 @@ import org.apache.flink.runtime.jobgraph.jsonplan.JsonPlanGenerator;
 import org.apache.flink.runtime.jobmaster.slotpool.SchedulerImpl;
 import org.apache.flink.runtime.spector.controller.impl.ControllerAdaptor;
 import org.apache.flink.runtime.state.KeyGroupRange;
+import org.apache.flink.runtime.util.profiling.ReconfigurationProfiler;
 import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,6 +51,7 @@ import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Opera
 import static org.apache.flink.runtime.clusterframework.types.TaskManagerSlot.State.FREE;
 import static org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus.DONE;
 import static org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus.FAILED;
+import static org.apache.flink.runtime.spector.controller.impl.DummyController.SYNC_KEYS;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -110,6 +112,9 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 	private final Set<ExecutionAttemptID> acknowledgedStandbyTasks;
 	private final Map<ExecutionAttemptID, ExecutionVertex> pendingStandbyTasks;
 
+	private final ReconfigurationProfiler reconfigurationProfiler;
+
+
 	public enum AckStatus {
 		DONE,
 		FAILED
@@ -134,6 +139,8 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 		this.slotsMap = new HashMap<>();
 		this.acknowledgedStandbyTasks = new HashSet<>();
 		this.pendingStandbyTasks = new HashMap<>();
+
+		this.reconfigurationProfiler = new ReconfigurationProfiler(executionGraph.getJobConfiguration());
 	}
 
 	public void setSlotsMap(CompletableFuture<Collection<TaskManagerSlot>> allSlots) {
@@ -288,8 +295,10 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 
 	@Override
 	public void onCompleteCheckpoint(CompletedCheckpoint checkpoint) throws Exception {
+		reconfigurationProfiler.onSyncEnd();
 		checkNotNull(checkpoint);
 		LOG.info("++++++ checkpoint complete, start to dispatch state to replica");
+		reconfigurationProfiler.onReplicationStart();
 		dispatchLatestCheckpointedStateToStandbyTasks(checkpoint);
 //		if (checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT) {
 //			LOG.info("++++++ redistribute operator states");
@@ -304,6 +313,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 			LOG.info("++++++ Receive Ack from execution: " + executionAttemptID);
 			if (pendingStandbyTasks.isEmpty()) {
 				LOG.info("++++++ Dispatch state to replica completed.");
+				reconfigurationProfiler.onReplicationEnd();
 				if (inProcess) {
 					try {
 						assignNewState();
@@ -362,6 +372,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 	public void repartition(JobVertexID vertexID, JobExecutionPlan jobExecutionPlan) {
 		checkState(!inProcess, "Current rescaling hasn't finished.");
 		inProcess = true;
+		reconfigurationProfiler.onReconfigurationStart();
 		actionType = ActionType.REPARTITION;
 
 		reconfigId = ReconfigID.generateNextID();
@@ -496,14 +507,14 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 						jobExecutionPlan.getAffectedKeygroupsForDestination(subtaskIndex) : null;
 					// if is source, set keygroups to be checkpointed
 					LOG.info("++++++ Task " + subtaskIndex + " set affected keys: migrate out => "
-						+ jobExecutionPlan.getAffectedKeygroupsForSource(subtaskIndex) + " : in => "
-						+ jobExecutionPlan.getAffectedKeygroupsForDestination(subtaskIndex));
+						+ srcKeygroups + " : in => "
+						+ dstKeygroups);
 					rescaleCandidatesFutures.add(execution.scheduleReconfig(
 							reconfigId,
 							ReconfigOptions.PREPARE_AFFECTED_KEYGROUPS,
 							null,
-							jobExecutionPlan.getAffectedKeygroupsForSource(subtaskIndex),
-							jobExecutionPlan.getAffectedKeygroupsForDestination(subtaskIndex)));
+							srcKeygroups,
+							dstKeygroups));
 				}
 			}
 		}
@@ -523,6 +534,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 
 					checkpointId = checkpointCoordinator
 						.triggerReconfigPoint(System.currentTimeMillis()).getCheckpointId();
+					reconfigurationProfiler.onSyncStart();
 					LOG.info("++++++ Make rescalepoint with checkpointId=" + checkpointId);
 				} catch (Exception e) {
 					failExecution(e);
@@ -563,9 +575,6 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 				.addAll(Arrays.asList(tasks.get(jobId).getTaskVertices()));
 		}
 
-//		rescaleCandidates
-//			.get(ReconfigOptions.RESCALE_BOTH)
-//			.addAll(Arrays.asList(this.targetVertex.getTaskVertices()));
 
 		for (JobVertexID jobId : updatedDownstream) {
 			tasks.get(jobId).cleanBeforeRescale();
@@ -770,8 +779,10 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 	}
 
 	private void assignNewState() throws ExecutionGraphException {
-		Map<JobVertexID, ExecutionJobVertex> tasks = new HashMap<>();
-		tasks.put(targetVertex.getJobVertexId(), targetVertex);
+		reconfigurationProfiler.onUpdateStart();
+
+//		Map<JobVertexID, ExecutionJobVertex> tasks = new HashMap<>();
+//		tasks.put(targetVertex.getJobVertexId(), targetVertex);
 
 		// TODO: assign unreplicated states to tasks.
 //		StateAssignmentOperation stateAssignmentOperation =
@@ -819,6 +830,8 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 				clean();
 
 				// notify streamSwitch that change is finished
+				reconfigurationProfiler.onUpdateEnd();
+				reconfigurationProfiler.onReconfigurationEnd();
 				controllerAdaptor.onMigrationExecutorsStopped(targetVertex.getJobVertexId());
 				controllerAdaptor.onChangeImplemented(targetVertex.getJobVertexId());
 			}, mainThreadExecutor);

@@ -21,6 +21,7 @@ package org.apache.flink.runtime.state.heap;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.api.java.tuple.Tuple1;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.runtime.state.RegisteredKeyValueStateBackendMetaInfo;
@@ -95,8 +96,13 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 		this.changelogs = new HashMap<>(keyContext.getNumberOfKeyGroups());
 	}
 
+	public void tryAddToChangelogs(int hashedKeyGroup) {
+		changelogs.put(hashedKeyGroup, true);
+	}
+
+
 	public void tryAddToChangelogs() {
-		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
+		changelogs.put(keyContext.getCurrentHashedKeyGroupIndex(), true);
 	}
 
 	public HashMap<Integer, Boolean> getChangeLogs() {
@@ -177,43 +183,43 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 	@Override
 	public S get(N namespace) {
 		tryAddToChangelogs();
-		return get(keyContext.getCurrentKey(), keyContext.getCurrentKeyGroupIndex(), namespace);
+		return get(keyContext.getCurrentKey(), keyContext.getCurrentHashedKeyGroupIndex(), namespace);
 	}
 
 	@Override
 	public boolean containsKey(N namespace) {
-		return containsKey(keyContext.getCurrentKey(), keyContext.getCurrentKeyGroupIndex(), namespace);
+		return containsKey(keyContext.getCurrentKey(), keyContext.getCurrentHashedKeyGroupIndex(), namespace);
 	}
 
 	@Override
 	public void put(N namespace, S state) {
 		tryAddToChangelogs();
-		put(keyContext.getCurrentKey(), keyContext.getCurrentKeyGroupIndex(), namespace, state);
+		put(keyContext.getCurrentKey(), keyContext.getCurrentHashedKeyGroupIndex(), namespace, state);
 	}
 
 	@Override
 	public S putAndGetOld(N namespace, S state) {
 		tryAddToChangelogs();
-		return putAndGetOld(keyContext.getCurrentKey(), keyContext.getCurrentKeyGroupIndex(), namespace, state);
+		return putAndGetOld(keyContext.getCurrentKey(), keyContext.getCurrentHashedKeyGroupIndex(), namespace, state);
 	}
 
 	@Override
 	public void remove(N namespace) {
 		tryAddToChangelogs();
-		remove(keyContext.getCurrentKey(), keyContext.getCurrentKeyGroupIndex(), namespace);
+		remove(keyContext.getCurrentKey(), keyContext.getCurrentHashedKeyGroupIndex(), namespace);
 	}
 
 	@Override
 	public S removeAndGetOld(N namespace) {
 		tryAddToChangelogs();
-		return removeAndGetOld(keyContext.getCurrentKey(), keyContext.getCurrentKeyGroupIndex(), namespace);
+		return removeAndGetOld(keyContext.getCurrentKey(), keyContext.getCurrentHashedKeyGroupIndex(), namespace);
 	}
 
 	@Override
 	public S get(K key, N namespace) {
-		tryAddToChangelogs();
-		int keyGroup = KeyGroupRangeAssignment.assignToKeyGroup(key, keyContext.getNumberOfKeyGroups());
-		return get(key, keyGroup, namespace);
+		int hashedKeyGroup = KeyGroupRangeAssignment.assignToKeyGroup(key, keyContext.getNumberOfKeyGroups());
+		tryAddToChangelogs(hashedKeyGroup);
+		return get(key, hashedKeyGroup, namespace);
 	}
 
 	@Override
@@ -231,11 +237,11 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 
 	// ------------------------------------------------------------------------
 
-	private boolean containsKey(K key, int keyGroupIndex, N namespace) {
+	private boolean containsKey(K key, int hashedKeyGroupIndex, N namespace) {
 
 		checkKeyNamespacePreconditions(key, namespace);
 
-		Map<N, Map<K, S>> namespaceMap = getMapForKeyGroup(keyGroupIndex);
+		Map<N, Map<K, S>> namespaceMap = getMapForKeyGroup(hashedKeyGroupIndex);
 
 		if (namespaceMap == null) {
 			return false;
@@ -246,11 +252,11 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 		return keyedMap != null && keyedMap.containsKey(key);
 	}
 
-	S get(K key, int keyGroupIndex, N namespace) {
+	S get(K key, int hashedKeyGroupIndex, N namespace) {
 
 		checkKeyNamespacePreconditions(key, namespace);
 
-		Map<N, Map<K, S>> namespaceMap = getMapForKeyGroup(keyGroupIndex);
+		Map<N, Map<K, S>> namespaceMap = getMapForKeyGroup(hashedKeyGroupIndex);
 
 		if (namespaceMap == null) {
 			return null;
@@ -266,20 +272,20 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 	}
 
 	@Override
-	public void put(K key, int keyGroupIndex, N namespace, S value) {
-		putAndGetOld(key, keyGroupIndex, namespace, value);
+	public void put(K key, int hashedKeyGroupIndex, N namespace, S value) {
+		tryAddToChangelogs(hashedKeyGroupIndex);
+		putAndGetOld(key, hashedKeyGroupIndex, namespace, value);
 	}
 
-	private S putAndGetOld(K key, int keyGroupIndex, N namespace, S value) {
-		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
+	private S putAndGetOld(K key, int hashedKeyGroupIndex, N namespace, S value) {
 
 		checkKeyNamespacePreconditions(key, namespace);
 
-		Map<N, Map<K, S>> namespaceMap = getMapForKeyGroup(keyGroupIndex);
+		Map<N, Map<K, S>> namespaceMap = getMapForKeyGroup(hashedKeyGroupIndex);
 
 		if (namespaceMap == null) {
 			namespaceMap = new HashMap<>();
-			setMapForKeyGroup(keyGroupIndex, namespaceMap);
+			setMapForKeyGroup(hashedKeyGroupIndex, namespaceMap);
 		}
 
 		Map<K, S> keyedMap = namespaceMap.computeIfAbsent(namespace, k -> new HashMap<>());
@@ -287,18 +293,16 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 		return keyedMap.put(key, value);
 	}
 
-	private void remove(K key, int keyGroupIndex, N namespace) {
-		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
-		removeAndGetOld(key, keyGroupIndex, namespace);
+	private void remove(K key, int hashedKeyGroupIndex, N namespace) {
+		tryAddToChangelogs(hashedKeyGroupIndex);
+		removeAndGetOld(key, hashedKeyGroupIndex, namespace);
 	}
 
-	private S removeAndGetOld(K key, int keyGroupIndex, N namespace) {
-		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
-
+	private S removeAndGetOld(K key, int hashedKeyGroupIndex, N namespace) {
 
 		checkKeyNamespacePreconditions(key, namespace);
 
-		Map<N, Map<K, S>> namespaceMap = getMapForKeyGroup(keyGroupIndex);
+		Map<N, Map<K, S>> namespaceMap = getMapForKeyGroup(hashedKeyGroupIndex);
 
 		if (namespaceMap == null) {
 			return null;
@@ -341,7 +345,7 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 	public <T> void transform(N namespace, T value, StateTransformationFunction<S, T> transformation) throws Exception {
 		final K key = keyContext.getCurrentKey();
 		checkKeyNamespacePreconditions(key, namespace);
-		final int keyGroupIndex = keyContext.getCurrentKeyGroupIndex();
+		final int keyGroupIndex = keyContext.getCurrentHashedKeyGroupIndex();
 
 		Map<N, Map<K, S>> namespaceMap = getMapForKeyGroup(keyGroupIndex);
 
@@ -351,7 +355,6 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 		}
 
 		Map<K, S> keyedMap = namespaceMap.computeIfAbsent(namespace, k -> new HashMap<>());
-		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
 		keyedMap.put(key, transformation.apply(keyedMap.get(key), value));
 	}
 

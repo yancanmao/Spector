@@ -68,7 +68,7 @@ public final class StreamRecord<T> extends StreamElement {
 	//  Accessors
 	// ------------------------------------------------------------------------
 
-	public long getLatenyTimestamp() {
+	public long getLatencyTimestamp() {
 		return latencyTimestamp;
 	}
 

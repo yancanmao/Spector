@@ -40,7 +40,7 @@ public interface InternalKeyContext<K> {
 	/**
 	 * Returns the key-group to which the current key belongs.
 	 */
-	int getCurrentKeyGroupIndex();
+	int getCurrentHashedKeyGroupIndex();
 
 	/**
 	 * Returns the number of key-groups aka max parallelism.

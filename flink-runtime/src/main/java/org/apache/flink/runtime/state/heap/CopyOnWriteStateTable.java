@@ -314,28 +314,28 @@ public class CopyOnWriteStateTable<K, N, S> extends StateTable<K, N, S> implemen
 	}
 
 	@Override
-	public void put(K key, int alignedKeyGroup, N namespace, S state) {
-		tryAddToChangelogs(keyContext.getKeyGroupRange().mapFromAlignedToHashed(alignedKeyGroup));
+	public void put(K key, int hashedKeyGroup, N namespace, S state) {
+		tryAddToChangelogs(hashedKeyGroup);
 		put(key, namespace, state);
 	}
 
 	private void tryAddToChangelogs(int hashedKeyGroup) {
 		if (!keyContext.getKeyGroupRange().containsHashedKeyGroup(hashedKeyGroup)) {
-			System.out.println("++++++ No such keygroup index: " + keyContext.getCurrentKeyGroupIndex()
+			System.out.println("++++++ No such keygroup index: " + keyContext.getCurrentHashedKeyGroupIndex()
 				+ " " + keyContext.getKeyGroupRange());
 		}
 		changelogs.put(hashedKeyGroup, true);
 	}
 
 	private void tryAddToChangelogs() {
-		if (!keyContext.getKeyGroupRange().containsHashedKeyGroup(keyContext.getCurrentKeyGroupIndex())) {
-			System.out.println("++++++ No such keygroup index: " + keyContext.getCurrentKeyGroupIndex()
+		if (!keyContext.getKeyGroupRange().containsHashedKeyGroup(keyContext.getCurrentHashedKeyGroupIndex())) {
+			System.out.println("++++++ No such keygroup index: " + keyContext.getCurrentHashedKeyGroupIndex()
 				+ " " + keyContext.getKeyGroupRange());
 		}
 //		Preconditions.checkState(
 //			keyContext.getKeyGroupRange().containsHashedKeyGroup(keyContext.getCurrentKeyGroupIndex()),
 //			"++++++ Cannot find the keygroup in the keygroup range.");
-		changelogs.put(keyContext.getCurrentKeyGroupIndex(), true);
+		changelogs.put(keyContext.getCurrentHashedKeyGroupIndex(), true);
 	}
 
 	@Override

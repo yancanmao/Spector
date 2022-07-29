@@ -199,15 +199,21 @@ public class StreamInputProcessor<IN> {
 						numRecordsIn.inc();
 						streamOperator.setKeyContextElement1(record);
 
-						long processingStart = System.nanoTime();
+						long arrvialTs = record.getLatencyTimestamp();
+						long queuingDelay = System.currentTimeMillis() - record.getLatencyTimestamp();
 
+						long processingStart = System.nanoTime();
 						streamOperator.processElement(record);
+						long processingDelay = System.nanoTime() - processingStart;
 
 						metricsManager.incRecordIn(record.getKeyGroup());
 
-						processingDuration += System.nanoTime() - processingStart;
+						processingDuration += processingDelay;
 						recordsProcessed++;
-						metricsManager.groundTruth(record.getKeyGroup(), record.getLatenyTimestamp(), System.currentTimeMillis());
+//						metricsManager.groundTruth(record.getKeyGroup(), record.getLatenyTimestamp(), System.currentTimeMillis());
+//						long latency = queuingDelay + processingDelay / 1000000;
+
+						metricsManager.groundTruth(record.getLatencyTimestamp(), queuingDelay + processingDelay / 1000000);
 						processingDuration = 0;
 						recordsProcessed = 0;
 						deserializationDuration = 0;
@@ -276,7 +282,7 @@ public class StreamInputProcessor<IN> {
 								recordsProcessed++;
 //							endToEndLatency += System.currentTimeMillis() - record.getLatenyTimestamp();
 //							metricsManager.inputBufferConsumed(System.nanoTime(), deserializationDuration, processingDuration, recordsProcessed, endToEndLatency);
-								metricsManager.groundTruth(record.getKeyGroup(), record.getLatenyTimestamp(), System.currentTimeMillis());
+								metricsManager.groundTruth(record.getKeyGroup(), record.getLatencyTimestamp(), System.currentTimeMillis());
 //
 								processingDuration = 0;
 								recordsProcessed = 0;

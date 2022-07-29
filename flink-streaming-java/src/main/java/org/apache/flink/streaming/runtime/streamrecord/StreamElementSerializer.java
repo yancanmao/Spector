@@ -173,7 +173,7 @@ public final class StreamElementSerializer<T> extends TypeSerializer<StreamEleme
 				target.write(TAG_REC_WITHOUT_TIMESTAMP);
 			}
 			target.writeInt(record.getKeyGroup());
-			target.writeLong(record.getLatenyTimestamp());
+			target.writeLong(record.getLatencyTimestamp());
 //			System.out.println("write keygroup to output: " + record.getKeyGroup());
 			typeSerializer.serialize(record.getValue(), target);
 		}

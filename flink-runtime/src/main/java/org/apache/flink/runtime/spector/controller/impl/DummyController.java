@@ -27,7 +27,7 @@ public class DummyController extends Thread implements FlinkOperatorController {
 
 	private Random random;
 
-	private final ReconfigurationProfiler reconfigurationProfiler;
+//	private final ReconfigurationProfiler reconfigurationProfiler;
 
 	public final static String NUM_AFFECTED_KEYS = "spector.reconfig.affected_keys";
 
@@ -35,17 +35,24 @@ public class DummyController extends Thread implements FlinkOperatorController {
 	public final static String START_TIME = "spector.reconfig.start";
 	public final static String RECONFIG_INTERVAL = "spector.reconfig.interval";
 
+	public final static String SYNC_KEYS = "spector.reconfig.sync_keys";
+
 	private final int numAffectedKeys;
 	private final int numAffectedTasks;
 	private final int start;
 	private final int interval;
+
+	private final int syncKeys;
 
 	public DummyController(Configuration configuration) {
 		this.numAffectedKeys = configuration.getInteger(NUM_AFFECTED_KEYS, 64);
 		this.numAffectedTasks = configuration.getInteger(NUM_AFFECTED_TASKS, 65535);
 		this.start = configuration.getInteger(START_TIME, 5 * 1000);
 		this.interval = configuration.getInteger(RECONFIG_INTERVAL, 10 * 1000);
-		this.reconfigurationProfiler = new ReconfigurationProfiler(configuration);
+//		this.reconfigurationProfiler = new ReconfigurationProfiler(configuration);
+		// by default 0, indicate to disable sync keys
+		this.syncKeys = configuration.getInteger(SYNC_KEYS, 0) == 0 ?
+			numAffectedKeys : configuration.getInteger(SYNC_KEYS, 0);
 	}
 
 	@Override
@@ -130,15 +137,17 @@ public class DummyController extends Thread implements FlinkOperatorController {
 	 * set number of keys to migrate and select equi-sized number of keys from each task to migrate.
 	 */
 	private void stateMigration(int numAffectedTasks, int numAffectedKeys) throws InterruptedException {
-		Map<String, List<String>> newExecutorMapping = deepCopy(executorMapping);
-		Map<String, List<String>> selectedTasks = selectAffectedTasks(numAffectedTasks, newExecutorMapping);
-		equiShuffle(numAffectedKeys, selectedTasks);
+		for (int i = 0; i < numAffectedKeys / syncKeys; i++) {
+			Map<String, List<String>> newExecutorMapping = deepCopy(executorMapping);
+			Map<String, List<String>> selectedTasks = selectAffectedTasks(numAffectedTasks, newExecutorMapping);
+			equiShuffle(syncKeys, selectedTasks);
 
-		// run state migration
-		triggerAction(
-			"trigger 1 repartition",
-			() -> listener.remap(newExecutorMapping),
-			newExecutorMapping);
+			// run state migration
+			triggerAction(
+				"trigger 1 repartition",
+				() -> listener.remap(newExecutorMapping),
+				newExecutorMapping);
+		}
 	}
 
 	private Map<String, List<String>> selectAffectedTasks(int numAffectedTasks, Map<String, List<String>> newExecutorMapping) {
@@ -177,14 +186,14 @@ public class DummyController extends Thread implements FlinkOperatorController {
 	private void triggerAction(String logStr, Runnable runnable, Map<String, List<String>> partitionAssignment) throws InterruptedException {
 		LOG.info("------ " + logStr + "   partitionAssignment: " + partitionAssignment);
 		long start = System.currentTimeMillis();
-		reconfigurationProfiler.onReconfigurationStart();
+//		reconfigurationProfiler.onReconfigurationStart();
 		waitForMigrationDeployed = true;
 
 		runnable.run();
 
 		while (waitForMigrationDeployed);
 		executorMapping = partitionAssignment;
-		reconfigurationProfiler.onReconfigurationEnd();
+//		reconfigurationProfiler.onReconfigurationEnd();
 		LOG.info("++++++ reconfig completion time: " + (System.currentTimeMillis() - start));
 	}
 
@@ -566,7 +575,7 @@ public class DummyController extends Thread implements FlinkOperatorController {
 		}
 
 		int parallelism = oldExecutorMapping.size();
-		int numAffectedKeys = 100;
+		int numAffectedKeys = 2;
 
 		System.out.println(oldExecutorMapping);
 
