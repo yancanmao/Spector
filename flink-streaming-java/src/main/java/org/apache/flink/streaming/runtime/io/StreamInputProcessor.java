@@ -196,27 +196,7 @@ public class StreamInputProcessor<IN> {
 					LOG.info("++++++ Consuming buffered records: " + bufferedRecord.size());
 					StreamRecord<IN> record = bufferedRecord.poll();
 					while (record != null) {
-						numRecordsIn.inc();
-						streamOperator.setKeyContextElement1(record);
-
-						long arrvialTs = record.getLatencyTimestamp();
-						long queuingDelay = System.currentTimeMillis() - record.getLatencyTimestamp();
-
-						long processingStart = System.nanoTime();
-						streamOperator.processElement(record);
-						long processingDelay = System.nanoTime() - processingStart;
-
-						metricsManager.incRecordIn(record.getKeyGroup());
-
-						processingDuration += processingDelay;
-						recordsProcessed++;
-//						metricsManager.groundTruth(record.getKeyGroup(), record.getLatenyTimestamp(), System.currentTimeMillis());
-//						long latency = queuingDelay + processingDelay / 1000000;
-
-						metricsManager.groundTruth(record.getLatencyTimestamp(), queuingDelay + processingDelay / 1000000);
-						processingDuration = 0;
-						recordsProcessed = 0;
-						deserializationDuration = 0;
+						processElement(record);
 						record = bufferedRecord.poll();
 					}
 				}
@@ -266,28 +246,7 @@ public class StreamInputProcessor<IN> {
 							bufferedRecord.add(record);
 						} else {
 							synchronized (lock) {
-								numRecordsIn.inc();
-								streamOperator.setKeyContextElement1(record);
-
-								long processingStart = System.nanoTime();
-
-								streamOperator.processElement(record);
-//							long delayStart = System.nanoTime();
-//							while (System.nanoTime() - delayStart < 100000) {}
-
-								metricsManager.incRecordIn(record.getKeyGroup());
-//							System.out.println("key group is: " + record.getKeyGroup());
-
-								processingDuration += System.nanoTime() - processingStart;
-								recordsProcessed++;
-//							endToEndLatency += System.currentTimeMillis() - record.getLatenyTimestamp();
-//							metricsManager.inputBufferConsumed(System.nanoTime(), deserializationDuration, processingDuration, recordsProcessed, endToEndLatency);
-								metricsManager.groundTruth(record.getKeyGroup(), record.getLatencyTimestamp(), System.currentTimeMillis());
-//
-								processingDuration = 0;
-								recordsProcessed = 0;
-//							endToEndLatency = 0;
-								deserializationDuration = 0;
+								processElement(record);
 							}
 						}
 						return true;
@@ -332,6 +291,29 @@ public class StreamInputProcessor<IN> {
 				return false;
 			}
 		}
+	}
+
+	private void processElement(StreamRecord<IN> record) throws Exception {
+		numRecordsIn.inc();
+		streamOperator.setKeyContextElement1(record);
+
+		long arrvialTs = record.getLatencyTimestamp();
+		long queuingDelay = System.currentTimeMillis() - arrvialTs;
+
+		metricsManager.incRecordIn(record.getKeyGroup());
+
+		long processingStart = System.nanoTime();
+		streamOperator.processElement(record);
+		long processingDelay = System.nanoTime() - processingStart;
+
+
+		processingDuration += processingDelay;
+		recordsProcessed++;
+
+		metricsManager.groundTruth(arrvialTs, queuingDelay + processingDelay / 1000000);
+		processingDuration = 0;
+		recordsProcessed = 0;
+		deserializationDuration = 0;
 	}
 
 	public void cleanup() throws IOException {

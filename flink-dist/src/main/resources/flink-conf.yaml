@@ -44,12 +44,12 @@ jobmanager.heap.size: 8192m
 
 # The heap size for the TaskManager JVM
 
-taskmanager.heap.size: 8192m
+taskmanager.heap.size: 4096m
 
 
 # The number of task slots that each TaskManager offers. Each slot runs one parallel pipeline.
 
-taskmanager.numberOfTaskSlots: 12
+taskmanager.numberOfTaskSlots: 8
 
 # The parallelism used for programs that did not specify and other parallelism.
 
@@ -311,8 +311,8 @@ spector.exp.dir: /data/spector
 spector.reconfig.affected_keys: 32
 spector.reconfig.affected_tasks: 2
 spector.reconfig.start: 5000
-spector.reconfig.interval: 1000000
-
+spector.reconfig.interval: 100000
+spector.reconfig.sync_keys: 1
 
 netty.state.transmission.enabled: true
 netty.optimized.acknowledgement.enabled: false
