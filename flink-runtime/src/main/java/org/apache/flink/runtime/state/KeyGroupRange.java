@@ -84,7 +84,7 @@ public class KeyGroupRange implements KeyGroupsList, Serializable {
 		try {
 			return fromAlignedToHashed.isEmpty() ? alignedKeyGroup : fromAlignedToHashed.get(alignedKeyGroup - startKeyGroup);
 		} catch (Exception e) {
-			throw new RuntimeException("++++++Wrong processing aligned keygroup:" + alignedKeyGroup);
+			throw new RuntimeException("++++++ Wrong processing aligned keygroup:" + alignedKeyGroup);
 		}
 	}
 
@@ -92,7 +92,7 @@ public class KeyGroupRange implements KeyGroupsList, Serializable {
 		try {
 			return fromHashedToAligned.isEmpty() ? hashedKeyGroup : fromHashedToAligned.get(hashedKeyGroup) + startKeyGroup;
 		} catch (Exception e) {
-			throw new RuntimeException("++++++Wrong processing hashed keygroup:" + hashedKeyGroup);
+			throw new RuntimeException("++++++ Wrong processing hashed keygroup:" + hashedKeyGroup);
 		}
 	}
 

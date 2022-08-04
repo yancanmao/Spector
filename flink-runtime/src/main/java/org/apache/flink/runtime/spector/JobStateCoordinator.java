@@ -51,7 +51,6 @@ import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Opera
 import static org.apache.flink.runtime.clusterframework.types.TaskManagerSlot.State.FREE;
 import static org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus.DONE;
 import static org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus.FAILED;
-import static org.apache.flink.runtime.spector.controller.impl.DummyController.SYNC_KEYS;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -101,10 +100,13 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 	 */
 	private final HashMap<JobVertexID, List<ExecutionVertex>> standbyExecutionVertexes;
 
+	// global state store
+	private Map<OperatorID, OperatorState> globalOperatorStates;
 	/**
 	 * keys to replicate
 	 */
 	private final HashMap<JobVertexID, List<Integer>> backupKeyGroups;
+
 
 	private final Map<InstanceID, List<TaskManagerSlot>> slotsMap;
 
@@ -113,7 +115,6 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 	private final Map<ExecutionAttemptID, ExecutionVertex> pendingStandbyTasks;
 
 	private final ReconfigurationProfiler reconfigurationProfiler;
-
 
 	public enum AckStatus {
 		DONE,
@@ -269,6 +270,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 		checkNotNull(jobExecutionPlan, "jobExecutionPlan should not be null.");
 		stateAssignmentOperation.setRedistributeStrategy(jobExecutionPlan);
 		stateAssignmentOperation.setPendingStandbyTasks(pendingStandbyTasks);
+		stateAssignmentOperation.setGlobalOperatorState(globalOperatorStates);
 
 		stateAssignmentOperation.assignStates();
 	}

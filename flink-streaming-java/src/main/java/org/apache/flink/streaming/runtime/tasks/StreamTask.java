@@ -996,7 +996,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				if (taskConfigManager.getDstAffectedKeygroups() != null) {
 					LOG.info("++++++ " + this + " Migrated in: " + taskConfigManager.getDstAffectedKeygroups());
 					System.out.println("++++++ " + this + " Migrated in: " + taskConfigManager.getDstAffectedKeygroups());
-					updateState(keyGroupRange, getEnvironment().getTaskInfo().getMaxNumberOfParallelSubtasks(), taskConfigManager.getDstAffectedKeygroups());
+					updateState(this.assignedKeyGroupRange, getEnvironment().getTaskInfo().getMaxNumberOfParallelSubtasks(), taskConfigManager.getDstAffectedKeygroups());
 				}
 
 //				initializeState();

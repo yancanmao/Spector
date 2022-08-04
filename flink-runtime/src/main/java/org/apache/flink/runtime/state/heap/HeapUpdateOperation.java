@@ -9,7 +9,6 @@ import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.runtime.state.*;
 import org.apache.flink.runtime.state.metainfo.StateMetaInfoSnapshot;
-import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.StateMigrationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,9 +36,12 @@ public class HeapUpdateOperation<K> {
 
 
 	public HeapUpdateOperation(Collection<KeyedStateHandle> stateHandles,
-							   HeapKeyedStateBackend<K> keyedStateBackend, TypeSerializer<K> keySerializer,
-							   KeyGroupRange keyGroupRange, int maxNumberOfParallelSubtasks,
-							   CloseableRegistry cancelStreamRegistry, Collection<Integer> migrateInKeygroup) {
+							   HeapKeyedStateBackend<K> keyedStateBackend,
+							   TypeSerializer<K> keySerializer,
+							   KeyGroupRange keyGroupRange,
+							   int maxNumberOfParallelSubtasks,
+							   CloseableRegistry cancelStreamRegistry,
+							   Collection<Integer> migrateInKeygroup) {
 		this.stateHandles = stateHandles;
 		this.keyedStateBackend = keyedStateBackend;
 		this.registeredKVStates = keyedStateBackend.getRegisteredKVStates();
@@ -56,7 +58,7 @@ public class HeapUpdateOperation<K> {
 		// TODO: once the snapshot has been persisted, remove the key state from the source task.
 
 		// update the state tables list, and waiting for the actual data to be appended
-		keyedStateBackend.updateStateTable(keyGroupRange, maxNumberOfParallelSubtasks);
+		keyedStateBackend.updateStateTable(maxNumberOfParallelSubtasks);
 
 		boolean keySerializerRestored = false;
 

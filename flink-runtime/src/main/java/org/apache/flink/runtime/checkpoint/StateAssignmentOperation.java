@@ -50,6 +50,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 
+import static org.apache.flink.runtime.spector.GlobalStateManager.globalManagedStateHandles;
+import static org.apache.flink.runtime.spector.GlobalStateManager.globalRawStateHandles;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -76,6 +78,8 @@ public class StateAssignmentOperation {
 	private JobExecutionPlan jobExecutionPlan;
 
 	private Map<ExecutionAttemptID, ExecutionVertex> pendingStandbyTasks;
+
+	private Map<OperatorID, OperatorState> globalOperatorStates;
 
 	private final HashMap<JobVertexID, List<Integer>> backupKeyGroups;
 
@@ -183,6 +187,10 @@ public class StateAssignmentOperation {
 		this.pendingStandbyTasks = pendingStandbyTasks;
 	}
 
+	public void setGlobalOperatorState(Map<OperatorID, OperatorState> globalOperatorStates) {
+		this.globalOperatorStates = globalOperatorStates;
+	}
+
 	private void assignAttemptState(ExecutionJobVertex executionJobVertex, List<OperatorState> operatorStates) {
 
 		List<OperatorID> operatorIDs = executionJobVertex.getOperatorIDs();
@@ -197,6 +205,8 @@ public class StateAssignmentOperation {
 			newParallelism);
 
 		final int expectedNumberOfSubTasks = newParallelism * operatorIDs.size();
+
+		// Update global operator state based on new snapshots
 
 		/*
 		 * Redistribute ManagedOperatorStates and RawOperatorStates from old parallelism to new parallelism.
@@ -342,6 +352,15 @@ public class StateAssignmentOperation {
 
 			Map<Integer, Tuple3<Long, StreamStateHandle, Boolean>> hashedKeyGroupToRawStateHandle =
 				getHashedKeyGroupToHandleFromOperatorState(operatorState, OperatorSubtaskState::getRawKeyedState);
+
+			// Put snapshotted state to global state store for future usage
+			Map<Integer, Tuple3<Long, StreamStateHandle, Boolean>> curGlobalManagedStateHandle =
+				globalManagedStateHandles.computeIfAbsent(operatorState.getOperatorID(), t -> new HashMap<>());
+			curGlobalManagedStateHandle.putAll(hashedKeyGroupToManagedStateHandle);
+
+			Map<Integer, Tuple3<Long, StreamStateHandle, Boolean>> curGlobalRawStateHandles =
+				globalRawStateHandles.computeIfAbsent(operatorState.getOperatorID(), t -> new HashMap<>());
+			curGlobalRawStateHandles.putAll(hashedKeyGroupToRawStateHandle);
 
 			// TODO: job execution plan is incorrect because it only targeting on a operator but is used in multiple operator.
 			Map<Integer, List<Integer>> partitionAssignment = jobExecutionPlan.getPartitionAssignment();

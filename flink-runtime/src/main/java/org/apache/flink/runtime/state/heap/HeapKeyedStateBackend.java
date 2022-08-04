@@ -358,24 +358,8 @@ public class HeapKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 //		}
 	}
 
-	public void updateStateTable(KeyGroupRange keyGroupRange, int numberOfKeyGroups) {
-		// TODO: update actual state table here
-		LOG.info("++++++ update keygrouprange: " + keyGroupRange);
-		this.keyGroupRange = keyGroupRange;
+	public void updateStateTable(int numberOfKeyGroups) {
 		this.numberOfKeyGroups = numberOfKeyGroups;
-		LOG.info("++++++ complete:  " + keyGroupRange);
-//		InternalKeyContextImpl<K> keyContext = new InternalKeyContextImpl<>(
-//			keyGroupRange,
-//			numberOfKeyGroups
-//		);
-//		for (StateTable<K, ?, ?> registeredKVState : registeredKVStates.values()) {
-//			registeredKVState.updateStateTable(keyContext);
-//		}
-//
-//		// TODO: add a heapStateUpdateOperation, where we need to read the state from the data view and update them to the state table
-//
-//		// substitute the keyContext
-//		this.keyContext = keyContext;
 	}
 
 	@Override
