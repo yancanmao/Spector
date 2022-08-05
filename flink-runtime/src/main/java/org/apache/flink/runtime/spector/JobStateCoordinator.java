@@ -100,13 +100,10 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 	 */
 	private final HashMap<JobVertexID, List<ExecutionVertex>> standbyExecutionVertexes;
 
-	// global state store
-	private Map<OperatorID, OperatorState> globalOperatorStates;
 	/**
 	 * keys to replicate
 	 */
-	private final HashMap<JobVertexID, List<Integer>> backupKeyGroups;
-
+	private final Set<Integer> backupKeyGroups;
 
 	private final Map<InstanceID, List<TaskManagerSlot>> slotsMap;
 
@@ -136,12 +133,26 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 		this.jobGraphUpdater = JobGraphUpdater.instantiate(jobGraph, userCodeLoader);
 
 		this.standbyExecutionVertexes = new HashMap<>();
-		this.backupKeyGroups = new HashMap<>();
+		this.backupKeyGroups = new HashSet<>();
+		initBackupKeyGroups();
 		this.slotsMap = new HashMap<>();
 		this.acknowledgedStandbyTasks = new HashSet<>();
 		this.pendingStandbyTasks = new HashMap<>();
 
 		this.reconfigurationProfiler = new ReconfigurationProfiler(executionGraph.getJobConfiguration());
+	}
+
+	public void initBackupKeyGroups() {
+		for (Map.Entry<JobVertexID, ExecutionJobVertex> entry : executionGraph.getAllVertices().entrySet()) {
+			int maxParallelism = entry.getValue().getMaxParallelism();
+			if (entry.getValue().getName().toLowerCase().contains("flatmap")) {
+				for (int i = 0; i < maxParallelism; i++) {
+					if (i % 2 == 0) {
+						backupKeyGroups.add(i);
+					}
+				}
+			}
+		}
 	}
 
 	public void setSlotsMap(CompletableFuture<Collection<TaskManagerSlot>> allSlots) {
@@ -264,13 +275,14 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 		// re-assign the task states
 		final Map<OperatorID, OperatorState> operatorStates = checkpoint.getOperatorStates();
 
-		StateAssignmentOperation stateAssignmentOperation =
+		StateAssignmentOperation stateAssignmentOperation = inProcess ?
 			new StateAssignmentOperation(checkpoint.getCheckpointID(), tasks, operatorStates,
+				true, REPARTITION_STATE, backupKeyGroups)
+			: new StateAssignmentOperation(checkpoint.getCheckpointID(), tasks, operatorStates,
 				true, DISPATCH_STATE_TO_STANDBY_TASK, backupKeyGroups);
 		checkNotNull(jobExecutionPlan, "jobExecutionPlan should not be null.");
 		stateAssignmentOperation.setRedistributeStrategy(jobExecutionPlan);
 		stateAssignmentOperation.setPendingStandbyTasks(pendingStandbyTasks);
-		stateAssignmentOperation.setGlobalOperatorState(globalOperatorStates);
 
 		stateAssignmentOperation.assignStates();
 	}

@@ -372,11 +372,11 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		if (isStandby && state == STANDBY) {
 			CompletableFuture<Acknowledge> ack = dispatchStateToStandbyTaskRpcCall(taskRestore);
 			//We must synchronously wait for the result
-			try {
-				ack.get();
-			} catch (InterruptedException | ExecutionException e) {
-				e.printStackTrace();
-			}
+//			try {
+//				ack.get();
+//			} catch (InterruptedException | ExecutionException e) {
+//				e.printStackTrace();
+//			}
 //			LOG.info("++++++ Dispatch state snapshot {} to standby task {}.", taskRestore, vertex.getTaskNameWithSubtaskIndex());
 			LOG.info("++++++ Dispatch state snapshot to standby task {}.", vertex.getTaskNameWithSubtaskIndex());
 		}

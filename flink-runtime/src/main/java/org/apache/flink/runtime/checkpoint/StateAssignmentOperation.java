@@ -79,9 +79,7 @@ public class StateAssignmentOperation {
 
 	private Map<ExecutionAttemptID, ExecutionVertex> pendingStandbyTasks;
 
-	private Map<OperatorID, OperatorState> globalOperatorStates;
-
-	private final HashMap<JobVertexID, List<Integer>> backupKeyGroups;
+	private final Set<Integer> backupKeyGroups;
 
 	public StateAssignmentOperation(
 		long restoreCheckpointId,
@@ -99,7 +97,7 @@ public class StateAssignmentOperation {
 		Map<OperatorID, OperatorState> operatorStates,
 		boolean allowNonRestoredState,
 		Operation operation,
-		@Nullable HashMap<JobVertexID, List<Integer>> backupKeyGroups) {
+		@Nullable Set<Integer> backupKeyGroups) {
 
 		this.restoreCheckpointId = restoreCheckpointId;
 		this.tasks = Preconditions.checkNotNull(tasks);
@@ -187,10 +185,6 @@ public class StateAssignmentOperation {
 		this.pendingStandbyTasks = pendingStandbyTasks;
 	}
 
-	public void setGlobalOperatorState(Map<OperatorID, OperatorState> globalOperatorStates) {
-		this.globalOperatorStates = globalOperatorStates;
-	}
-
 	private void assignAttemptState(ExecutionJobVertex executionJobVertex, List<OperatorState> operatorStates) {
 
 		List<OperatorID> operatorIDs = executionJobVertex.getOperatorIDs();
@@ -271,6 +265,36 @@ public class StateAssignmentOperation {
 				newParallelism);
 		} else if (operation == Operation.REPARTITION_STATE) {
 			checkNotNull(jobExecutionPlan, "++++++ JobExecutionPlan Cannot be null for repartition");
+
+			// replicate to standby tasks
+			LOG.info("++++++ Replicate to standby tasks");
+			reDistributePartitionableStates(
+				operatorStates,
+				newParallelism,
+				operatorIDs,
+				newManagedOperatorStates,
+				newRawOperatorStates);
+
+			reDistributeKeyedStatesToStandbyTasks(
+				operatorStates,
+				operatorIDs,
+				newManagedKeyedState,
+				newRawKeyedState);
+
+			backupTaskStateToExecutionJobVertices(
+				executionJobVertex,
+				newManagedOperatorStates,
+				newRawOperatorStates,
+				newManagedKeyedState,
+				newRawKeyedState
+			);
+
+			// forward non-replicated state to destination tasks
+			newManagedOperatorStates.clear();
+			newRawOperatorStates.clear();
+			newManagedKeyedState.clear();
+			newRawKeyedState.clear();
+
 			reDistributePartitionableStates(
 				operatorStates,
 				newParallelism,
@@ -354,13 +378,8 @@ public class StateAssignmentOperation {
 				getHashedKeyGroupToHandleFromOperatorState(operatorState, OperatorSubtaskState::getRawKeyedState);
 
 			// Put snapshotted state to global state store for future usage
-			Map<Integer, Tuple3<Long, StreamStateHandle, Boolean>> curGlobalManagedStateHandle =
-				globalManagedStateHandles.computeIfAbsent(operatorState.getOperatorID(), t -> new HashMap<>());
-			curGlobalManagedStateHandle.putAll(hashedKeyGroupToManagedStateHandle);
-
-			Map<Integer, Tuple3<Long, StreamStateHandle, Boolean>> curGlobalRawStateHandles =
-				globalRawStateHandles.computeIfAbsent(operatorState.getOperatorID(), t -> new HashMap<>());
-			curGlobalRawStateHandles.putAll(hashedKeyGroupToRawStateHandle);
+			globalManagedStateHandles.putAll(hashedKeyGroupToManagedStateHandle);
+			globalRawStateHandles.putAll(hashedKeyGroupToRawStateHandle);
 
 			// TODO: job execution plan is incorrect because it only targeting on a operator but is used in multiple operator.
 			Map<Integer, List<Integer>> partitionAssignment = jobExecutionPlan.getPartitionAssignment();
@@ -377,6 +396,11 @@ public class StateAssignmentOperation {
 				for (int i = 0; i < partitionAssignment.get(subTaskIndex).size(); i++) {
 					// the keyGroup we get from partitionAssignment is the hashed one (most origin without remapping)
 					int assignedKeyGroup = partitionAssignment.get(subTaskIndex).get(i);
+
+					// check whether it is configured to be replicated
+					if (!backupKeyGroups.contains(assignedKeyGroup)) {
+						continue;
+					}
 
 					KeyGroupRange alignedKeyGroupRange = jobExecutionPlan.getAlignedKeyGroupRange(subTaskIndex);
 					// keyGroupRange which length is 1
@@ -686,13 +710,6 @@ public class StateAssignmentOperation {
 		for (int operatorIndex = 0; operatorIndex < newOperatorIDs.size(); operatorIndex++) {
 			OperatorState operatorState = oldOperatorStates.get(operatorIndex);
 
-			// For managed state, hashedKeyGroup -> (offset, streamStateHandle)
-			Map<Integer, Tuple3<Long, StreamStateHandle, Boolean>> hashedKeyGroupToManagedStateHandle =
-				getHashedKeyGroupToHandleFromOperatorState(operatorState, OperatorSubtaskState::getManagedKeyedState);
-
-			Map<Integer, Tuple3<Long, StreamStateHandle, Boolean>> hashedKeyGroupToRawStateHandle =
-				getHashedKeyGroupToHandleFromOperatorState(operatorState, OperatorSubtaskState::getRawKeyedState);
-
 			// TODO: job execution plan is incorrect because it only targeting on a operator but is used in multiple operator.
 			Map<Integer, List<Integer>> partitionAssignment = jobExecutionPlan.getPartitionAssignment();
 
@@ -706,18 +723,22 @@ public class StateAssignmentOperation {
 					// the keyGroup we get from partitionAssignment is the hashed one (most origin without remapping)
 					int assignedKeyGroup = partitionAssignment.get(subTaskIndex).get(i);
 
+					if (backupKeyGroups.contains(assignedKeyGroup)) {
+						continue;
+					}
+
 					KeyGroupRange alignedKeyGroupRange = jobExecutionPlan.getAlignedKeyGroupRange(subTaskIndex);
 					// keyGroupRange which length is 1
 					KeyGroupRange rangeOfOneKeyGroupRange = KeyGroupRange.of(alignedKeyGroupRange.getKeyGroupId(i), alignedKeyGroupRange.getKeyGroupId(i));
 
-					Tuple3<Long, StreamStateHandle, Boolean> managedStateTuple = hashedKeyGroupToManagedStateHandle.get(assignedKeyGroup);
+					Tuple3<Long, StreamStateHandle, Boolean> managedStateTuple = globalManagedStateHandles.get(assignedKeyGroup);
 					if (managedStateTuple != null) {
 						subManagedKeyedStates.add(new KeyGroupsStateHandle(
 							new KeyGroupRangeOffsets(rangeOfOneKeyGroupRange, new long[]{managedStateTuple.f0}),
 							managedStateTuple.f1));
 					}
 
-					Tuple3<Long, StreamStateHandle, Boolean> rawStateTuple = hashedKeyGroupToRawStateHandle.get(assignedKeyGroup);
+					Tuple3<Long, StreamStateHandle, Boolean> rawStateTuple = globalRawStateHandles.get(assignedKeyGroup);
 					if (rawStateTuple != null) {
 						subRawKeyedStates.add(new KeyGroupsStateHandle(
 							new KeyGroupRangeOffsets(rangeOfOneKeyGroupRange, new long[]{rawStateTuple.f0}),

@@ -19,7 +19,7 @@ public class DummyController extends Thread implements FlinkOperatorController {
 
 	private ReconfigExecutor listener;
 
-	Map<String, List<String>> executorMapping;
+	private Map<String, List<String>> executorMapping;
 
 	private volatile boolean waitForMigrationDeployed;
 
