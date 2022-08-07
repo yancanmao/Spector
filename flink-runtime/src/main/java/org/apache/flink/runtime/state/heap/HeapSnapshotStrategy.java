@@ -174,12 +174,10 @@ class HeapSnapshotStrategy<K>
 
 								stateSnapshot.getValue().getKeyGroupWriter();
 
-							if (stateSnapshot.getValue() instanceof CopyOnWriteStateTableSnapshot) {
-								if (((CopyOnWriteStateTableSnapshot<?, ?, ?>) stateSnapshot.getValue()).getChangelogs() != null) {
-									if (((CopyOnWriteStateTableSnapshot<?, ?, ?>) stateSnapshot.getValue()).getChangelogs()
-										.containsKey(hashedKeyGroup)) {
-										changelogs[keyGroupPos] = true;
-									}
+							if ((stateSnapshot.getValue()).getChangelogs() != null) {
+								if (stateSnapshot.getValue().getChangelogs()
+									.containsKey(hashedKeyGroup)) {
+									changelogs[keyGroupPos] = true;
 								}
 							}
 							try (

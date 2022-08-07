@@ -295,6 +295,7 @@ public class StateAssignmentOperation {
 			newManagedKeyedState.clear();
 			newRawKeyedState.clear();
 
+			LOG.info("++++++ Transfer non-replicated states to destination tasks");
 			reDistributePartitionableStates(
 				operatorStates,
 				newParallelism,
@@ -519,6 +520,8 @@ public class StateAssignmentOperation {
 
 				if (operatorSubtaskState.hasState()) {
 					statelessTask = false;
+				} else { // need to remove the stateless pending standby tasks if the managed/raw state is null.
+					pendingStandbyTasks.remove(currentExecutionAttempt.getAttemptId());
 				}
 				taskState.putSubtaskStateByOperatorID(operatorID, operatorSubtaskState);
 			}
@@ -714,16 +717,25 @@ public class StateAssignmentOperation {
 			Map<Integer, List<Integer>> partitionAssignment = jobExecutionPlan.getPartitionAssignment();
 
 			for (int subTaskIndex = 0; subTaskIndex < newParallelism; subTaskIndex++) {
+
+				// only need to pass state handle to destination subtasks.
+				if (!jobExecutionPlan.isDestinationSubtask(subTaskIndex)) {
+					continue;
+				}
+
+				Set<Integer> migrateInKeygroups =
+					new HashSet<>(jobExecutionPlan.getAffectedKeygroupsForDestination(subTaskIndex));
+
 				OperatorInstanceID instanceID = OperatorInstanceID.of(subTaskIndex, newOperatorIDs.get(operatorIndex));
 
 				List<KeyedStateHandle> subManagedKeyedStates = new ArrayList<>();
-				List<KeyedStateHandle> subRawKeyedStates = new ArrayList<>();;
+				List<KeyedStateHandle> subRawKeyedStates = new ArrayList<>();
 
 				for (int i = 0; i < partitionAssignment.get(subTaskIndex).size(); i++) {
 					// the keyGroup we get from partitionAssignment is the hashed one (most origin without remapping)
 					int assignedKeyGroup = partitionAssignment.get(subTaskIndex).get(i);
 
-					if (backupKeyGroups.contains(assignedKeyGroup)) {
+					if (backupKeyGroups.contains(assignedKeyGroup) || !migrateInKeygroups.contains(assignedKeyGroup)) {
 						continue;
 					}
 

@@ -711,8 +711,14 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				if (reconfigOptions.isUpdatingState()) {
 					log.info("++++++ update task state: " + tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId());
 
-					JobManagerTaskRestore taskRestore = backupStateManager.getTaskRestoreFromReplica(task.getJobVertexId());
-//					JobManagerTaskRestore taskRestore = tdd.getTaskRestore();
+					JobManagerTaskRestore backupTaskRestore = backupStateManager.getTaskRestoreFromReplica(task.getJobVertexId());
+					JobManagerTaskRestore taskRestore = tdd.getTaskRestore();
+
+					if (taskRestore != null) {
+						taskRestore.merge(backupTaskRestore);
+					} else {
+						taskRestore = backupTaskRestore;
+					}
 
 					task.assignNewState(
 						tdd.getKeyGroupRange(),
@@ -802,16 +808,6 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		JobVertexID jobvertexId,
 		JobManagerTaskRestore taskRestore,
 		Time timeout) {
-//		if (backupStateManager.replicas.containsKey(jobvertexId)) {
-//			backupStateManager.mergeState(jobvertexId, taskRestore);
-//
-//			return CompletableFuture.completedFuture(Acknowledge.get());
-//		} else {
-//			final String message = "Cannot find standby task " + executionAttemptID + " to dispatch state to it.";
-//			log.debug(message);
-//			return FutureUtils.completedExceptionally(new TaskException(message));
-//		}
-
 		log.info("++++++ " + jobvertexId + " Receive backup state");
 		TaskStateManager taskStateManager = backupStateManager.replicas.get(jobvertexId);
 

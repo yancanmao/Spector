@@ -143,7 +143,8 @@ public class HeapUpdateOperation<K> {
 
 		for (Tuple2<Integer, Long> groupOffset : keyGroupOffsets) {
 //			int keyGroupIndex = groupOffset.f0;
-			int alignedKeyGroupIndex = groupOffset.f0;
+			// aligned keygroup index in original keygroupoffset will be never used.
+//			int alignedKeyGroupIndex = groupOffset.f0;
 			long offset = groupOffset.f1;
 
 			// Check that restored key groups all belong to the backend.
@@ -155,8 +156,7 @@ public class HeapUpdateOperation<K> {
 				continue;
 			}
 
-//			Preconditions.checkState(hashedKeyGroup == keyGroupRange.mapFromAlignedToHashed(alignedKeyGroupIndex),
-//				String.format("Unexpected key-group in restore {%s : %s}.", hashedKeyGroup, keyGroupRange.mapFromAlignedToHashed(alignedKeyGroupIndex)));
+			int alignedKeyGroupIndex = keyGroupRange.mapFromHashedToAligned(hashedKeyGroup);
 
 			LOG.info("++++++-- keyGroupRange: " + keyGroupRange +
 				", alignedKeyGroupIndex: " + keyGroupRange.mapFromHashedToAligned(hashedKeyGroup) +

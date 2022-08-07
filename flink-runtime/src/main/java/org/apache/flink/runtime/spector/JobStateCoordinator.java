@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.spector;
 
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.checkpoint.*;
 import org.apache.flink.runtime.clusterframework.types.SlotID;
@@ -57,7 +58,7 @@ import static org.apache.flink.util.Preconditions.checkState;
 public class JobStateCoordinator implements JobReconfigAction, CheckpointProgressListener {
 
 	private static final Logger LOG = LoggerFactory.getLogger(JobStateCoordinator.class);
-
+	public final static String REPLICATE_KEYS_FILTER = "spector.replicate_keys_filter";
 	private final JobGraph jobGraph;
 
 	private ExecutionGraph executionGraph;
@@ -134,7 +135,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 
 		this.standbyExecutionVertexes = new HashMap<>();
 		this.backupKeyGroups = new HashSet<>();
-		initBackupKeyGroups();
+		initBackupKeyGroups(executionGraph.getJobConfiguration());
 		this.slotsMap = new HashMap<>();
 		this.acknowledgedStandbyTasks = new HashSet<>();
 		this.pendingStandbyTasks = new HashMap<>();
@@ -142,12 +143,14 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 		this.reconfigurationProfiler = new ReconfigurationProfiler(executionGraph.getJobConfiguration());
 	}
 
-	public void initBackupKeyGroups() {
+	public void initBackupKeyGroups(Configuration jobConfiguration) {
+		int filer = jobConfiguration.getInteger(REPLICATE_KEYS_FILTER, 1);
 		for (Map.Entry<JobVertexID, ExecutionJobVertex> entry : executionGraph.getAllVertices().entrySet()) {
 			int maxParallelism = entry.getValue().getMaxParallelism();
+			// TODO: hard coded this part, but we need to make it work as a configurable field
 			if (entry.getValue().getName().toLowerCase().contains("flatmap")) {
 				for (int i = 0; i < maxParallelism; i++) {
-					if (i % 2 == 0) {
+					if (i % filer == 0) {
 						backupKeyGroups.add(i);
 					}
 				}
@@ -309,10 +312,14 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 
 	@Override
 	public void onCompleteCheckpoint(CompletedCheckpoint checkpoint) throws Exception {
-		reconfigurationProfiler.onSyncEnd();
+		if (checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT) {
+			reconfigurationProfiler.onSyncEnd();
+		}
 		checkNotNull(checkpoint);
 		LOG.info("++++++ checkpoint complete, start to dispatch state to replica");
-		reconfigurationProfiler.onReplicationStart();
+		if (checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT) {
+			reconfigurationProfiler.onReplicationStart();
+		}
 		dispatchLatestCheckpointedStateToStandbyTasks(checkpoint);
 //		if (checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT) {
 //			LOG.info("++++++ redistribute operator states");
@@ -327,8 +334,8 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 			LOG.info("++++++ Receive Ack from execution: " + executionAttemptID);
 			if (pendingStandbyTasks.isEmpty()) {
 				LOG.info("++++++ Dispatch state to replica completed.");
-				reconfigurationProfiler.onReplicationEnd();
 				if (inProcess) {
+					reconfigurationProfiler.onReplicationEnd();
 					try {
 						assignNewState();
 					} catch (ExecutionGraphException e) {

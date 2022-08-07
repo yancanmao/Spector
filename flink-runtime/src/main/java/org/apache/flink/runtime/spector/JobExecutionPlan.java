@@ -305,16 +305,10 @@ public class JobExecutionPlan {
 	}
 
 	public boolean isSourceSubtask(int subtaskIndex) {
-		checkState(isAffectedTask(subtaskIndex),
-			"++++++ a non-affected task cannot become a source/destination task");
-
 		return srcSubtaskMap.containsKey(subtaskIndex);
 	}
 
 	public boolean isDestinationSubtask(int subtaskIndex) {
-		checkState(isAffectedTask(subtaskIndex),
-			"++++++ a non-affected task cannot become a source/destination task");
-
 		return dstSubtaskMap.containsKey(subtaskIndex);
 	}
 

@@ -18,13 +18,26 @@
 
 package org.apache.flink.runtime.checkpoint;
 
+import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.memory.DataInputView;
+import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.core.memory.DataOutputView;
+import org.apache.flink.runtime.jobgraph.OperatorID;
+import org.apache.flink.runtime.state.KeyGroupRange;
+import org.apache.flink.runtime.state.KeyGroupsStateHandle;
+import org.apache.flink.runtime.state.KeyedStateHandle;
+import org.apache.flink.runtime.state.TaskStateManagerImpl;
+import org.apache.flink.util.Preconditions;
 
 import javax.annotation.Nonnegative;
 import javax.annotation.Nonnull;
 
+import java.io.IOException;
 import java.io.Serializable;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
 
 /**
  * This class encapsulates the data from the job manager to restore a task.
@@ -72,5 +85,121 @@ public class JobManagerTaskRestore implements Serializable {
 		restoreCheckpointId = in.readLong();
 		taskStateSnapshot = new TaskStateSnapshot();
 		taskStateSnapshot.read(in);
+	}
+
+	public void merge(JobManagerTaskRestore stateRestore2) {
+		if (stateRestore2 == null) {
+			return;
+		}
+		// Merge all key state from old and new state restore.
+		Map<Integer, KeyedStateHandle> hashedKeyGroupToManagedStateHandle =
+			getHashedKeyGroupToHandleFromStateRestore(this, OperatorSubtaskState::getManagedKeyedState);
+		Map<Integer, KeyedStateHandle> hashedKeyGroupToRawStateHandle =
+			getHashedKeyGroupToHandleFromStateRestore(this, OperatorSubtaskState::getRawKeyedState);
+
+		Map<Integer, KeyedStateHandle> newHashedKeyGroupToManagedStateHandle =
+			getHashedKeyGroupToHandleFromStateRestore(stateRestore2, OperatorSubtaskState::getManagedKeyedState);
+		Map<Integer, KeyedStateHandle> newHashedKeyGroupToRawStateHandle =
+			getHashedKeyGroupToHandleFromStateRestore(stateRestore2, OperatorSubtaskState::getRawKeyedState);
+
+
+		System.out.println(hashedKeyGroupToManagedStateHandle.keySet());
+		System.out.println(newHashedKeyGroupToManagedStateHandle.keySet());
+
+		hashedKeyGroupToManagedStateHandle.putAll(newHashedKeyGroupToManagedStateHandle);
+		hashedKeyGroupToRawStateHandle.putAll(newHashedKeyGroupToRawStateHandle);
+
+		System.out.println(hashedKeyGroupToManagedStateHandle.keySet());
+
+		Map.Entry<OperatorID, OperatorSubtaskState> operatorSubtaskStateEntry = getOperatorSubtaskState(this);
+
+		Preconditions.checkState(operatorSubtaskStateEntry != null, "++++++ operatorSubtaskState cannot be null");
+
+		OperatorSubtaskState newOperatorSubtaskState = new OperatorSubtaskState(
+			operatorSubtaskStateEntry.getValue().getManagedOperatorState(),
+			operatorSubtaskStateEntry.getValue().getRawOperatorState(),
+			new StateObjectCollection<>(hashedKeyGroupToManagedStateHandle.values()),
+			new StateObjectCollection<>(hashedKeyGroupToRawStateHandle.values()));
+
+		taskStateSnapshot.putSubtaskStateByOperatorID(operatorSubtaskStateEntry.getKey(), newOperatorSubtaskState);
+	}
+
+	private Map<Integer, KeyedStateHandle> getHashedKeyGroupToHandleFromStateRestore(
+		JobManagerTaskRestore stateRestore,
+		Function<OperatorSubtaskState, StateObjectCollection<KeyedStateHandle>> applier) {
+
+		Map<Integer, KeyedStateHandle> hashedKeyGroupToHandle = new HashMap<>();
+
+		if (stateRestore == null) {
+			return hashedKeyGroupToHandle;
+		}
+
+		Set<Map.Entry<OperatorID, OperatorSubtaskState>> subtaskStateMappings
+			= stateRestore.getTaskStateSnapshot().getSubtaskStateMappings();
+
+		// By default, there will only be one Operator inside the OperatorChain.
+		for (Map.Entry<OperatorID, OperatorSubtaskState> subtaskStateEntry : subtaskStateMappings) {
+			for (KeyedStateHandle keyedStateHandle : applier.apply(subtaskStateEntry.getValue())) {
+				if (keyedStateHandle != null) {
+					if (keyedStateHandle instanceof KeyGroupsStateHandle) {
+
+						KeyGroupsStateHandle keyGroupsStateHandle = (KeyGroupsStateHandle) keyedStateHandle;
+						KeyGroupRange keyGroupRangeFromOldState = keyGroupsStateHandle.getKeyGroupRange();
+
+						if (keyGroupRangeFromOldState.equals(KeyGroupRange.EMPTY_KEY_GROUP_RANGE)) {
+							continue;
+						}
+
+						int start = keyGroupRangeFromOldState.getStartKeyGroup();
+						int end = keyGroupRangeFromOldState.getEndKeyGroup();
+
+						try (FSDataInputStream fsDataInputStream = keyGroupsStateHandle.openInputStream()) {
+							DataInputViewStreamWrapper inView = new DataInputViewStreamWrapper(fsDataInputStream);
+
+							for (int alignedOldKeyGroup = start; alignedOldKeyGroup <= end; alignedOldKeyGroup++) {
+								long offset = keyGroupsStateHandle.getOffsetForKeyGroup(alignedOldKeyGroup);
+
+								int nextAlignedOldKeyGroup = alignedOldKeyGroup + 1;
+
+								long nextOffset = nextAlignedOldKeyGroup <= end ?
+									keyGroupsStateHandle.getOffsetForKeyGroup(nextAlignedOldKeyGroup)
+									: keyGroupsStateHandle.getStateSize();
+
+								// skip if the keygroup does not have any state snapshot
+								if (nextOffset == offset) {
+									continue;
+								}
+
+								fsDataInputStream.seek(offset);
+								int hashedKeyGroup = inView.readInt();
+
+								hashedKeyGroupToHandle.put(
+									hashedKeyGroup, keyGroupsStateHandle);
+							}
+						} catch (IOException err) {
+							throw new RuntimeException(err);
+						}
+					} else {
+						throw new RuntimeException("++++++ unsupported KeyedStateHandle for state migration");
+					}
+				}
+			}
+		}
+		return hashedKeyGroupToHandle;
+	}
+
+	private Map.Entry<OperatorID, OperatorSubtaskState> getOperatorSubtaskState(JobManagerTaskRestore stateRestore) {
+
+		Preconditions.checkState(stateRestore != null, "++++++ new state restore should not be null");
+
+		Set<Map.Entry<OperatorID, OperatorSubtaskState>> subtaskStateMappings
+			= stateRestore.getTaskStateSnapshot().getSubtaskStateMappings();
+
+		// By default, there will only be one Operator inside the OperatorChain.
+		for (Map.Entry<OperatorID, OperatorSubtaskState> subtaskStateEntry : subtaskStateMappings) {
+			return subtaskStateEntry;
+		}
+
+		return null;
 	}
 }
