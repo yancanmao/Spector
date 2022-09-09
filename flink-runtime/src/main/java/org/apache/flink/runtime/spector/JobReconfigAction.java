@@ -11,9 +11,9 @@ public interface JobReconfigAction {
 
 	void repartition(JobVertexID vertexID, JobExecutionPlan jobExecutionPlan);
 
-	void scaleOut(JobVertexID vertexID, int newParallelism, JobExecutionPlan jobExecutionPlan);
+//	void scaleOut(JobVertexID vertexID, int newParallelism, JobExecutionPlan jobExecutionPlan);
 
-	void scaleIn(JobVertexID vertexID, int newParallelism, JobExecutionPlan jobExecutionPlan);
+//	void scaleIn(JobVertexID vertexID, int newParallelism, JobExecutionPlan jobExecutionPlan);
 
 	enum ActionType {
 		REPARTITION,
