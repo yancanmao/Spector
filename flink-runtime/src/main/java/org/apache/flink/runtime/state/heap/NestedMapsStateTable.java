@@ -21,7 +21,6 @@ package org.apache.flink.runtime.state.heap;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.api.java.tuple.Tuple1;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.runtime.state.RegisteredKeyValueStateBackendMetaInfo;
@@ -36,7 +35,6 @@ import org.apache.flink.runtime.state.metainfo.StateMetaInfoSnapshot;
 import org.apache.flink.util.Preconditions;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -493,7 +491,7 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 	 * <p>Note: Usage of this iterator can have a heap memory consumption impact.
 	 */
 	class StateEntryIterator implements StateIncrementalVisitor<K, N, S>, Iterator<StateEntry<K, N, S>> {
-		private int keyGropuIndex;
+		private int keyGroupIndex;
 		private Iterator<Map.Entry<N, Map<K, S>>> namespaceIterator;
 		private Map.Entry<N, Map<K, S>> namespace;
 		private Iterator<Map.Entry<K, S>> keyValueIterator;
@@ -501,7 +499,7 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 		private StateEntry<K, N, S> lastReturnedEntry;
 
 		StateEntryIterator() {
-			keyGropuIndex = 0;
+			keyGroupIndex = 0;
 			namespace = null;
 			keyValueIterator = null;
 			nextKeyIterator();
@@ -544,11 +542,11 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 
 		private void nextNamespaceIterator() {
 			while (!namespaceIteratorHasNext()) {
-				while (keyGropuIndex < state.length && state[keyGropuIndex] == null) {
-					keyGropuIndex++;
+				while (keyGroupIndex < state.length && state[keyGroupIndex] == null) {
+					keyGroupIndex++;
 				}
-				if (keyGropuIndex < state.length && state[keyGropuIndex] != null) {
-					namespaceIterator = new HashSet<>(state[keyGropuIndex++].entrySet()).iterator();
+				if (keyGroupIndex < state.length && state[keyGroupIndex] != null) {
+					namespaceIterator = new HashSet<>(state[keyGroupIndex++].entrySet()).iterator();
 				} else {
 					break;
 				}
@@ -558,8 +556,8 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 		private boolean keyIteratorHasNext() {
 			while (nextEntry == null && keyValueIterator != null && keyValueIterator.hasNext()) {
 				Map.Entry<K, S> next = keyValueIterator.next();
-				Map<K, S> ns = state[keyGropuIndex - 1] == null ? null :
-					state[keyGropuIndex - 1].getOrDefault(namespace.getKey(), null);
+				Map<K, S> ns = state[keyGroupIndex - 1] == null ? null :
+					state[keyGroupIndex - 1].getOrDefault(namespace.getKey(), null);
 				S upToDateValue = ns == null ? null : ns.getOrDefault(next.getKey(), null);
 				if (upToDateValue != null) {
 					nextEntry = new SimpleStateEntry<>(next.getKey(), namespace.getKey(), upToDateValue);
@@ -579,12 +577,12 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 
 		@Override
 		public void remove(StateEntry<K, N, S> stateEntry) {
-			state[keyGropuIndex - 1].get(stateEntry.getNamespace()).remove(stateEntry.getKey());
+			state[keyGroupIndex - 1].get(stateEntry.getNamespace()).remove(stateEntry.getKey());
 		}
 
 		@Override
 		public void update(StateEntry<K, N, S> stateEntry, S newValue) {
-			state[keyGropuIndex - 1].get(stateEntry.getNamespace()).put(stateEntry.getKey(), newValue);
+			state[keyGroupIndex - 1].get(stateEntry.getNamespace()).put(stateEntry.getKey(), newValue);
 		}
 	}
 }
