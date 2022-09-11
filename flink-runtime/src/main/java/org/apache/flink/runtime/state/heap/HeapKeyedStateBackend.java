@@ -417,4 +417,8 @@ public class HeapKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 	public Map<String, StateTable<K, ?, ?>> getRegisteredKVStates() {
 		return registeredKVStates;
 	}
+
+	public Map<String, HeapPriorityQueueSnapshotRestoreWrapper> getRegisteredPQStates() {
+		return registeredPQStates;
+	}
 }

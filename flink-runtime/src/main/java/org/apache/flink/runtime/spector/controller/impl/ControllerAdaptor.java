@@ -40,6 +40,7 @@ public class ControllerAdaptor {
 		this.config = executionGraph.getJobConfiguration();
 
 //		this.migrationInterval = config.getLong("streamswitch.system.migration_interval", 5000);
+		String targetOperator = config.getString("controller.target.operators", "flatmap");
 
 		for (Map.Entry<JobVertexID, ExecutionJobVertex> entry : executionGraph.getAllVertices().entrySet()) {
 			JobVertexID vertexID = entry.getKey();
@@ -50,7 +51,7 @@ public class ControllerAdaptor {
 //			if (!entry.getValue().getName().toLowerCase().contains("join") && !entry.getValue().getName().toLowerCase().contains("window")) {
 //				continue;
 //			}
-			if (entry.getValue().getName().toLowerCase().contains("flatmap")) {
+			if (entry.getValue().getName().toLowerCase().contains(targetOperator)) {
 				FlinkOperatorController controller = new DummyController(config);
 //				FlinkOperatorController controller = new LatencyGuarantor(config);
 				ReconfigExecutor executor = new ReconfigExecutorImpl(vertexID, parallelism, maxParallelism);
@@ -167,7 +168,7 @@ public class ControllerAdaptor {
 				jobExecutionPlan = new JobExecutionPlan(
 					executorMapping, oldExecutorMapping, oldExecutionPlan, newParallelism);
 
-				rescaleAction.scaleOut(jobVertexID, newParallelism, jobExecutionPlan);
+//				rescaleAction.scaleOut(jobVertexID, newParallelism, jobExecutionPlan);
 				numOpenedSubtask = newParallelism;
 			}
 

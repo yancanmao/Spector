@@ -130,10 +130,12 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 
 	public void initBackupKeyGroups(Configuration jobConfiguration) {
 		int filer = jobConfiguration.getInteger(REPLICATE_KEYS_FILTER, 1);
+		String targetOperator = jobConfiguration.getString("controller.target.operators", "flatmap");
+		if (filer == 0) return;
 		for (Map.Entry<JobVertexID, ExecutionJobVertex> entry : executionGraph.getAllVertices().entrySet()) {
 			int maxParallelism = entry.getValue().getMaxParallelism();
 			// TODO: hard coded this part, but we need to make it work as a configurable field
-			if (entry.getValue().getName().toLowerCase().contains("flatmap")) {
+			if (entry.getValue().getName().toLowerCase().contains(targetOperator)) {
 				for (int i = 0; i < maxParallelism; i++) {
 					if (i % filer == 0) {
 						backupKeyGroups.add(i);
@@ -261,7 +263,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 		// re-assign the task states
 		final Map<OperatorID, OperatorState> operatorStates = checkpoint.getOperatorStates();
 
-		StateAssignmentOperation stateAssignmentOperation = inProcess ?
+		StateAssignmentOperation stateAssignmentOperation = checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT ?
 			new StateAssignmentOperation(checkpoint.getCheckpointID(), tasks, operatorStates,
 				true, REPARTITION_STATE, backupKeyGroups)
 			: new StateAssignmentOperation(checkpoint.getCheckpointID(), tasks, operatorStates,
@@ -271,6 +273,8 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 		stateAssignmentOperation.setPendingStandbyTasks(pendingAckStandbyTasks);
 
 		stateAssignmentOperation.assignStates();
+		// check replication progress once, in case no keys are replicated.
+		checkReplicationProgress();
 	}
 
 	// TODO: see if other place need to add this
@@ -300,9 +304,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 		}
 		checkNotNull(checkpoint);
 		LOG.info("++++++ checkpoint complete, start to dispatch state to replica");
-		if (checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT) {
-			reconfigurationProfiler.onReplicationStart();
-		}
+		reconfigurationProfiler.onReplicationStart();
 		dispatchLatestCheckpointedStateToStandbyTasks(checkpoint);
 //		if (checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT) {
 //			LOG.info("++++++ redistribute operator states");
@@ -314,19 +316,23 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 		if (ackStatus == DONE) {
 			pendingAckStandbyTasks.remove(executionAttemptID);
 			LOG.info("++++++ Receive Ack from execution: " + executionAttemptID);
-			if (pendingAckStandbyTasks.isEmpty()) {
-				LOG.info("++++++ Dispatch state to replica completed.");
-				if (inProcess) {
-					reconfigurationProfiler.onReplicationEnd();
-					try {
-						assignNewState();
-					} catch (ExecutionGraphException e) {
-						throw new RuntimeException(e);
-					}
-				}
-			}
+			checkReplicationProgress();
 		} else if (ackStatus == FAILED) {
 			throw new RuntimeException("++++++ Replication failed for some reason.");
+		}
+	}
+
+	private void checkReplicationProgress() {
+		if (pendingAckStandbyTasks.isEmpty()) {
+			LOG.info("++++++ Dispatch state to replica completed.");
+			reconfigurationProfiler.onReplicationEnd();
+			if (inProcess) {
+				try {
+					assignNewState();
+				} catch (ExecutionGraphException e) {
+					throw new RuntimeException(e);
+				}
+			}
 		}
 	}
 

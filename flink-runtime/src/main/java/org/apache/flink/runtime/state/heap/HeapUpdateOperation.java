@@ -24,13 +24,19 @@ public class HeapUpdateOperation<K> {
 	private static final Logger LOG = LoggerFactory.getLogger(HeapUpdateOperation.class);
 
 	private final Collection<KeyedStateHandle> stateHandles;
-	private final HeapKeyedStateBackend<K> keyedStateBackend;
 	private final CloseableRegistry cancelStreamRegistry;
 	private final KeyGroupRange keyGroupRange;
-	private final int maxNumberOfParallelSubtasks;
 	private final ClassLoader userCodeClassLoader;
 	private final StateSerializerProvider<K> keySerializerProvider;
+	private final Map<String, StateTable<K, ?, ?>> oldRegisteredKVStates;
+	private final Map<String, HeapPriorityQueueSnapshotRestoreWrapper> oldRegisteredPQStates;
+
+	// this two is just a wrapper to keep the compatibility
+	// we do not create new stat table or priority queue, just update the old one in fine-grained.
 	private final Map<String, StateTable<K, ?, ?>> registeredKVStates;
+	private final Map<String, HeapPriorityQueueSnapshotRestoreWrapper> registeredPQStates;
+	private final HeapPriorityQueueSetFactory priorityQueueSetFactory;
+
 
 	private final Collection<Integer> migrateInKeygroup;
 
@@ -43,22 +49,26 @@ public class HeapUpdateOperation<K> {
 							   CloseableRegistry cancelStreamRegistry,
 							   Collection<Integer> migrateInKeygroup) {
 		this.stateHandles = stateHandles;
-		this.keyedStateBackend = keyedStateBackend;
-		this.registeredKVStates = keyedStateBackend.getRegisteredKVStates();
+		this.oldRegisteredKVStates = keyedStateBackend.getRegisteredKVStates();
+		this.oldRegisteredPQStates = keyedStateBackend.getRegisteredPQStates();
+		this.registeredKVStates = new HashMap<>();
+		this.registeredPQStates = new HashMap<>();
 		this.userCodeClassLoader = keyedStateBackend.getUserCodeClassLoader();
 		this.keySerializerProvider = StateSerializerProvider.fromNewRegisteredSerializer(keySerializer);
 		this.keyGroupRange = keyGroupRange;
-		this.maxNumberOfParallelSubtasks = maxNumberOfParallelSubtasks;
 		this.cancelStreamRegistry = cancelStreamRegistry;
 		this.migrateInKeygroup = migrateInKeygroup;
+		this.priorityQueueSetFactory =
+			new HeapPriorityQueueSetFactory(keyGroupRange, maxNumberOfParallelSubtasks, 128);
 	}
 
 	public void updateHeapState() throws Exception {
 		// TODO: how to remove old state?
 		// TODO: once the snapshot has been persisted, remove the key state from the source task.
 
-		// update the state tables list, and waiting for the actual data to be appended
-		keyedStateBackend.updateStateTable(maxNumberOfParallelSubtasks);
+		final Map<Integer, StateMetaInfoSnapshot> kvStatesById = new HashMap<>();
+		registeredKVStates.clear();
+		registeredPQStates.clear();
 
 		boolean keySerializerRestored = false;
 
@@ -100,8 +110,6 @@ public class HeapUpdateOperation<K> {
 				List<StateMetaInfoSnapshot> restoredMetaInfos =
 					serializationProxy.getStateMetaInfoSnapshots();
 
-				final Map<Integer, StateMetaInfoSnapshot> kvStatesById = new HashMap<>();
-
 				createOrCheckStateForMetaInfo(restoredMetaInfos, kvStatesById);
 
 				readStateHandleStateData(
@@ -125,7 +133,34 @@ public class HeapUpdateOperation<K> {
 
 		for (StateMetaInfoSnapshot metaInfoSnapshot : restoredMetaInfo) {
 			// always put metaInfo into kvStatesById, because kvStatesById is KeyGroupsStateHandle related
-			kvStatesById.put(kvStatesById.size(), metaInfoSnapshot);
+//			kvStatesById.put(kvStatesById.size(), metaInfoSnapshot);
+			final StateSnapshotRestore registeredState;
+
+			switch (metaInfoSnapshot.getBackendStateType()) {
+				case KEY_VALUE:
+					registeredState = registeredKVStates.get(metaInfoSnapshot.getName());
+					if (registeredState == null) {
+						// We do not need to create a new kv state table for the backend, just to update it.
+						registeredKVStates.put(
+							metaInfoSnapshot.getName(),
+							oldRegisteredKVStates.get(metaInfoSnapshot.getName()));
+					}
+					break;
+				case PRIORITY_QUEUE:
+					registeredState = registeredPQStates.get(metaInfoSnapshot.getName());
+					if (registeredState == null) {
+						registeredPQStates.put(metaInfoSnapshot.getName(),
+							oldRegisteredPQStates.get(metaInfoSnapshot.getName()));
+					}
+					break;
+				default:
+					throw new IllegalStateException("Unexpected state type: " +
+						metaInfoSnapshot.getBackendStateType() + ".");
+			}
+
+			if (registeredState == null) {
+				kvStatesById.put(kvStatesById.size(), metaInfoSnapshot);
+			}
 		}
 	}
 
@@ -195,6 +230,9 @@ public class HeapUpdateOperation<K> {
 			switch (stateMetaInfoSnapshot.getBackendStateType()) {
 				case KEY_VALUE: // TODO: we only support kv store state update by far.
 					registeredState = registeredKVStates.get(stateMetaInfoSnapshot.getName());
+					break;
+				case PRIORITY_QUEUE:
+					registeredState = registeredPQStates.get(stateMetaInfoSnapshot.getName());
 					break;
 				default:
 					throw new IllegalStateException("Unexpected state type: " +
