@@ -131,6 +131,10 @@ public class StateAssignmentOperation {
 				}
 
 				if (!statelessTask) {
+					if (operation == Operation.REPARTITION_STATE
+						&& !executionJobVertex.getJobVertexId().equals(jobExecutionPlan.getJobVertexID())) {
+							continue;
+					}
 					for (ExecutionVertex standbyExecutionVertex : executionJobVertex.getStandbyExecutionVertexs()) {
 						pendingStandbyTasks.put(
 							standbyExecutionVertex.getCurrentExecutionAttempt().getAttemptId(),
@@ -169,6 +173,11 @@ public class StateAssignmentOperation {
 			if (statelessTask && operation == Operation.RESTORE_STATE) { // skip tasks where no operator has any state
 				// skip tasks where no operator has any state and we want to restore state.
 				//If dispatching to standbytask we use this as an epochID notification
+				continue;
+			}
+
+			if (operation == Operation.REPARTITION_STATE
+				&& !executionJobVertex.getJobVertexId().equals(jobExecutionPlan.getJobVertexID())) {
 				continue;
 			}
 

@@ -6,7 +6,6 @@ import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.spector.controller.ReconfigExecutor;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
-import org.apache.flink.runtime.util.profiling.ReconfigurationProfiler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,6 +36,7 @@ public class DummyController extends Thread implements FlinkOperatorController {
 
 	public final static String SYNC_KEYS = "spector.reconfig.sync_keys";
 
+	private final String name;
 	private final int numAffectedKeys;
 	private final int numAffectedTasks;
 	private final int start;
@@ -44,10 +44,12 @@ public class DummyController extends Thread implements FlinkOperatorController {
 
 	private final int syncKeys;
 
-	public DummyController(Configuration configuration) {
+	public DummyController(Configuration configuration, String name, Integer start) {
+		this.name = name;
 		this.numAffectedKeys = configuration.getInteger(NUM_AFFECTED_KEYS, 64);
 		this.numAffectedTasks = configuration.getInteger(NUM_AFFECTED_TASKS, 65535);
-		this.start = configuration.getInteger(START_TIME, 5 * 1000);
+//		this.start = configuration.getInteger(START_TIME, 5 * 1000);
+		this.start = start;
 		this.interval = configuration.getInteger(RECONFIG_INTERVAL, 10 * 1000);
 //		this.reconfigurationProfiler = new ReconfigurationProfiler(configuration);
 		// by default 0, indicate to disable sync keys

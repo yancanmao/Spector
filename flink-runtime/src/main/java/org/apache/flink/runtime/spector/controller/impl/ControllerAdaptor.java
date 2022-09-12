@@ -8,14 +8,10 @@ import org.apache.flink.runtime.spector.JobExecutionPlan;
 import org.apache.flink.runtime.spector.JobReconfigAction;
 import org.apache.flink.runtime.spector.controller.ReconfigExecutor;
 import org.apache.flink.runtime.spector.controller.OperatorController;
-import org.apache.flink.runtime.util.profiling.ReconfigurationProfiler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class ControllerAdaptor {
 
@@ -40,7 +36,14 @@ public class ControllerAdaptor {
 		this.config = executionGraph.getJobConfiguration();
 
 //		this.migrationInterval = config.getLong("streamswitch.system.migration_interval", 5000);
-		String targetOperator = config.getString("controller.target.operators", "flatmap");
+		String targetOperatorsStr = config.getString("controller.target.operators", "flatmap");
+		String reconfigStartStr = config.getString("spector.reconfig.start", "5000");
+		List<String> targetOperatorsList = Arrays.asList(targetOperatorsStr.split(","));
+		List<String> reconfigStartList = Arrays.asList(reconfigStartStr.split(","));
+		Map<String, Integer> targetOperators = new HashMap<>(targetOperatorsList.size());
+		for (int i = 0; i < targetOperatorsList.size(); i++) {
+			targetOperators.put(targetOperatorsList.get(i), Integer.valueOf(reconfigStartList.get(i)));
+		}
 
 		for (Map.Entry<JobVertexID, ExecutionJobVertex> entry : executionGraph.getAllVertices().entrySet()) {
 			JobVertexID vertexID = entry.getKey();
@@ -51,9 +54,10 @@ public class ControllerAdaptor {
 //			if (!entry.getValue().getName().toLowerCase().contains("join") && !entry.getValue().getName().toLowerCase().contains("window")) {
 //				continue;
 //			}
-			if (entry.getValue().getName().toLowerCase().contains(targetOperator)) {
-				FlinkOperatorController controller = new DummyController(config);
-//				FlinkOperatorController controller = new LatencyGuarantor(config);
+
+			String operatorName = entry.getValue().getName();
+			if (targetOperators.containsKey(operatorName)) {
+				FlinkOperatorController controller = new DummyController(config, operatorName, targetOperators.get(operatorName));
 				ReconfigExecutor executor = new ReconfigExecutorImpl(vertexID, parallelism, maxParallelism);
 
 				controller.init(
@@ -133,7 +137,7 @@ public class ControllerAdaptor {
 
 		@Override
 		public void setup(Map<String, List<String>> executorMapping) {
-			this.oldExecutionPlan = new JobExecutionPlan(executorMapping, numOpenedSubtask);
+			this.oldExecutionPlan = new JobExecutionPlan(jobVertexID, executorMapping, numOpenedSubtask);
 			// Deep copy
 			this.oldExecutorMapping = new HashMap<>();
 			for (String taskId : executorMapping.keySet()) {
@@ -160,13 +164,13 @@ public class ControllerAdaptor {
 			if (numOpenedSubtask >= newParallelism) {
 				// repartition
 				jobExecutionPlan = new JobExecutionPlan(
-					executorMapping, oldExecutorMapping, oldExecutionPlan, numOpenedSubtask);
+					jobVertexID, executorMapping, oldExecutorMapping, oldExecutionPlan, numOpenedSubtask);
 
 				rescaleAction.repartition(jobVertexID, jobExecutionPlan);
 			} else {
 				// scale out
 				jobExecutionPlan = new JobExecutionPlan(
-					executorMapping, oldExecutorMapping, oldExecutionPlan, newParallelism);
+					jobVertexID, executorMapping, oldExecutorMapping, oldExecutionPlan, newParallelism);
 
 //				rescaleAction.scaleOut(jobVertexID, newParallelism, jobExecutionPlan);
 				numOpenedSubtask = newParallelism;

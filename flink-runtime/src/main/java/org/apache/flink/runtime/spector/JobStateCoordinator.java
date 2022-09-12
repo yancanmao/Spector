@@ -52,6 +52,14 @@ import static org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus.FAI
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
+
+/**
+ * General State Migration Steps:
+ * 1. on trigger state migration, update jobgraph + execution graph.
+ * 2. trigger reconfig point to get the latest state snapshot to redistribute state from src to dst.
+ * 2. dispatch snapshoted state to standby tasks. => On all standby tasks ack to coordinator
+ * 3.
+ */
 public class JobStateCoordinator implements JobReconfigAction, CheckpointProgressListener {
 
 	private static final Logger LOG = LoggerFactory.getLogger(JobStateCoordinator.class);

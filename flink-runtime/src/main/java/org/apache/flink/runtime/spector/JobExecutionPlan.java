@@ -1,5 +1,6 @@
 package org.apache.flink.runtime.spector;
 
+import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.state.KeyGroupRange;
 
 import java.util.*;
@@ -9,6 +10,8 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
 public class JobExecutionPlan {
+
+	public final JobVertexID jobVertexID;
 
 	public static final int UNUSED_SUBTASK = Integer.MAX_VALUE/2;
 
@@ -33,10 +36,12 @@ public class JobExecutionPlan {
 	private final Map<Integer, List<Integer>> dstSubtaskMap;
 
 	public JobExecutionPlan(
-		Map<String, List<String>> strExecutorMapping,
+		JobVertexID jobVertexID, Map<String, List<String>> strExecutorMapping,
 		Map<String, List<String>> strOldExecutorMapping,
 		JobExecutionPlan jobExecutionPlan,
 		int numOpenedSubtask) {
+
+		this.jobVertexID = jobVertexID;
 
 		this.numOpenedSubtask = numOpenedSubtask;
 		this.jobExecutionPlan = checkNotNull(jobExecutionPlan);
@@ -77,8 +82,11 @@ public class JobExecutionPlan {
 	}
 
 	public JobExecutionPlan(
+		JobVertexID jobVertexID,
 		Map<String, List<String>> strExecutorMapping,
 		int numOpenedSubtask) {
+
+		this.jobVertexID = jobVertexID;
 
 		this.numOpenedSubtask = numOpenedSubtask;
 		this.jobExecutionPlan = null;
@@ -320,6 +328,10 @@ public class JobExecutionPlan {
 	public List<Integer> getAffectedKeygroupsForDestination(int subtaskIndex) {
 		checkState(dstSubtaskMap.containsKey(subtaskIndex), "++++++ not a destination task");
 		return dstSubtaskMap.get(subtaskIndex);
+	}
+
+	public JobVertexID getJobVertexID() {
+		return jobVertexID;
 	}
 
 	private static boolean checkPartitionAssignmentValidity(
