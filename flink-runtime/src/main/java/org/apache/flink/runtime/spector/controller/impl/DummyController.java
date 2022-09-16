@@ -12,11 +12,11 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class DummyController extends Thread implements FlinkOperatorController {
+public class DummyController extends Thread implements org.apache.flink.runtime.spector.controller.OperatorController {
 
 	private static final Logger LOG = LoggerFactory.getLogger(DummyController.class);
 
-	private ReconfigExecutor listener;
+	private ReconfigExecutor reconfigExecutor;
 
 	private Map<String, List<String>> executorMapping;
 
@@ -44,7 +44,8 @@ public class DummyController extends Thread implements FlinkOperatorController {
 
 	private final int syncKeys;
 
-	public DummyController(Configuration configuration, String name, Integer start) {
+	public DummyController(Configuration configuration, String name, int start,
+						   ReconfigExecutor reconfigExecutor, Map<String, List<String>> executorMapping) {
 		this.name = name;
 		this.numAffectedKeys = configuration.getInteger(NUM_AFFECTED_KEYS, 64);
 		this.numAffectedTasks = configuration.getInteger(NUM_AFFECTED_TASKS, 65535);
@@ -55,31 +56,14 @@ public class DummyController extends Thread implements FlinkOperatorController {
 		// by default 0, indicate to disable sync keys
 		this.syncKeys = configuration.getInteger(SYNC_KEYS, 0) == 0 ?
 			numAffectedKeys : configuration.getInteger(SYNC_KEYS, 0);
-	}
 
-	@Override
-	public void init(ReconfigExecutor listener, List<String> executors, List<String> partitions) {
-		this.listener = listener;
 
-		this.executorMapping = new HashMap<>();
+		this.reconfigExecutor = reconfigExecutor;
 
-		int numExecutors = executors.size();
-		int numPartitions = partitions.size();
-		for (int executorId = 0; executorId < numExecutors; executorId++) {
-			List<String> executorPartitions = new ArrayList<>();
-			executorMapping.put(String.valueOf(executorId), executorPartitions);
-
-			KeyGroupRange keyGroupRange = KeyGroupRangeAssignment.computeKeyGroupRangeForOperatorIndex(
-				numPartitions, numExecutors, executorId);
-			for (int i = keyGroupRange.getStartKeyGroup(); i <= keyGroupRange.getEndKeyGroup(); i++) {
-				executorPartitions.add(String.valueOf(i));
-			}
-		}
+		this.executorMapping = executorMapping;
 
 		this.random = new Random();
 		this.random.setSeed(System.currentTimeMillis());
-
-		this.listener.setup(executorMapping);
 	}
 
 	@Override
@@ -110,8 +94,7 @@ public class DummyController extends Thread implements FlinkOperatorController {
 		try {
 			LOG.info("------ dummy streamSwitch start to run");
 
-			// cool down time, wait for fully deployment
-//			Thread.sleep(20 * 1000);
+			// cooldown time, wait for fully deployment
 			Thread.sleep(start);
 
 //			testRepartition();
@@ -147,7 +130,7 @@ public class DummyController extends Thread implements FlinkOperatorController {
 			// run state migration
 			triggerAction(
 				"trigger 1 repartition",
-				() -> listener.remap(newExecutorMapping),
+				() -> reconfigExecutor.remap(newExecutorMapping),
 				newExecutorMapping);
 		}
 	}
@@ -252,7 +235,7 @@ public class DummyController extends Thread implements FlinkOperatorController {
 		}
 		triggerAction(
 			"trigger 1 repartition",
-			() -> listener.remap(executorMapping),
+			() -> reconfigExecutor.remap(executorMapping),
 			executorMapping);
 	}
 
@@ -278,7 +261,7 @@ public class DummyController extends Thread implements FlinkOperatorController {
 		}
 		triggerAction(
 			"trigger 1 scale out",
-			() -> listener.scale(4, executorMapping),
+			() -> reconfigExecutor.scale(4, executorMapping),
 			executorMapping);
 	}
 
@@ -310,7 +293,7 @@ public class DummyController extends Thread implements FlinkOperatorController {
 		}
 		triggerAction(
 			"trigger 1 scale in",
-			() -> listener.scale(3, executorMapping),
+			() -> reconfigExecutor.scale(3, executorMapping),
 			executorMapping);
 
 		Thread.sleep(5000);
@@ -337,7 +320,7 @@ public class DummyController extends Thread implements FlinkOperatorController {
 		}
 		triggerAction(
 			"trigger 2 scale out",
-			() -> listener.scale(4, executorMapping),
+			() -> reconfigExecutor.scale(4, executorMapping),
 			executorMapping);
 	}
 
@@ -362,7 +345,7 @@ public class DummyController extends Thread implements FlinkOperatorController {
 		}
 		triggerAction(
 			"trigger 1 repartition",
-			() -> listener.remap(executorMapping),
+			() -> reconfigExecutor.remap(executorMapping),
 			executorMapping);
 
 //		sleep(10000);
@@ -513,7 +496,7 @@ public class DummyController extends Thread implements FlinkOperatorController {
 		}
 		triggerAction(
 			"trigger 1 scale out",
-			() -> listener.scale(2, executorMapping),
+			() -> reconfigExecutor.scale(2, executorMapping),
 			executorMapping);
 		sleep(10000);
 
@@ -528,7 +511,7 @@ public class DummyController extends Thread implements FlinkOperatorController {
 		}
 		triggerAction(
 			"trigger 2 scale out",
-			() -> listener.scale(3, executorMapping),
+			() -> reconfigExecutor.scale(3, executorMapping),
 			executorMapping);
 		sleep(10000);
 
@@ -541,7 +524,7 @@ public class DummyController extends Thread implements FlinkOperatorController {
 		}
 		triggerAction(
 			"trigger 3 scale in",
-			() -> listener.scale(2, executorMapping),
+			() -> reconfigExecutor.scale(2, executorMapping),
 			executorMapping);
 		sleep(10000);
 
@@ -556,7 +539,7 @@ public class DummyController extends Thread implements FlinkOperatorController {
 		}
 		triggerAction(
 			"trigger 4 scale out",
-			() -> listener.scale(3, executorMapping),
+			() -> reconfigExecutor.scale(3, executorMapping),
 			executorMapping);
 	}
 

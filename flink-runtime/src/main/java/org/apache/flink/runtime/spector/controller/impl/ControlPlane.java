@@ -5,35 +5,32 @@ import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.spector.JobExecutionPlan;
-import org.apache.flink.runtime.spector.JobReconfigAction;
-import org.apache.flink.runtime.spector.controller.ReconfigExecutor;
+import org.apache.flink.runtime.spector.JobReconfigActor;
 import org.apache.flink.runtime.spector.controller.OperatorController;
+import org.apache.flink.runtime.spector.controller.ReconfigExecutor;
+import org.apache.flink.runtime.spector.controller.StateMigrationPlanner;
+import org.apache.flink.runtime.state.KeyGroupRange;
+import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
-public class ControllerAdaptor {
+public class ControlPlane {
 
-	private static final Logger LOG = LoggerFactory.getLogger(ControllerAdaptor.class);
+	private static final Logger LOG = LoggerFactory.getLogger(ControlPlane.class);
 
-	private final JobReconfigAction rescaleAction;
+	private final JobReconfigActor jobReconfigActor;
 
-	private final Map<JobVertexID, FlinkOperatorController> controllers;
+	private final Map<JobVertexID, OperatorController> controllers;
 
-	private final Configuration config;
+	public ControlPlane(JobReconfigActor jobReconfigActor, ExecutionGraph executionGraph) {
 
-//	private final long migrationInterval;
-
-	public ControllerAdaptor(
-		JobReconfigAction rescaleAction,
-		ExecutionGraph executionGraph) {
-
-		this.rescaleAction = rescaleAction;
+		this.jobReconfigActor = jobReconfigActor;
 
 		this.controllers = new HashMap<>(executionGraph.getAllVertices().size());
 
-		this.config = executionGraph.getJobConfiguration();
+		Configuration config = executionGraph.getJobConfiguration();
 
 //		this.migrationInterval = config.getLong("streamswitch.system.migration_interval", 5000);
 		String targetOperatorsStr = config.getString("controller.target.operators", "flatmap");
@@ -50,46 +47,59 @@ public class ControllerAdaptor {
 			int parallelism = entry.getValue().getParallelism();
 			int maxParallelism = entry.getValue().getMaxParallelism();
 
-			// TODO scaling: using DummyController for test purpose
-//			if (!entry.getValue().getName().toLowerCase().contains("join") && !entry.getValue().getName().toLowerCase().contains("window")) {
-//				continue;
-//			}
-
 			String operatorName = entry.getValue().getName();
 			if (targetOperators.containsKey(operatorName)) {
-				FlinkOperatorController controller = new DummyController(config, operatorName, targetOperators.get(operatorName));
-				ReconfigExecutor executor = new ReconfigExecutorImpl(vertexID, parallelism, maxParallelism);
+				Map<String, List<String>> executorMapping = generateExecutorMapping(parallelism, maxParallelism);
 
-				controller.init(
-					executor,
-					generateExecutorDelegates(parallelism),
-					generateFinestPartitionDelegates(maxParallelism));
-				controller.initMetrics(rescaleAction.getJobGraph(), vertexID, config, parallelism);
+				ReconfigExecutor reconfigExecutor = new ReconfigExecutorImpl(
+					vertexID,
+					parallelism,
+					executorMapping);
 
+				OperatorController controller = new DummyController(
+					config,
+					operatorName,
+					targetOperators.get(operatorName),
+					reconfigExecutor,
+					executorMapping);
+
+				controller.initMetrics(jobReconfigActor.getJobGraph(), vertexID, config, parallelism);
 				this.controllers.put(vertexID, controller);
 			}
 		}
 	}
 
+	private static Map<String, List<String>> generateExecutorMapping(int parallelism, int maxParallelism) {
+		Map<String, List<String>> executorMapping = new HashMap<>();
+
+		int numExecutors = generateExecutorDelegates(parallelism).size();
+		int numPartitions = generateFinestPartitionDelegates(maxParallelism).size();
+		for (int executorId = 0; executorId < numExecutors; executorId++) {
+			List<String> executorPartitions = new ArrayList<>();
+			executorMapping.put(String.valueOf(executorId), executorPartitions);
+
+			KeyGroupRange keyGroupRange = KeyGroupRangeAssignment.computeKeyGroupRangeForOperatorIndex(
+				numPartitions, numExecutors, executorId);
+			for (int i = keyGroupRange.getStartKeyGroup(); i <= keyGroupRange.getEndKeyGroup(); i++) {
+				executorPartitions.add(String.valueOf(i));
+			}
+		}
+		return executorMapping;
+	}
+
 	public void startControllers() {
-		for (OperatorController controller : controllers.values()) {
+		for (org.apache.flink.runtime.spector.controller.OperatorController controller : controllers.values()) {
 			controller.start();
 		}
 	}
 
 	public void stopControllers() {
-		for (OperatorController controller : controllers.values()) {
+		for (org.apache.flink.runtime.spector.controller.OperatorController controller : controllers.values()) {
 			controller.stopGracefully();
 		}
 	}
 
 	public void onChangeImplemented(JobVertexID jobVertexID) {
-		// sleep period of time
-//		try {
-//			Thread.sleep(migrationInterval);
-//		} catch (InterruptedException e) {
-//			e.printStackTrace();
-//		}
 		LOG.info("++++++ onChangeImplemented triggered for jobVertex " + jobVertexID);
 		this.controllers.get(jobVertexID).onMigrationCompleted();
 	}
@@ -122,7 +132,9 @@ public class ControllerAdaptor {
 
 	private class ReconfigExecutorImpl implements ReconfigExecutor {
 
-		public final JobVertexID jobVertexID;
+		private final StateMigrationPlanner stateMigrationPlanner;
+
+		private final JobVertexID jobVertexID;
 
 		private int numOpenedSubtask;
 
@@ -130,20 +142,19 @@ public class ControllerAdaptor {
 
 		private Map<String, List<String>> oldExecutorMapping;
 
-		public ReconfigExecutorImpl(JobVertexID jobVertexID, int parallelism, int maxParallelism) {
+
+		public ReconfigExecutorImpl(JobVertexID jobVertexID, int parallelism, Map<String, List<String>> executorMapping) {
+			this.stateMigrationPlanner = new StateMigrationPlannerImpl(jobVertexID, parallelism);
 			this.jobVertexID = jobVertexID;
 			this.numOpenedSubtask = parallelism;
-		}
 
-		@Override
-		public void setup(Map<String, List<String>> executorMapping) {
 			this.oldExecutionPlan = new JobExecutionPlan(jobVertexID, executorMapping, numOpenedSubtask);
 			// Deep copy
 			this.oldExecutorMapping = new HashMap<>();
 			for (String taskId : executorMapping.keySet()) {
 				oldExecutorMapping.put(taskId, new ArrayList<>(executorMapping.get(taskId)));
 			}
-			rescaleAction.setInitialJobExecutionPlan(jobVertexID, oldExecutionPlan);
+			jobReconfigActor.setInitialJobExecutionPlan(jobVertexID, oldExecutionPlan);
 		}
 
 		@Override
@@ -166,18 +177,79 @@ public class ControllerAdaptor {
 				jobExecutionPlan = new JobExecutionPlan(
 					jobVertexID, executorMapping, oldExecutorMapping, oldExecutionPlan, numOpenedSubtask);
 
-				rescaleAction.repartition(jobVertexID, jobExecutionPlan);
+				// if there are multiple reconfig triggers, only one of them should be happened first.
+				synchronized (jobReconfigActor) {
+					jobReconfigActor.repartition(jobVertexID, jobExecutionPlan);
+				}
 			} else {
 				// scale out
 				jobExecutionPlan = new JobExecutionPlan(
 					jobVertexID, executorMapping, oldExecutorMapping, oldExecutionPlan, newParallelism);
-
-//				rescaleAction.scaleOut(jobVertexID, newParallelism, jobExecutionPlan);
+//				synchronized (rescaleAction) {
+//					rescaleAction.scaleOut(jobVertexID, newParallelism, jobExecutionPlan);
+//				}
 				numOpenedSubtask = newParallelism;
 			}
 
 			this.oldExecutionPlan = jobExecutionPlan;
 			this.oldExecutorMapping = new HashMap<>(executorMapping);
+		}
+	}
+
+	/**
+	 * Set the plan for the state migration according to the Configurations
+	 */
+	private class StateMigrationPlannerImpl implements StateMigrationPlanner {
+		private final JobVertexID jobVertexID;
+
+		private int numOpenedSubtask;
+
+		private Map<String, List<String>> oldExecutorMapping;
+
+		public StateMigrationPlannerImpl(JobVertexID jobVertexID, int parallelism) {
+			this.jobVertexID = jobVertexID;
+			this.numOpenedSubtask = parallelism;
+		}
+
+		public void setup(Map<String, List<String>> executorMapping) {
+			// Deep copy
+			this.oldExecutorMapping = new HashMap<>();
+			for (String taskId : executorMapping.keySet()) {
+				oldExecutorMapping.put(taskId, new ArrayList<>(executorMapping.get(taskId)));
+			}
+		}
+
+		public void remap(Map<String, List<String>> executorMapping) {
+			makePlan(executorMapping);
+		}
+
+		public void scale(Map<String, List<String>> executorMapping) {
+			makePlan(executorMapping);
+		}
+
+		public void makePlan(Map<String, List<String>> executorMapping) {
+			int newParallelism = executorMapping.keySet().size();
+
+			// find out the affected keys.
+			// order the migrating keys
+			// return the state migration plan to reconfig executor
+
+			if (numOpenedSubtask >= newParallelism) {
+				// repartition
+			} else {
+				// scale out
+				throw new UnsupportedOperationException();
+			}
+
+			this.oldExecutorMapping = new HashMap<>(executorMapping);
+		}
+
+		public void prioritizeKeys() {
+
+		}
+
+		public void batchingKeys() {
+
 		}
 	}
 }

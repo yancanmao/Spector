@@ -5,8 +5,6 @@ import java.util.Map;
 
 public interface ReconfigExecutor {
 
-	void setup(Map<String, List<String>> executorMapping);
-
 	void remap(Map<String, List<String>> executorMapping);
 
 	void scale(int parallelism, Map<String, List<String>> executorMapping);

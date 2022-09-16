@@ -3,7 +3,7 @@ package org.apache.flink.runtime.spector;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 
-public interface JobReconfigAction {
+public interface JobReconfigActor {
 
 	JobGraph getJobGraph();
 

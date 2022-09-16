@@ -34,7 +34,7 @@ import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.jsonplan.JsonPlanGenerator;
 import org.apache.flink.runtime.jobmaster.slotpool.SchedulerImpl;
-import org.apache.flink.runtime.spector.controller.impl.ControllerAdaptor;
+import org.apache.flink.runtime.spector.controller.impl.ControlPlane;
 import org.apache.flink.runtime.util.profiling.ReconfigurationProfiler;
 import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
@@ -60,14 +60,14 @@ import static org.apache.flink.util.Preconditions.checkState;
  * 2. dispatch snapshoted state to standby tasks. => On all standby tasks ack to coordinator
  * 3.
  */
-public class JobStateCoordinator implements JobReconfigAction, CheckpointProgressListener {
+public class JobStateCoordinator implements JobReconfigActor, CheckpointProgressListener {
 
 	private static final Logger LOG = LoggerFactory.getLogger(JobStateCoordinator.class);
 	public final static String REPLICATE_KEYS_FILTER = "spector.replicate_keys_filter";
 	private final JobGraph jobGraph;
 	private ExecutionGraph executionGraph;
 	private ComponentMainThreadExecutor mainThreadExecutor;
-	private ControllerAdaptor controllerAdaptor;
+	private ControlPlane controlPlane;
 	private final JobGraphUpdater jobGraphUpdater;
 
 	private final List<ExecutionAttemptID> notYetAcknowledgedTasks;
@@ -124,7 +124,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 
 		this.notYetAcknowledgedTasks = new ArrayList<>();
 
-		this.controllerAdaptor = new ControllerAdaptor(this, executionGraph);
+		this.controlPlane = new ControlPlane(this, executionGraph);
 		this.jobGraphUpdater = JobGraphUpdater.instantiate(jobGraph, userCodeLoader);
 
 		this.standbyExecutionVertexes = new HashMap<>();
@@ -142,7 +142,6 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 		if (filer == 0) return;
 		for (Map.Entry<JobVertexID, ExecutionJobVertex> entry : executionGraph.getAllVertices().entrySet()) {
 			int maxParallelism = entry.getValue().getMaxParallelism();
-			// TODO: hard coded this part, but we need to make it work as a configurable field
 			if (entry.getValue().getName().toLowerCase().contains(targetOperator)) {
 				for (int i = 0; i < maxParallelism; i++) {
 					if (i % filer == 0) {
@@ -353,7 +352,7 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 
 	public void start() {
 		notifyNewVertices(executionGraph.getExecutionJobVertices());
-		controllerAdaptor.startControllers();
+		controlPlane.startControllers();
 
 		CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
 		checkNotNull(checkpointCoordinator);
@@ -361,17 +360,17 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 	}
 
 	public void stop() {
-		controllerAdaptor.stopControllers();
+		controlPlane.stopControllers();
 	}
 
 	public void assignExecutionGraph(ExecutionGraph executionGraph) {
 		checkState(!inProcess, "ExecutionGraph changed after rescaling starts");
 		this.executionGraph = executionGraph;
 
-		controllerAdaptor.stopControllers();
-		this.controllerAdaptor = new ControllerAdaptor(this, executionGraph);
+		controlPlane.stopControllers();
+		this.controlPlane = new ControlPlane(this, executionGraph);
 
-		controllerAdaptor.startControllers();
+		controlPlane.startControllers();
 	}
 
 	@Override
@@ -581,8 +580,8 @@ public class JobStateCoordinator implements JobReconfigAction, CheckpointProgres
 				// notify streamSwitch that change is finished
 				reconfigurationProfiler.onUpdateEnd();
 				reconfigurationProfiler.onReconfigurationEnd();
-				controllerAdaptor.onMigrationExecutorsStopped(targetVertex.getJobVertexId());
-				controllerAdaptor.onChangeImplemented(targetVertex.getJobVertexId());
+				controlPlane.onMigrationExecutorsStopped(targetVertex.getJobVertexId());
+				controlPlane.onChangeImplemented(targetVertex.getJobVertexId());
 			}, mainThreadExecutor);
 	}
 
