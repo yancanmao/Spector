@@ -12,6 +12,8 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static org.apache.flink.runtime.spector.controller.impl.ControlPlane.SYNC_KEYS;
+
 public class DummyController extends Thread implements org.apache.flink.runtime.spector.controller.OperatorController {
 
 	private static final Logger LOG = LoggerFactory.getLogger(DummyController.class);
@@ -34,7 +36,6 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 	public final static String START_TIME = "spector.reconfig.start";
 	public final static String RECONFIG_INTERVAL = "spector.reconfig.interval";
 
-	public final static String SYNC_KEYS = "spector.reconfig.sync_keys";
 
 	private final String name;
 	private final int numAffectedKeys;

@@ -218,8 +218,8 @@ public class JobExecutionPlan {
 	private void compareAndSetAffectedKeys(Map<Integer, List<Integer>> executorMapping, Map<Integer, List<Integer>> oldExecutorMapping, Integer id, Map<Integer, List<Integer>> subtaskMap) {
 		for (Integer hashedKeys : executorMapping.get(id)) {
 			if (!oldExecutorMapping.get(id).contains(hashedKeys)) {
-				List<Integer> keysToMigrateIn = subtaskMap.computeIfAbsent(id, t -> new ArrayList<>());
-				keysToMigrateIn.add(hashedKeys);
+				List<Integer> affectedKeys = subtaskMap.computeIfAbsent(id, t -> new ArrayList<>());
+				affectedKeys.add(hashedKeys);
 			}
 		}
 	}
