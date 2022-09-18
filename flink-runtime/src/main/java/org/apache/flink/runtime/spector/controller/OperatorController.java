@@ -19,4 +19,6 @@ public interface OperatorController {
 	void initMetrics(JobGraph jobGraph, JobVertexID vertexID, Configuration jobConfiguration, int parallelism);
 
 	void onForceRetrieveMetrics();
+
+	StateMigrationPlanner getStateMigrationPlanner();
 }

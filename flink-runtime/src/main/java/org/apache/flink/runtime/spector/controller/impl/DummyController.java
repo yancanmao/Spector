@@ -3,7 +3,7 @@ package org.apache.flink.runtime.spector.controller.impl;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
-import org.apache.flink.runtime.spector.controller.ReconfigExecutor;
+import org.apache.flink.runtime.spector.controller.StateMigrationPlanner;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.slf4j.Logger;
@@ -12,13 +12,11 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static org.apache.flink.runtime.spector.controller.impl.ControlPlane.SYNC_KEYS;
-
 public class DummyController extends Thread implements org.apache.flink.runtime.spector.controller.OperatorController {
 
 	private static final Logger LOG = LoggerFactory.getLogger(DummyController.class);
 
-	private ReconfigExecutor reconfigExecutor;
+	private StateMigrationPlanner stateMigrationPlanner;
 
 	private Map<String, List<String>> executorMapping;
 
@@ -36,6 +34,8 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 	public final static String START_TIME = "spector.reconfig.start";
 	public final static String RECONFIG_INTERVAL = "spector.reconfig.interval";
 
+	public final static String SYNC_KEYS = "spector.reconfig.sync_keys";
+
 
 	private final String name;
 	private final int numAffectedKeys;
@@ -46,7 +46,7 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 	private final int syncKeys;
 
 	public DummyController(Configuration configuration, String name, int start,
-						   ReconfigExecutor reconfigExecutor, Map<String, List<String>> executorMapping) {
+						   StateMigrationPlanner stateMigrationPlanner, Map<String, List<String>> executorMapping) {
 		this.name = name;
 		this.numAffectedKeys = configuration.getInteger(NUM_AFFECTED_KEYS, 64);
 		this.numAffectedTasks = configuration.getInteger(NUM_AFFECTED_TASKS, 65535);
@@ -59,7 +59,7 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 			numAffectedKeys : configuration.getInteger(SYNC_KEYS, 0);
 
 
-		this.reconfigExecutor = reconfigExecutor;
+		this.stateMigrationPlanner = stateMigrationPlanner;
 
 		this.executorMapping = executorMapping;
 
@@ -88,6 +88,10 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 	@Override
 	public void onMigrationCompleted() {
 		waitForMigrationDeployed = false;
+	}
+
+	public StateMigrationPlanner getStateMigrationPlanner() {
+		return stateMigrationPlanner;
 	}
 
 	@Override
@@ -123,6 +127,21 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 	 * set number of keys to migrate and select equi-sized number of keys from each task to migrate.
 	 */
 	private void stateMigration(int numAffectedTasks, int numAffectedKeys) throws InterruptedException {
+		Map<String, List<String>> newExecutorMapping = deepCopy(executorMapping);
+		Map<String, List<String>> selectedTasks = selectAffectedTasks(numAffectedTasks, newExecutorMapping);
+		equiShuffle(numAffectedKeys, selectedTasks);
+
+		// run state migration
+		triggerNonblockingAction(
+			"trigger 1 repartition",
+			() -> stateMigrationPlanner.remap(newExecutorMapping),
+			newExecutorMapping);
+	}
+
+	/**
+	 * set number of keys to migrate and select equi-sized number of keys from each task to migrate.
+	 */
+	private void fluidStateMigration(int numAffectedTasks, int numAffectedKeys) throws InterruptedException {
 		for (int i = 0; i < numAffectedKeys / syncKeys; i++) {
 			Map<String, List<String>> newExecutorMapping = deepCopy(executorMapping);
 			Map<String, List<String>> selectedTasks = selectAffectedTasks(numAffectedTasks, newExecutorMapping);
@@ -131,7 +150,7 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 			// run state migration
 			triggerAction(
 				"trigger 1 repartition",
-				() -> reconfigExecutor.remap(newExecutorMapping),
+				() -> stateMigrationPlanner.remap(newExecutorMapping),
 				newExecutorMapping);
 		}
 	}
@@ -169,7 +188,19 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 		}
 	}
 
-	private void triggerAction(String logStr, Runnable runnable, Map<String, List<String>> partitionAssignment) throws InterruptedException {
+	private void triggerNonblockingAction(String logStr, Runnable runnable, Map<String, List<String>> partitionAssignment) {
+		LOG.info("------ " + logStr + "   partitionAssignment: " + partitionAssignment);
+		long start = System.currentTimeMillis();
+//		reconfigurationProfiler.onReconfigurationStart();
+
+		runnable.run();
+
+		executorMapping = partitionAssignment;
+//		reconfigurationProfiler.onReconfigurationEnd();
+		LOG.info("++++++ reconfig completion time: " + (System.currentTimeMillis() - start));
+	}
+
+	private void triggerAction(String logStr, Runnable runnable, Map<String, List<String>> partitionAssignment) {
 		LOG.info("------ " + logStr + "   partitionAssignment: " + partitionAssignment);
 		long start = System.currentTimeMillis();
 //		reconfigurationProfiler.onReconfigurationStart();
@@ -236,7 +267,7 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 		}
 		triggerAction(
 			"trigger 1 repartition",
-			() -> reconfigExecutor.remap(executorMapping),
+			() -> stateMigrationPlanner.remap(executorMapping),
 			executorMapping);
 	}
 
@@ -262,7 +293,7 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 		}
 		triggerAction(
 			"trigger 1 scale out",
-			() -> reconfigExecutor.scale(4, executorMapping),
+			() -> stateMigrationPlanner.scale(4, executorMapping),
 			executorMapping);
 	}
 
@@ -294,7 +325,7 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 		}
 		triggerAction(
 			"trigger 1 scale in",
-			() -> reconfigExecutor.scale(3, executorMapping),
+			() -> stateMigrationPlanner.scale(3, executorMapping),
 			executorMapping);
 
 		Thread.sleep(5000);
@@ -321,7 +352,7 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 		}
 		triggerAction(
 			"trigger 2 scale out",
-			() -> reconfigExecutor.scale(4, executorMapping),
+			() -> stateMigrationPlanner.scale(4, executorMapping),
 			executorMapping);
 	}
 
@@ -346,7 +377,7 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 		}
 		triggerAction(
 			"trigger 1 repartition",
-			() -> reconfigExecutor.remap(executorMapping),
+			() -> stateMigrationPlanner.remap(executorMapping),
 			executorMapping);
 
 //		sleep(10000);
@@ -497,7 +528,7 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 		}
 		triggerAction(
 			"trigger 1 scale out",
-			() -> reconfigExecutor.scale(2, executorMapping),
+			() -> stateMigrationPlanner.scale(2, executorMapping),
 			executorMapping);
 		sleep(10000);
 
@@ -512,7 +543,7 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 		}
 		triggerAction(
 			"trigger 2 scale out",
-			() -> reconfigExecutor.scale(3, executorMapping),
+			() -> stateMigrationPlanner.scale(3, executorMapping),
 			executorMapping);
 		sleep(10000);
 
@@ -525,7 +556,7 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 		}
 		triggerAction(
 			"trigger 3 scale in",
-			() -> reconfigExecutor.scale(2, executorMapping),
+			() -> stateMigrationPlanner.scale(2, executorMapping),
 			executorMapping);
 		sleep(10000);
 
@@ -540,7 +571,7 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 		}
 		triggerAction(
 			"trigger 4 scale out",
-			() -> reconfigExecutor.scale(3, executorMapping),
+			() -> stateMigrationPlanner.scale(3, executorMapping),
 			executorMapping);
 	}
 
