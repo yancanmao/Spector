@@ -4,8 +4,8 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
-import org.apache.flink.runtime.spector.JobExecutionPlan;
-import org.apache.flink.runtime.spector.JobReconfigActor;
+import org.apache.flink.runtime.spector.migration.JobExecutionPlan;
+import org.apache.flink.runtime.spector.migration.JobReconfigActor;
 import org.apache.flink.runtime.spector.controller.OperatorController;
 import org.apache.flink.runtime.spector.controller.ReconfigExecutor;
 import org.apache.flink.runtime.spector.controller.StateMigrationPlanner;
@@ -15,6 +15,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+
+import static org.apache.flink.runtime.spector.SpectorOptions.RECONFIG_START_TIME;
+import static org.apache.flink.runtime.spector.SpectorOptions.TARGET_OPERATORS;
 
 public class ControlPlane {
 
@@ -32,12 +35,13 @@ public class ControlPlane {
 
 
 
-		Configuration config = executionGraph.getJobConfiguration();
+		Configuration configuration = executionGraph.getJobConfiguration();
 
 
-//		this.migrationInterval = config.getLong("streamswitch.system.migration_interval", 5000);
-		String targetOperatorsStr = config.getString("controller.target.operators", "flatmap");
-		String reconfigStartStr = config.getString("spector.reconfig.start", "5000");
+//		this.migrationInterval = configuration.getLong("streamswitch.system.migration_interval", 5000);
+		String targetOperatorsStr = configuration.getString(TARGET_OPERATORS);
+		String reconfigStartStr = configuration.getString(RECONFIG_START_TIME);
+
 		List<String> targetOperatorsList = Arrays.asList(targetOperatorsStr.split(","));
 		List<String> reconfigStartList = Arrays.asList(reconfigStartStr.split(","));
 		Map<String, Integer> targetOperators = new HashMap<>(targetOperatorsList.size());
@@ -60,20 +64,20 @@ public class ControlPlane {
 					executorMapping);
 
 				StateMigrationPlanner stateMigrationPlanner = new StateMigrationPlannerImpl(
-					config,
+					configuration,
 					vertexID,
 					parallelism,
 					executorMapping,
 					reconfigExecutor);
 
 				OperatorController controller = new DummyController(
-					config,
+					configuration,
 					operatorName,
 					targetOperators.get(operatorName),
 					stateMigrationPlanner,
 					executorMapping);
 
-				controller.initMetrics(jobReconfigActor.getJobGraph(), vertexID, config, parallelism);
+				controller.initMetrics(jobReconfigActor.getJobGraph(), vertexID, configuration, parallelism);
 				this.controllers.put(vertexID, controller);
 			}
 		}

@@ -26,7 +26,7 @@ import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.JobInformation;
 import org.apache.flink.runtime.executiongraph.TaskInformation;
-import org.apache.flink.runtime.spector.ReconfigID;
+import org.apache.flink.runtime.spector.migration.ReconfigID;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.util.FileUtils;
 import org.apache.flink.util.Preconditions;

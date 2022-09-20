@@ -5,7 +5,7 @@ import org.apache.flink.runtime.jobgraph.JobEdge;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
-import org.apache.flink.runtime.spector.JobExecutionPlan;
+import org.apache.flink.runtime.spector.migration.JobExecutionPlan;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -18,7 +18,9 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class KafkaMetricsRetriever implements StreamSwitchMetricsRetriever {
+import static org.apache.flink.runtime.spector.SpectorOptions.*;
+
+public class KafkaMetricsRetriever implements MetricsRetriever {
 	private static final Logger LOG = LoggerFactory.getLogger(KafkaMetricsRetriever.class);
 	private AtomicBoolean closed = new AtomicBoolean();
 	private CountDownLatch shutdownLatch = new CountDownLatch(1);
@@ -42,7 +44,6 @@ public class KafkaMetricsRetriever implements StreamSwitchMetricsRetriever {
 	private HashMap<String, Double> lastExecutorServiceRate = new HashMap<>();
 	private HashMap<String, ArrayList<Double>> executorServiceRateWindow = new HashMap<>();
 	private int windowSize = 10;
-	private double decayFactor;
 	private double initialParallelism;
 
 	@Override
@@ -51,11 +52,10 @@ public class KafkaMetricsRetriever implements StreamSwitchMetricsRetriever {
 		this.vertexID = vertexID;
 
 		this.jobConfiguration = jobConfiguration;
-		TOPIC = jobConfiguration.getString("policy.metrics.topic", "flink_metrics");
-		servers = jobConfiguration.getString("policy.metrics.servers", "localhost:9092");
-		nRecords = jobConfiguration.getInteger("model.retrieve.nrecords", 15);
-		metrcsWarmUpTime = jobConfiguration.getInteger("model.metrics.warmup", 100);
-		decayFactor = jobConfiguration.getDouble("streamswitch.system.decayfactor", 0.875);
+		TOPIC = jobConfiguration.getString(METRICS_KAFKA_TOPIC);
+		servers = jobConfiguration.getString(METRICS_KAFKA_SERVER);
+		nRecords = jobConfiguration.getInteger(N_RECORDS);
+		metrcsWarmUpTime = jobConfiguration.getInteger(MODEL_METRICS_RETRIEVE_WARMUP);
 
 		JobVertex curVertex = jobGraph.findVertexByID(vertexID);
 		for (JobEdge jobEdge : curVertex.getInputs()) {

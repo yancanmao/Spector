@@ -37,7 +37,7 @@ import org.apache.flink.runtime.messages.TaskManagerMessages;
 import org.apache.flink.runtime.messages.TaskMessages;
 import org.apache.flink.runtime.messages.checkpoint.NotifyCheckpointComplete;
 import org.apache.flink.runtime.messages.checkpoint.TriggerCheckpoint;
-import org.apache.flink.runtime.spector.ReconfigOptions;
+import org.apache.flink.runtime.spector.migration.ReconfigOptions;
 import org.apache.flink.util.Preconditions;
 
 import java.util.concurrent.CompletableFuture;

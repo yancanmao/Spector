@@ -1,4 +1,4 @@
-package org.apache.flink.runtime.spector;
+package org.apache.flink.runtime.spector.replication;
 
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;

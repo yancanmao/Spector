@@ -30,7 +30,7 @@ import org.apache.flink.runtime.executiongraph.ExecutionVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.OperatorInstanceID;
-import org.apache.flink.runtime.spector.JobExecutionPlan;
+import org.apache.flink.runtime.spector.migration.JobExecutionPlan;
 import org.apache.flink.runtime.state.*;
 import org.apache.flink.runtime.state.memory.ByteStreamStateHandle;
 import org.apache.flink.util.Preconditions;
@@ -50,8 +50,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 
-import static org.apache.flink.runtime.spector.GlobalStateManager.globalManagedStateHandles;
-import static org.apache.flink.runtime.spector.GlobalStateManager.globalRawStateHandles;
+import static org.apache.flink.runtime.spector.replication.GlobalStateManager.globalManagedStateHandles;
+import static org.apache.flink.runtime.spector.replication.GlobalStateManager.globalRawStateHandles;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 

@@ -1,4 +1,4 @@
-package org.apache.flink.runtime.spector;
+package org.apache.flink.runtime.spector.replication;
 
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.runtime.checkpoint.OperatorState;

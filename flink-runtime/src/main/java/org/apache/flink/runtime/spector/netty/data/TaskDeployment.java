@@ -6,7 +6,7 @@ import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.jobmaster.JobMasterId;
-import org.apache.flink.runtime.spector.ReconfigOptions;
+import org.apache.flink.runtime.spector.migration.ReconfigOptions;
 
 import java.io.Serializable;
 

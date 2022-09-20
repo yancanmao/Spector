@@ -30,7 +30,7 @@ import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.StackTraceSampleResponse;
-import org.apache.flink.runtime.spector.ReconfigOptions;
+import org.apache.flink.runtime.spector.migration.ReconfigOptions;
 import org.apache.flink.runtime.spector.netty.TaskExecutorNettyClient;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.util.Preconditions;

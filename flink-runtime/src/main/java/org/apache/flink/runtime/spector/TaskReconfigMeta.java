@@ -4,6 +4,8 @@ import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
 import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
+import org.apache.flink.runtime.spector.migration.ReconfigID;
+import org.apache.flink.runtime.spector.migration.ReconfigOptions;
 
 import java.util.Collection;
 

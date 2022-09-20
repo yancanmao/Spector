@@ -71,8 +71,8 @@ import org.apache.flink.runtime.query.KvStateClientProxy;
 import org.apache.flink.runtime.query.KvStateRegistry;
 import org.apache.flink.runtime.query.KvStateServer;
 import org.apache.flink.runtime.registration.RegistrationConnectionListener;
-import org.apache.flink.runtime.spector.BackupStateManager;
-import org.apache.flink.runtime.spector.ReconfigOptions;
+import org.apache.flink.runtime.spector.replication.BackupStateManager;
+import org.apache.flink.runtime.spector.migration.ReconfigOptions;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
@@ -145,6 +145,7 @@ import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
 import static org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus.DONE;
+import static org.apache.flink.runtime.spector.SpectorOptions.*;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -285,11 +286,11 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 		this.backupStateManager = new BackupStateManager();
 
-		nettyStateTransmissionEnabled = taskManagerConfiguration.getConfiguration().getBoolean("netty.state.transmission.enabled", true);
+		nettyStateTransmissionEnabled = taskManagerConfiguration.getConfiguration().getBoolean(NETTY_STATE_TRANSMISSION_ENABLED);
 
 		try {
 			boolean taskDeploymentEnabled =
-				taskManagerConfiguration.getConfiguration().getBoolean("netty.optimized.deployment.enabled", true);
+				taskManagerConfiguration.getConfiguration().getBoolean(NETTY_OPTIMIZED_DEPLOYMENT_ENABLED, true);
 			this.taskExecutorNettyServer = nettyStateTransmissionEnabled ?
 				new TaskExecutorNettyServer(
 					() -> this.getSelfGateway(TaskExecutorGateway.class),
@@ -1473,7 +1474,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			int lowWaterMark = 10 * 1024 * 1024;
 			int highWaterMark = 50 * 1024 * 1024;
 			boolean taskAcknowledgementEnabled =
-				taskManagerConfiguration.getConfiguration().getBoolean("netty.optimized.acknowledgement.enabled", false);
+				taskManagerConfiguration.getConfiguration().getBoolean(NETTY_OPTIMIZED_ACK_ENABLED);
 			checkpointCoordinatorNettyClient = new CheckpointCoordinatorNettyClient(
 				checkpointCoordinatorSocketAddress,
 				channelCount,

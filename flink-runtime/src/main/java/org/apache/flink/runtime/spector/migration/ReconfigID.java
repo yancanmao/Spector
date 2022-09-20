@@ -1,4 +1,4 @@
-package org.apache.flink.runtime.spector;
+package org.apache.flink.runtime.spector.migration;
 
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 

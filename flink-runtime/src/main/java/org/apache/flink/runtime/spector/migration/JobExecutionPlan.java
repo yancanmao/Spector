@@ -1,4 +1,4 @@
-package org.apache.flink.runtime.spector;
+package org.apache.flink.runtime.spector.migration;
 
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.state.KeyGroupRange;

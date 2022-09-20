@@ -29,6 +29,8 @@ import java.io.OutputStream;
 import java.io.Serializable;
 import java.util.HashMap;
 
+import static org.apache.flink.runtime.spector.SpectorOptions.*;
+
 /**
  * The MetricsManager is responsible for logging activity profiling information (except for messages).
  * It gathers start and end events for deserialization, processing, serialization, blocking on read and write buffers
@@ -75,23 +77,23 @@ public class FSMetricsManager implements Serializable, MetricsManager {
 
 	/**
 	 * @param taskDescription the String describing the owner operator instance
-	 * @param jobConfiguration this job's configuration
+	 * @param configuration this job's configuration
 	 */
-	public FSMetricsManager(String taskDescription, JobVertexID jobVertexId, Configuration jobConfiguration, int idInModel, int maximumKeygroups) {
+	public FSMetricsManager(String taskDescription, JobVertexID jobVertexId, Configuration configuration, int idInModel, int maximumKeygroups) {
 		numKeygroups = maximumKeygroups;
 
 		taskId = taskDescription;
 		String workerId = taskId.replace("Timestamps/Watermarks", "Timestamps-Watermarks");
-		workerName = workerId.substring(0, workerId.indexOf("(")-1);
-		instanceId = Integer.parseInt(workerId.substring(workerId.lastIndexOf("(")+1, workerId.lastIndexOf("/"))) - 1; // need to consistent with partitionAssignment
+		workerName = workerId.substring(0, workerId.indexOf("(") - 1);
+		instanceId = Integer.parseInt(workerId.substring(workerId.lastIndexOf("(") + 1, workerId.lastIndexOf("/"))) - 1; // need to consistent with partitionAssignment
 		instanceId = idInModel;
 //		System.out.println("----updated task with instance id is: " + workerName + "-" + instanceId);
 		System.out.println("start execution: " + workerName + "-" + instanceId + " time: " + System.currentTimeMillis());
-		numInstances = Integer.parseInt(workerId.substring(workerId.lastIndexOf("/")+1, workerId.lastIndexOf(")")));
+		numInstances = Integer.parseInt(workerId.substring(workerId.lastIndexOf("/") + 1, workerId.lastIndexOf(")")));
 		status = new ProcessingStatus();
 
-		windowSize = jobConfiguration.getLong("policy.windowSize",  1_000_000_000L);
-		nRecords = jobConfiguration.getInteger("policy.metrics.nrecords", 15);
+		windowSize = configuration.getLong(WINDOW_SIZE);
+		nRecords = configuration.getInteger(N_RECORDS);
 
 		currentWindowStart = status.getProcessingStart();
 
@@ -99,7 +101,7 @@ public class FSMetricsManager implements Serializable, MetricsManager {
 
 		OutputStream outputStream;
 		try {
-			String expDir = jobConfiguration.getString("spector.exp.dir", "/data/flink");
+			String expDir = configuration.getString(EXP_DIR);
 			outputStream = new FileOutputStream(expDir + "/" + getJobVertexId() + ".output");
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();

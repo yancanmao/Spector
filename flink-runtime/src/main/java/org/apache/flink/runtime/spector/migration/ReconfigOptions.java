@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.spector;
+package org.apache.flink.runtime.spector.migration;
 
 import java.io.Serializable;
 

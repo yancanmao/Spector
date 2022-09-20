@@ -12,6 +12,8 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static org.apache.flink.runtime.spector.SpectorOptions.*;
+
 public class DummyController extends Thread implements org.apache.flink.runtime.spector.controller.OperatorController {
 
 	private static final Logger LOG = LoggerFactory.getLogger(DummyController.class);
@@ -28,13 +30,6 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 
 //	private final ReconfigurationProfiler reconfigurationProfiler;
 
-	public final static String NUM_AFFECTED_KEYS = "spector.reconfig.affected_keys";
-
-	public final static String NUM_AFFECTED_TASKS = "spector.reconfig.affected_tasks";
-	public final static String START_TIME = "spector.reconfig.start";
-	public final static String RECONFIG_INTERVAL = "spector.reconfig.interval";
-
-	public final static String SYNC_KEYS = "spector.reconfig.sync_keys";
 
 
 	private final String name;
@@ -48,15 +43,15 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 	public DummyController(Configuration configuration, String name, int start,
 						   StateMigrationPlanner stateMigrationPlanner, Map<String, List<String>> executorMapping) {
 		this.name = name;
-		this.numAffectedKeys = configuration.getInteger(NUM_AFFECTED_KEYS, 64);
-		this.numAffectedTasks = configuration.getInteger(NUM_AFFECTED_TASKS, 65535);
+		this.numAffectedKeys = configuration.getInteger(NUM_AFFECTED_KEYS);
+		this.numAffectedTasks = configuration.getInteger(NUM_AFFECTED_TASKS);
 //		this.start = configuration.getInteger(START_TIME, 5 * 1000);
 		this.start = start;
-		this.interval = configuration.getInteger(RECONFIG_INTERVAL, 10 * 1000);
+		this.interval = configuration.getInteger(RECONFIG_INTERVAL);
 //		this.reconfigurationProfiler = new ReconfigurationProfiler(configuration);
 		// by default 0, indicate to disable sync keys
-		this.syncKeys = configuration.getInteger(SYNC_KEYS, 0) == 0 ?
-			numAffectedKeys : configuration.getInteger(SYNC_KEYS, 0);
+		this.syncKeys = configuration.getInteger(SYNC_KEYS) == 0 ?
+			numAffectedKeys : configuration.getInteger(SYNC_KEYS);
 
 
 		this.stateMigrationPlanner = stateMigrationPlanner;

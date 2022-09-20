@@ -5,7 +5,7 @@ import org.apache.flink.runtime.jobgraph.JobEdge;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
-import org.apache.flink.runtime.spector.JobExecutionPlan;
+import org.apache.flink.runtime.spector.migration.JobExecutionPlan;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -18,7 +18,7 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class StockMetricsRetriever implements StreamSwitchMetricsRetriever {
+public class StockMetricsRetriever implements MetricsRetriever {
 	private static final Logger LOG = LoggerFactory.getLogger(StockMetricsRetriever.class);
 	private AtomicBoolean closed = new AtomicBoolean();
 	private CountDownLatch shutdownLatch = new CountDownLatch(1);

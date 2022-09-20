@@ -31,8 +31,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.apache.flink.runtime.spector.controller.impl.DummyController.NUM_AFFECTED_KEYS;
-import static org.apache.flink.runtime.spector.controller.impl.DummyController.SYNC_KEYS;
+import static org.apache.flink.runtime.spector.SpectorOptions.NUM_AFFECTED_KEYS;
+import static org.apache.flink.runtime.spector.SpectorOptions.SYNC_KEYS;
 
 /**
  * Set the plan for the state migration according to the Configurations
@@ -41,7 +41,7 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 	private static final Logger LOG = LoggerFactory.getLogger(StateMigrationPlanner.class);
 
 
-	private final Configuration config;
+	private final Configuration configuration;
 	private final JobVertexID jobVertexID;
 
 	private int numOpenedSubtask;
@@ -54,16 +54,16 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 
 	public final int syncKeys;
 
-	public StateMigrationPlannerImpl(Configuration config,
+	public StateMigrationPlannerImpl(Configuration configuration,
 									 JobVertexID jobVertexID,
 									 int parallelism,
 									 Map<String, List<String>> executorMapping,
 									 ReconfigExecutor reconfigExecutor) {
-		this.config = config;
+		this.configuration = configuration;
 
-		int numAffectedKeys = config.getInteger(NUM_AFFECTED_KEYS, 64);
-		this.syncKeys = config.getInteger(SYNC_KEYS, 0) == 0 ?
-			numAffectedKeys : config.getInteger(SYNC_KEYS, 0);
+		int numAffectedKeys = configuration.getInteger(NUM_AFFECTED_KEYS);
+		this.syncKeys = configuration.getInteger(SYNC_KEYS) == 0 ?
+			numAffectedKeys : configuration.getInteger(SYNC_KEYS);
 
 		this.jobVertexID = jobVertexID;
 		this.numOpenedSubtask = parallelism;

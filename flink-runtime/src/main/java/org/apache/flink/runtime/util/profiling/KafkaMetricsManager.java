@@ -34,6 +34,8 @@ import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.flink.runtime.spector.SpectorOptions.*;
+
 /**
  * The MetricsManager is responsible for logging activity profiling information (except for messages).
  * It gathers start and end events for deserialization, processing, serialization, blocking on read and write buffers
@@ -101,11 +103,11 @@ public class KafkaMetricsManager implements Serializable, MetricsManager {
 
 //		windowSize = jobConfiguration.getLong("policy.windowSize",  10_000_000_000L);
 //		ratesPath = jobConfiguration.getString("policy.rates.path", "rates/");
-		windowSize = jobConfiguration.getLong("policy.windowSize",  1_000_000_000L);
+		windowSize = jobConfiguration.getLong(WINDOW_SIZE);
 //		System.out.println("window size is : " + windowSize);1000000000
-		TOPIC = jobConfiguration.getString("policy.metrics.topic", "flink_metrics");
-		servers = jobConfiguration.getString("policy.metrics.servers", "localhost:9092");
-		nRecords = jobConfiguration.getInteger("policy.metrics.nrecords", 15);
+		TOPIC = jobConfiguration.getString(METRICS_KAFKA_TOPIC);
+		servers = jobConfiguration.getString(METRICS_KAFKA_SERVER);
+		nRecords = jobConfiguration.getInteger(N_RECORDS);
 
 		currentWindowStart = status.getProcessingStart();
 

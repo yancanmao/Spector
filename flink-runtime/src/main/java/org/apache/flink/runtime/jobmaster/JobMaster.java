@@ -106,6 +106,7 @@ import java.net.UnknownHostException;
 import java.util.*;
 import java.util.concurrent.*;
 
+import static org.apache.flink.runtime.spector.SpectorOptions.*;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -276,12 +277,12 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 			jobGraph, executionGraph, userCodeLoader);
 
 		nettyStateTransmissionEnabled =
-			jobMasterConfiguration.getConfiguration().getBoolean("netty.state.transmission.enabled", true);
+			jobMasterConfiguration.getConfiguration().getBoolean(NETTY_STATE_TRANSMISSION_ENABLED);
 
 
 		try {
 			boolean taskAckEnabled =
-				jobMasterConfiguration.getConfiguration().getBoolean("netty.optimized.acknowledgement.enabled", false);
+				jobMasterConfiguration.getConfiguration().getBoolean(NETTY_OPTIMIZED_ACK_ENABLED);
 			this.checkpointCoordinatorNettyServer = nettyStateTransmissionEnabled ?
 				new CheckpointCoordinatorNettyServer(
 					() -> this.getSelfGateway(CheckpointCoordinatorGateway.class),
@@ -842,7 +843,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 			int lowWaterMark = 10 * 1024 * 1024;
 			int highWaterMark = 50 * 1024 * 1024;
 			boolean taskDeploymentEnabled =
-				jobMasterConfiguration.getConfiguration().getBoolean("netty.optimized.deployment.enabled", false);
+				jobMasterConfiguration.getConfiguration().getBoolean(NETTY_OPTIMIZED_DEPLOYMENT_ENABLED, false);
 			taskExecutorNettyClient = new TaskExecutorNettyClient(
 				taskExecutorSocketAddress,
 				channelCount,

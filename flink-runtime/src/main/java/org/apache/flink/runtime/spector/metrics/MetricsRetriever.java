@@ -6,7 +6,7 @@ import org.apache.flink.runtime.jobgraph.JobVertexID;
 
 import java.util.Map;
 
-public interface StreamSwitchMetricsRetriever {
+public interface MetricsRetriever {
 
 	void init(JobGraph jobGraph, JobVertexID vertexID, Configuration jobConfiguration, int partitions, int numPartitions);
 

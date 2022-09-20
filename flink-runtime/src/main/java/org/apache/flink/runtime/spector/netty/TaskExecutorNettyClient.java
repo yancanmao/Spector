@@ -7,7 +7,7 @@ import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobmaster.JobMasterId;
 import org.apache.flink.runtime.messages.Acknowledge;
-import org.apache.flink.runtime.spector.ReconfigOptions;
+import org.apache.flink.runtime.spector.migration.ReconfigOptions;
 import org.apache.flink.runtime.spector.netty.codec.TaskBackupStateDecoder;
 import org.apache.flink.runtime.spector.netty.codec.TaskBackupStateEncoder;
 import org.apache.flink.runtime.spector.netty.data.TaskBackupState;

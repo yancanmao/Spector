@@ -35,6 +35,7 @@ import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.jsonplan.JsonPlanGenerator;
 import org.apache.flink.runtime.jobmaster.slotpool.SchedulerImpl;
 import org.apache.flink.runtime.spector.controller.impl.ControlPlane;
+import org.apache.flink.runtime.spector.migration.*;
 import org.apache.flink.runtime.util.profiling.ReconfigurationProfiler;
 import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
@@ -49,6 +50,8 @@ import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Opera
 import static org.apache.flink.runtime.clusterframework.types.TaskManagerSlot.State.FREE;
 import static org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus.DONE;
 import static org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus.FAILED;
+import static org.apache.flink.runtime.spector.SpectorOptions.REPLICATE_KEYS_FILTER;
+import static org.apache.flink.runtime.spector.SpectorOptions.TARGET_OPERATORS;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -63,7 +66,6 @@ import static org.apache.flink.util.Preconditions.checkState;
 public class JobStateCoordinator implements JobReconfigActor, CheckpointProgressListener {
 
 	private static final Logger LOG = LoggerFactory.getLogger(JobStateCoordinator.class);
-	public final static String REPLICATE_KEYS_FILTER = "spector.replicate_keys_filter";
 	private final JobGraph jobGraph;
 	private ExecutionGraph executionGraph;
 	private ComponentMainThreadExecutor mainThreadExecutor;
@@ -136,19 +138,23 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		this.reconfigurationProfiler = new ReconfigurationProfiler(executionGraph.getJobConfiguration());
 	}
 
-	public void initBackupKeyGroups(Configuration jobConfiguration) {
-		int filer = jobConfiguration.getInteger(REPLICATE_KEYS_FILTER, 1);
-		String targetOperator = jobConfiguration.getString("controller.target.operators", "flatmap");
-		if (filer == 0) return;
-		for (Map.Entry<JobVertexID, ExecutionJobVertex> entry : executionGraph.getAllVertices().entrySet()) {
-			int maxParallelism = entry.getValue().getMaxParallelism();
-			if (entry.getValue().getName().toLowerCase().contains(targetOperator)) {
-				for (int i = 0; i < maxParallelism; i++) {
-					if (i % filer == 0) {
-						backupKeyGroups.add(i);
+	public void initBackupKeyGroups(Configuration configuration) {
+		int filer = configuration.getInteger(REPLICATE_KEYS_FILTER);
+		String targetOperatorsStr = configuration.getString(TARGET_OPERATORS);
+		String[] targetOperatorsList = targetOperatorsStr.split(",");
+
+		for (String targetOperator : targetOperatorsList) {
+			if (filer == 0) return;
+			executionGraph.getAllVertices().forEach((key, value) -> {
+				if (value.getName().toLowerCase().contains(targetOperator)) {
+					int maxParallelism = value.getMaxParallelism();
+					for (int i = 0; i < maxParallelism; i++) {
+						if (i % filer == 0) {
+							backupKeyGroups.add(i);
+						}
 					}
 				}
-			}
+			});
 		}
 	}
 
