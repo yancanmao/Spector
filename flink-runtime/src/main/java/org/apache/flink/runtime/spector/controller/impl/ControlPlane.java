@@ -38,7 +38,6 @@ public class ControlPlane {
 		Configuration configuration = executionGraph.getJobConfiguration();
 
 
-//		this.migrationInterval = configuration.getLong("streamswitch.system.migration_interval", 5000);
 		String targetOperatorsStr = configuration.getString(TARGET_OPERATORS);
 		String reconfigStartStr = configuration.getString(RECONFIG_START_TIME);
 
@@ -156,7 +155,6 @@ public class ControlPlane {
 
 
 		public ReconfigExecutorImpl(JobVertexID jobVertexID, int parallelism, Map<String, List<String>> executorMapping) {
-//			this.stateMigrationPlanner = new StateMigrationPlannerImpl(jobVertexID, parallelism);
 			this.jobVertexID = jobVertexID;
 			this.numOpenedSubtask = parallelism;
 

@@ -45,7 +45,6 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 		this.name = name;
 		this.numAffectedKeys = configuration.getInteger(NUM_AFFECTED_KEYS);
 		this.numAffectedTasks = configuration.getInteger(NUM_AFFECTED_TASKS);
-//		this.start = configuration.getInteger(START_TIME, 5 * 1000);
 		this.start = start;
 		this.interval = configuration.getInteger(RECONFIG_INTERVAL);
 //		this.reconfigurationProfiler = new ReconfigurationProfiler(configuration);

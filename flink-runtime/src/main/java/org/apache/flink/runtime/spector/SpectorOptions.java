@@ -5,6 +5,8 @@ import org.apache.flink.configuration.ConfigOption;
 import static org.apache.flink.configuration.ConfigOptions.key;
 
 public class SpectorOptions {
+	// Main stat migration settings
+
 	public final static ConfigOption<Integer> NUM_AFFECTED_KEYS =
 			key("spector.reconfig.affected_keys")
 			.defaultValue(64);
@@ -33,6 +35,8 @@ public class SpectorOptions {
 			key("spector.replicate_keys_filter")
 			.defaultValue(1);
 
+	// Netty optimization part configurations
+
 	public final static ConfigOption<Boolean> NETTY_OPTIMIZED_DEPLOYMENT_ENABLED =
 			key("netty.optimized.deployment.enabled")
 			.defaultValue(false);
@@ -44,6 +48,9 @@ public class SpectorOptions {
 	public final static ConfigOption<Boolean> NETTY_OPTIMIZED_ACK_ENABLED =
 			key("netty.optimized.acknowledgement.enabled")
 			.defaultValue(false);
+
+
+	// Old configuration that related to control logic and metrics retriever
 
 	public final static ConfigOption<Long> WINDOW_SIZE =
 			key("policy.windowSize")
