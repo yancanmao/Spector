@@ -146,7 +146,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		for (String targetOperator : targetOperatorsList) {
 			if (filer == 0) return;
 			executionGraph.getAllVertices().forEach((key, value) -> {
-				if (value.getName().toLowerCase().contains(targetOperator)) {
+				if (value.getName().contains(targetOperator)) {
 					int maxParallelism = value.getMaxParallelism();
 					for (int i = 0; i < maxParallelism; i++) {
 						if (i % filer == 0) {
@@ -190,7 +190,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	 * create backup tasks on task manager, maintain backup state for more efficient state management.
 	 * @param newExecutionJobVerticesTopological
 	 */
-	public void notifyNewVertices(List<ExecutionJobVertex> newExecutionJobVerticesTopological) {
+	public CompletableFuture<Void> notifyNewVertices(List<ExecutionJobVertex> newExecutionJobVerticesTopological) {
 		final ArrayList<CompletableFuture<Void>> schedulingFutures = new ArrayList<>();
 
 		LOG.info("++++++ Waiting for standby tasks for: " + newExecutionJobVerticesTopological);
@@ -206,7 +206,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		}
 
 		// once all execution of current executionJobVertex are in running state, deploy backup executions
-		FutureUtils.combineAll(currentExecutionFutures).whenComplete((ignored, t) -> {
+		return FutureUtils.combineAll(currentExecutionFutures).whenComplete((ignored, t) -> {
 			for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
 				Preconditions.checkState(executionGraph.getSlotProvider() instanceof SchedulerImpl,
 					"++++++ slotProvider must be SchedulerImpl");
@@ -245,6 +245,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 						schedulingFutures.add(executionAttempt.scheduleForExecution(allocatedSlot));
 					}
 				} else {
+					LOG.info("++++++ Wrong scheduling results");
 					schedulingFutures.add(
 						new CompletableFuture<>());
 					schedulingFutures.get(schedulingFutures.size() - 1)
@@ -263,7 +264,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 					}
 				}
 			});
-		});
+		}, mainThreadExecutor);
 	}
 
 	/**
@@ -357,12 +358,13 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	}
 
 	public void start() {
-		notifyNewVertices(executionGraph.getExecutionJobVertices());
-		controlPlane.startControllers();
-
-		CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
-		checkNotNull(checkpointCoordinator);
-		checkpointCoordinator.setReconfigpointAcknowledgeListener(this);
+		notifyNewVertices(executionGraph.getExecutionJobVertices())
+			.whenComplete((ignore, t) -> {
+				controlPlane.startControllers();
+				CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
+				checkNotNull(checkpointCoordinator);
+				checkpointCoordinator.setReconfigpointAcknowledgeListener(this);
+			});
 	}
 
 	public void stop() {

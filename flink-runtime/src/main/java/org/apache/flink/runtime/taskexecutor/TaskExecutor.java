@@ -290,7 +290,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 		try {
 			boolean taskDeploymentEnabled =
-				taskManagerConfiguration.getConfiguration().getBoolean(NETTY_OPTIMIZED_DEPLOYMENT_ENABLED, true);
+				taskManagerConfiguration.getConfiguration().getBoolean(NETTY_OPTIMIZED_DEPLOYMENT_ENABLED);
 			this.taskExecutorNettyServer = nettyStateTransmissionEnabled ?
 				new TaskExecutorNettyServer(
 					() -> this.getSelfGateway(TaskExecutorGateway.class),

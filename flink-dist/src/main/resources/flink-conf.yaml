@@ -44,7 +44,7 @@ jobmanager.heap.size: 8192m
 
 # The heap size for the TaskManager JVM
 
-taskmanager.heap.size: 4096m
+taskmanager.heap.size: 8192m
 
 
 # The number of task slots that each TaskManager offers. Each slot runs one parallel pipeline.
@@ -268,17 +268,18 @@ policy.metrics.topic: flink_metrics
 # number of metrtics to be read for metrics state recovery
 policy.metrics.nrecords: 15
 
-#==============================================================================
-# Stream Switch Configuration
-#==============================================================================
+
+##==============================================================================
+## Stream Switch Configuration
+##==============================================================================
+##
+#model.retrieve.nrecords: 15
 #
-model.retrieve.nrecords: 15
-
-model.vertex: c21234bcbf1e8eb4c61f1927190efebd
-
-model.retrieve.interval: 100
-
-model.warmup: 10000
+#model.vertex: c21234bcbf1e8eb4c61f1927190efebd
+#
+#model.retrieve.interval: 100
+#
+#model.warmup: 10000
 
 #==============================================================================
 # Backpressure Configuration
@@ -307,16 +308,21 @@ cluster.evenly-spread-out-slots: true
 #==============================================================================
 #
 
-spector.exp.dir: /data/spector
-spector.reconfig.affected_keys: 32
-spector.reconfig.affected_tasks: 2
+#controller.target.operators: Splitter FlatMap,Count
+#spector.reconfig.start: 5000,10000
+
+controller.target.operators: Splitter FlatMap
 spector.reconfig.start: 5000
-spector.reconfig.interval: 100000
-spector.reconfig.sync_keys: 32
-spector.replicate_keys_filter: 2
+
+spector.exp.dir: /data/spector
+spector.reconfig.affected_keys: 512
+spector.reconfig.affected_tasks: 2
+spector.reconfig.interval: 1000000
+spector.reconfig.sync_keys: 0
+spector.replicate_keys_filter: 1
 
 netty.state.transmission.enabled: true
-netty.optimized.acknowledgement.enabled: false
-netty.optimized.deployment.enabled: false
+netty.optimized.acknowledgement.enabled: false # do not make it true, not supported
+netty.optimized.deployment.enabled: false # do not make it true, not supported
 
 state.backend.async: false

@@ -843,7 +843,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 			int lowWaterMark = 10 * 1024 * 1024;
 			int highWaterMark = 50 * 1024 * 1024;
 			boolean taskDeploymentEnabled =
-				jobMasterConfiguration.getConfiguration().getBoolean(NETTY_OPTIMIZED_DEPLOYMENT_ENABLED, false);
+				jobMasterConfiguration.getConfiguration().getBoolean(NETTY_OPTIMIZED_DEPLOYMENT_ENABLED);
 			taskExecutorNettyClient = new TaskExecutorNettyClient(
 				taskExecutorSocketAddress,
 				channelCount,

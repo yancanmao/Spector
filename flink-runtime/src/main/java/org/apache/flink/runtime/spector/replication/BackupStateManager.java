@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 /**
@@ -25,10 +26,10 @@ import java.util.function.Function;
  * TODO: maybe we do not need this class, we assign a task to be a backup task, other task can access the task to get the backup state.
  */
 public class BackupStateManager {
-	public HashMap<JobVertexID, TaskStateManager> replicas;
+	public Map<JobVertexID, TaskStateManager> replicas;
 
 	public BackupStateManager() {
-		replicas = new HashMap<>();
+		replicas = new ConcurrentHashMap<>();
 	}
 
 	/**
@@ -40,6 +41,7 @@ public class BackupStateManager {
 		TaskStateManager taskStateManager = this.replicas.get(jobvertexId);
 		// directly assign backup taskrestore for the targeting task, and it will be updated in each operator during
 		// state initialization.
+		Preconditions.checkNotNull(taskStateManager);
 		return ((TaskStateManagerImpl) taskStateManager).getTaskRestore();
 	}
 
