@@ -25,7 +25,9 @@ import org.apache.commons.lang3.RandomUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
+import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -99,14 +101,27 @@ public class TaskExecutorNettyClient implements Closeable {
 		Channel channel = clientList.get(RandomUtils.nextInt(0, clientList.size())).getChannel();
 		while (true) {
 			if (channel.isWritable()) {
-				channel.writeAndFlush(new TaskDeployment(executionAttemptID, tdd, jobMasterId, reconfigOptions, timeout))
-					.addListener((ChannelFutureListener) channelFuture -> {
-						if (channelFuture.isSuccess()) {
-							submitFuture.complete(Acknowledge.get());
-						} else {
-							submitFuture.completeExceptionally(channelFuture.cause());
-						}
-					});
+				TaskDeployment taskDeployment = new TaskDeployment(executionAttemptID, tdd, jobMasterId, reconfigOptions, timeout);
+				if (!taskDeploymentEnabled) {
+					try {
+						ByteArrayOutputStream baos = new ByteArrayOutputStream();
+						ObjectOutputStream oos = new ObjectOutputStream(baos);
+						oos.writeObject(taskDeployment);
+						byte[] data = baos.toByteArray();
+						chunkedWriteAndFlush(submitFuture, channel, data, executionAttemptID);
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+				} else {
+					channel.writeAndFlush(taskDeployment)
+						.addListener((ChannelFutureListener) channelFuture -> {
+							if (channelFuture.isSuccess()) {
+								submitFuture.complete(Acknowledge.get());
+							} else {
+								submitFuture.completeExceptionally(channelFuture.cause());
+							}
+						});
+				}
 				break;
 			}
 			try {

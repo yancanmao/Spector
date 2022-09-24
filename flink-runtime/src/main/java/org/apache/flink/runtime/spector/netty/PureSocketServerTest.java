@@ -20,12 +20,18 @@ package org.apache.flink.runtime.spector.netty;
 
 import org.apache.flink.runtime.spector.netty.socket.NettySocketClient;
 import org.apache.flink.runtime.spector.netty.socket.NettySocketServer;
+import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelInboundHandlerAdapter;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ClassResolvers;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ObjectDecoder;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ObjectEncoder;
 
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Random;
@@ -50,43 +56,59 @@ public class PureSocketServerTest {
 		ByteBuffer byteBuffer = ByteBuffer.wrap(message);
 		CompletableFuture<byte[]> receiveFuture = new CompletableFuture<>();
 
-		try (NettySocketServer nettySocketServer = new NettySocketServer(
-			"test",
-			"localhost",
-			"0",
-			channelPipeline -> channelPipeline.addLast(
-				new ObjectEncoder(),
-				new ObjectDecoder(Integer.MAX_VALUE, ClassResolvers.cacheDisabled(null)),
-				new ChannelInboundHandlerAdapter() {
-					@Override
-					public void channelRead(ChannelHandlerContext ctx, Object msg) {
-						receiveFuture.complete((byte[]) msg);
-					}
-				}
-			), 0)) {
-			nettySocketServer.start();
+		SimpleServer simpleServer = new SimpleServer(message);
+		Thread serverThread = new Thread(simpleServer);
+		serverThread.start();
 
-			try (NettySocketClient nettySocketClient = new NettySocketClient(
-				nettySocketServer.getAddress(),
-				nettySocketServer.getPort(),
-				10000,
-				0,
-				0,
-				channelPipeline ->
-					channelPipeline.addLast(
-					new ObjectEncoder(),
-					new ObjectDecoder(Integer.MAX_VALUE, ClassResolvers.cacheDisabled(null))
-				)
-			)) {
-				nettySocketClient.start();
+		SimpleClient simpleClient = new SimpleClient(message);
+		Thread clientThread = new Thread(simpleClient);
+		clientThread.start();
+	}
 
+	public static class SimpleServer implements Runnable {
+		private final ServerSocket serverSocket;
+
+		private final byte[] message;
+
+		public SimpleServer(byte[] message) throws IOException {
+			serverSocket = new ServerSocket(3333);
+			this.message = message;
+		}
+
+
+		@Override
+		public void run() {
+			try {
+				Socket socket = serverSocket.accept();
 				long start = System.currentTimeMillis();
 
-				nettySocketClient.getChannel().writeAndFlush(message);
+				ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());
+				Object ob = ois.readObject();
+				System.out.println(Arrays.equals(message, (byte[]) ob));
+				System.out.println("++++++complete: " + (System.currentTimeMillis() - start) + " " + ((byte[]) ob).length);
+			} catch (IOException | ClassNotFoundException e) {
+				e.printStackTrace();
+			}
+		}
+	}
 
-				System.out.println(Arrays.equals(message, receiveFuture.get()));
+	public static class SimpleClient implements Runnable {
+		private Socket socket;
+		private final byte[] message;
 
-				System.out.println(System.currentTimeMillis() - start);
+		public SimpleClient(byte[] message) {
+			this.message = message;
+		}
+
+		@Override
+		public void run() {
+			try {
+				Socket socket = new Socket("localhost",3333);
+				ByteBuffer byteBuffer = ByteBuffer.wrap(message);
+				ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
+				oos.writeObject(message);
+			} catch (IOException e) {
+				e.printStackTrace();
 			}
 		}
 	}
