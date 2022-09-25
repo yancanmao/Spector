@@ -98,7 +98,7 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> reconfigTask(ExecutionAttemptID executionAttemptID, TaskDeploymentDescriptor tdd, ReconfigOptions reconfigOptions, Time timeout) {
-//		if (nettyStateTransmissionEnable && taskExecutorNettyClient != null) {
+//		if (nettyStateTransmissionEnable && taskExecutorNettyClient != null && tdd.getTaskRestore() != null) {
 //			return taskExecutorNettyClient.reconfigTask(executionAttemptID, tdd, jobMasterId, reconfigOptions, timeout);
 //		} else {
 			return taskExecutorGateway.reconfigTask(executionAttemptID, tdd, jobMasterId, reconfigOptions, timeout);
@@ -149,10 +149,10 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, JobManagerTaskRestore taskRestore, Time timeout) {
-		if (nettyStateTransmissionEnable && taskExecutorNettyClient != null) {
-			return taskExecutorNettyClient.dispatchStateToStandbyTask(executionAttemptID, jobvertexId, taskRestore, timeout);
-		} else {
+//		if (nettyStateTransmissionEnable && taskExecutorNettyClient != null) {
+//			return taskExecutorNettyClient.dispatchStateToStandbyTask(executionAttemptID, jobvertexId, taskRestore, timeout);
+//		} else {
 			return taskExecutorGateway.dispatchStateToStandbyTask(executionAttemptID, jobvertexId, taskRestore, timeout);
-		}
+//		}
 	}
 }

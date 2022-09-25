@@ -9,8 +9,7 @@ import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.jobmaster.JobMasterId;
 import org.apache.flink.runtime.spector.migration.ReconfigOptions;
 
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 import java.util.UUID;
 
 public class TaskDeployment implements NettyMessage, Serializable {
@@ -57,16 +56,19 @@ public class TaskDeployment implements NettyMessage, Serializable {
 
 	@Override
 	public void write(DataOutputView out) throws IOException {
-		out.writeLong(executionAttemptID.getLowerPart());
-		out.writeLong(executionAttemptID.getUpperPart());
-		out.writeLong(jobMasterId.getLowerPart());
-		out.writeLong(jobMasterId.getUpperPart());
+		writeObject(this, out);
 	}
 
 	@Override
 	public void read(DataInputView in) throws Exception {
-		executionAttemptID = new ExecutionAttemptID(in.readLong(), in.readLong());
-		UUID uuid = new UUID(in.readLong(), in.readLong());
-		jobMasterId = new JobMasterId(uuid);
 	}
+
+	private void writeObject(Object object, DataOutputView out) throws IOException {
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		ObjectOutputStream oos = new ObjectOutputStream(baos);
+		oos.writeObject(object);
+		out.write(baos.toByteArray());
+	}
+
+
 }

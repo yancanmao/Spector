@@ -1,10 +1,14 @@
 package org.apache.flink.runtime.spector.netty.utils;
 
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.spector.netty.data.NettyMessage;
+import org.apache.flink.runtime.spector.netty.data.TaskAcknowledgement;
+import org.apache.flink.runtime.spector.netty.data.TaskBackupState;
+import org.apache.flink.runtime.spector.netty.data.TaskDeployment;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.Unpooled;
 import org.apache.flink.shaded.netty4.io.netty.channel.Channel;
@@ -37,7 +41,9 @@ public class NettySocketUtils {
 	}
 
 	public static void chunkedWriteAndFlush(
-		CompletableFuture<Acknowledge> submitFuture, Channel channel, byte[] data, ExecutionAttemptID executionAttemptID) {
+		CompletableFuture<Acknowledge> submitFuture, Channel channel, NettyMessage nettyMessage, ExecutionAttemptID executionAttemptID) throws Exception {
+		byte[] data = getBytes(nettyMessage);
+		LOG.debug("++++++ channel: " + channel.id() + " Sending message: " + data.length);
 		byte[] chunk;
 		int dataSize = data.length;
 		int chunkSize = 32 * 1024;
@@ -45,8 +51,17 @@ public class NettySocketUtils {
 
 		byte[] id = executionAttemptID.getBytes();
 
+		String eventType = "";
+		if (nettyMessage instanceof TaskBackupState) {
+			eventType = "TaskBackupState";
+		} else if (nettyMessage instanceof TaskDeployment) {
+			eventType = "TaskDeployment";
+		} else if (nettyMessage instanceof TaskAcknowledgement) {
+			eventType = "TaskAcknowledgement";
+		}
+
 		// fire the tranmission start
-		channel.writeAndFlush(executionAttemptID + ":" + dataSize);
+		channel.writeAndFlush(executionAttemptID + ":" + eventType + "-" + dataSize);
 
 		byte[] newChunk;
 
@@ -74,37 +89,39 @@ public class NettySocketUtils {
 
 	public static void chunkedChannelRead(
 		Object msg,
-		BiConsumer<ChannelHandlerContext, byte[]> consumer,
+		BiConsumer<byte[], String> consumer,
 		ChannelHandlerContext ctx,
 		Map<String, byte[]> recv,
-		Map<String, Integer> position) {
+		Map<String, Tuple2<String, Integer>> metadata) {
 		if (msg instanceof String) {
 			String[] msgArray = ((String) msg).split(":");
 			String executionAttemptId = msgArray[0];
 			if (msgArray[1].equals("-1")) {
 				byte[] bytes = recv.remove(executionAttemptId);
-				consumer.accept(ctx, bytes);
 				// release resource.
-				position.remove(executionAttemptId);
+				Tuple2<String, Integer> curMetadata = metadata.remove(executionAttemptId);
+				consumer.accept(bytes, curMetadata.f0);
 
-				LOG.info("++++++ complete new object: " + bytes.length);
+				LOG.debug("++++++ complete new object: " + bytes.length);
 			} else {
-				int length = Integer.parseInt(msgArray[1]);
+				String[] metadataArray = msgArray[1].split("-");
+				int length = Integer.parseInt(metadataArray[1]);
 				recv.computeIfAbsent(executionAttemptId, t -> new byte[length]);
- 				position.putIfAbsent(executionAttemptId, 0);
-				LOG.info("++++++ receive new object: " + length + " " + Thread.currentThread().getId());
+ 				metadata.putIfAbsent(executionAttemptId, Tuple2.of(metadataArray[0], 0));
+				LOG.debug("++++++ receive new object: " + length + " " + Thread.currentThread().getId());
 			}
 		} else {
 			ByteBuf byteBuf = Unpooled.copiedBuffer((byte[]) msg, 0, 16);
 			ExecutionAttemptID executionAttemptID = ExecutionAttemptID.fromByteBuf(byteBuf);
 			byte[] chunk = Arrays.copyOfRange((byte[]) msg, 16, (((byte[]) msg).length));
 			byte[] curRecv = recv.get(executionAttemptID.toHexString());
-			int curPos = position.get(executionAttemptID.toHexString());
+			int curPos = metadata.get(executionAttemptID.toHexString()).f1;
 			Preconditions.checkState(chunk.length + curPos <= curRecv.length,
 				"++++++ channel: " + ctx.channel().id() + " received message length exceeded: " + curRecv.length + " : " + chunk.length + curPos);
 			System.arraycopy(chunk, 0, curRecv, curPos, chunk.length);
 			curPos += chunk.length;
-			position.put(executionAttemptID.toHexString(), curPos);
+//			metadata.put(executionAttemptID.toHexString(), curPos);
+			metadata.get(executionAttemptID.toHexString()).f1 = curPos;
 		}
 	}
 }

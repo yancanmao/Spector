@@ -1,5 +1,6 @@
 package org.apache.flink.runtime.spector.netty;
 
+import org.apache.commons.lang3.RandomUtils;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
@@ -16,8 +17,6 @@ import org.apache.flink.shaded.netty4.io.netty.channel.ChannelPipeline;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ClassResolvers;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ObjectDecoder;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ObjectEncoder;
-
-import org.apache.commons.lang3.RandomUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,7 +27,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.chunkedWriteAndFlush;
-import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.getBytes;
 
 public class CheckpointCoordinatorNettyClient implements Closeable {
 	private static final Logger LOG = LoggerFactory.getLogger(CheckpointCoordinatorNettyClient.class);
@@ -100,9 +98,7 @@ public class CheckpointCoordinatorNettyClient implements Closeable {
 					subtaskState);
 				if (!taskAcknowledgementEnabled) {
 					try {
-						byte[] data = getBytes(taskAcknowledgement);
-						LOG.info("++++++ channel: " + channel.id() + " Sending acknowledgement: " + data.length);
-						chunkedWriteAndFlush(submitFuture, channel, data, executionAttemptID);
+						chunkedWriteAndFlush(submitFuture, channel, taskAcknowledgement, executionAttemptID);
 					} catch (Exception e) {
 						throw new RuntimeException(e);
 					}

@@ -18,17 +18,17 @@
 
 package org.apache.flink.runtime.spector.netty;
 
-import org.apache.flink.api.common.time.Time;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
-import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.spector.netty.data.TaskBackupState;
+import org.apache.flink.runtime.spector.netty.data.TaskDeployment;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
-import org.apache.flink.shaded.netty4.io.netty.channel.ChannelId;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelInboundHandlerAdapter;
 
 import java.io.ByteArrayInputStream;
+import java.io.ObjectInputStream;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,8 +41,10 @@ import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.chun
 public class TaskExecutorServerHandler extends ChannelInboundHandlerAdapter {
 	private final TaskExecutorGateway taskExecutorGateway;
 
-	final Map<String, byte[]> recv = new ConcurrentHashMap<>();
-	final Map<String, Integer> position = new ConcurrentHashMap<>();
+	// ExecutionAttemptID -> State Byte Array
+	private final Map<String, byte[]> recv = new ConcurrentHashMap<>();
+	// ExecutionAttemptID -> Latest Position of Byte Array
+	private final Map<String, Tuple2<String, Integer>> metadata = new ConcurrentHashMap<>();
 
 	public TaskExecutorServerHandler(TaskExecutorGateway taskExecutorGateway) {
 		this.taskExecutorGateway = taskExecutorGateway;
@@ -50,23 +52,43 @@ public class TaskExecutorServerHandler extends ChannelInboundHandlerAdapter {
 
 	@Override
 	public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-		chunkedChannelRead(msg, this::fireAck, ctx, recv, position);
+		chunkedChannelRead(msg, this::fireAck, ctx, recv, metadata);
 	}
 
-	private void fireAck(ChannelHandlerContext ctx, byte[] bytes) {
+	private void fireAck(byte[] bytes, String eventType) {
 		try {
-			TaskBackupState taskBackupState = new TaskBackupState();
-			taskBackupState.read(new DataInputViewStreamWrapper(new ByteArrayInputStream(bytes)));
-			CompletableFuture<Acknowledge> future = taskExecutorGateway.dispatchStateToStandbyTask(
-				taskBackupState.getExecutionAttemptID(),
-				taskBackupState.getJobvertexId(),
-				taskBackupState.getTaskRestore(),
-				taskBackupState.getTimeout());
-			future.whenCompleteAsync((ack, failure) -> {
-				if (failure != null) {
-					throw new RuntimeException();
-				}
-			});
+			if (eventType.equals("TaskBackupState")) {
+				TaskBackupState taskBackupState = new TaskBackupState();
+				taskBackupState.read(new DataInputViewStreamWrapper(new ByteArrayInputStream(bytes)));
+				CompletableFuture<Acknowledge> future = taskExecutorGateway.dispatchStateToStandbyTask(
+					taskBackupState.getExecutionAttemptID(),
+					taskBackupState.getJobvertexId(),
+					taskBackupState.getTaskRestore(),
+					taskBackupState.getTimeout());
+				future.whenCompleteAsync((ack, failure) -> {
+					if (failure != null) {
+						throw new RuntimeException();
+					}
+				});
+			} else if (eventType.equals("TaskDeployment")) {
+//				TaskDeployment taskDeployment = new TaskDeployment();
+//				taskDeployment.read(new DataInputViewStreamWrapper(new ByteArrayInputStream(bytes)));
+				ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bytes));
+				TaskDeployment taskDeployment = (TaskDeployment) ois.readObject();
+				CompletableFuture<Acknowledge> future = taskExecutorGateway.reconfigTask(
+					taskDeployment.getExecutionAttemptID(),
+					taskDeployment.getTaskDeploymentDescriptor(),
+					taskDeployment.getJobMasterId(),
+					taskDeployment.getReconfigOptions(),
+					taskDeployment.getTimeout());
+				future.whenCompleteAsync((ack, failure) -> {
+					if (failure != null) {
+						throw new RuntimeException();
+					}
+				});
+			} else {
+				throw new UnsupportedOperationException();
+			}
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}

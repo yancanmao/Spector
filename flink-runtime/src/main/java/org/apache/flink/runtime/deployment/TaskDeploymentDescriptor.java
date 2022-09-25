@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.deployment;
 
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
 import org.apache.flink.runtime.blob.PermanentBlobService;
 import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
@@ -46,7 +47,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 	private static final long serialVersionUID = -3233562176034358530L;
 
-	/**
+    /**
 	 * Wrapper class for serialized values which may be offloaded to the {@link
 	 * org.apache.flink.runtime.blob.BlobServer} or not.
 	 *

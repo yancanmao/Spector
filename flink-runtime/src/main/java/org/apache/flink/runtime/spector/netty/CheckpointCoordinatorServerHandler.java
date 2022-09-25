@@ -18,13 +18,11 @@
 
 package org.apache.flink.runtime.spector.netty;
 
-import org.apache.flink.api.common.time.Time;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.runtime.checkpoint.CheckpointCoordinatorGateway;
-import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.spector.netty.data.TaskAcknowledgement;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
-import org.apache.flink.shaded.netty4.io.netty.channel.ChannelId;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelInboundHandlerAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,8 +41,8 @@ public class CheckpointCoordinatorServerHandler extends ChannelInboundHandlerAda
 
 	private final CheckpointCoordinatorGateway checkpointCoordinatorGateway;
 
-	final Map<String, byte[]> recv = new ConcurrentHashMap<>();
-	final Map<String, Integer> position = new ConcurrentHashMap<>();
+	private final Map<String, byte[]> recv = new ConcurrentHashMap<>();
+	private final Map<String, Tuple2<String, Integer>> metadata = new ConcurrentHashMap<>();
 
 	public CheckpointCoordinatorServerHandler(CheckpointCoordinatorGateway checkpointCoordinatorGateway) {
 		this.checkpointCoordinatorGateway = checkpointCoordinatorGateway;
@@ -52,19 +50,23 @@ public class CheckpointCoordinatorServerHandler extends ChannelInboundHandlerAda
 
 	@Override
 	public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-		chunkedChannelRead(msg, this::fireAck, ctx, recv, position);
+		chunkedChannelRead(msg, this::fireAck, ctx, recv, metadata);
 	}
 
-	public void fireAck(ChannelHandlerContext ctx, byte[] bytes) {
+	public void fireAck(byte[] bytes, String eventType) {
 		try {
-			TaskAcknowledgement taskAcknowledgement = new TaskAcknowledgement();
-			taskAcknowledgement.read(new DataInputViewStreamWrapper(new ByteArrayInputStream(bytes)));
-			checkpointCoordinatorGateway.acknowledgeCheckpoint(
-				taskAcknowledgement.getJobID(),
-				taskAcknowledgement.getExecutionAttemptID(),
-				taskAcknowledgement.getCheckpointId(),
-				taskAcknowledgement.getCheckpointMetrics(),
-				taskAcknowledgement.getSubtaskState());
+			if (eventType.equals("TaskAcknowledgement")) {
+				TaskAcknowledgement taskAcknowledgement = new TaskAcknowledgement();
+				taskAcknowledgement.read(new DataInputViewStreamWrapper(new ByteArrayInputStream(bytes)));
+				checkpointCoordinatorGateway.acknowledgeCheckpoint(
+					taskAcknowledgement.getJobID(),
+					taskAcknowledgement.getExecutionAttemptID(),
+					taskAcknowledgement.getCheckpointId(),
+					taskAcknowledgement.getCheckpointMetrics(),
+					taskAcknowledgement.getSubtaskState());
+			} else {
+				throw new UnsupportedOperationException();
+			}
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}

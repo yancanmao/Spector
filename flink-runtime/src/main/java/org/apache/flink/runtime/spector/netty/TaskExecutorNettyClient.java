@@ -1,5 +1,6 @@
 package org.apache.flink.runtime.spector.netty;
 
+import org.apache.commons.lang3.RandomUtils;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
@@ -20,8 +21,6 @@ import org.apache.flink.shaded.netty4.io.netty.channel.ChannelPipeline;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ClassResolvers;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ObjectDecoder;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ObjectEncoder;
-
-import org.apache.commons.lang3.RandomUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,7 +33,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.chunkedWriteAndFlush;
-import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.getBytes;
 
 public class TaskExecutorNettyClient implements Closeable {
 	private static final Logger LOG = LoggerFactory.getLogger(TaskExecutorNettyClient.class);
@@ -104,11 +102,7 @@ public class TaskExecutorNettyClient implements Closeable {
 				TaskDeployment taskDeployment = new TaskDeployment(executionAttemptID, tdd, jobMasterId, reconfigOptions, timeout);
 				if (!taskDeploymentEnabled) {
 					try {
-						ByteArrayOutputStream baos = new ByteArrayOutputStream();
-						ObjectOutputStream oos = new ObjectOutputStream(baos);
-						oos.writeObject(taskDeployment);
-						byte[] data = baos.toByteArray();
-						chunkedWriteAndFlush(submitFuture, channel, data, executionAttemptID);
+						chunkedWriteAndFlush(submitFuture, channel, taskDeployment, executionAttemptID);
 					} catch (Exception e) {
 						e.printStackTrace();
 					}
@@ -147,8 +141,7 @@ public class TaskExecutorNettyClient implements Closeable {
 					timeout);
 				if (!taskDeploymentEnabled) {
 					try {
-						byte[] data = getBytes(taskBackupState);
-						chunkedWriteAndFlush(submitFuture, channel, data, executionAttemptID);
+						chunkedWriteAndFlush(submitFuture, channel, taskBackupState, executionAttemptID);
 					} catch (Exception e) {
 						throw new RuntimeException(e);
 					}
