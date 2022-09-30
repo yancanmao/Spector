@@ -819,7 +819,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			backupStateManager.mergeState(jobvertexId, taskRestore);
 //			taskStateManager.setTaskRestore(taskRestore);
 
-			log.info("++++++ " + jobvertexId + " Acking to the jobmaster");
+			log.debug("++++++ " + jobvertexId + " Acking to the jobmaster");
 			jobManagerConnection.getJobManagerGateway().acknowledgeReplication(
 				jobID,
 				executionAttemptID,

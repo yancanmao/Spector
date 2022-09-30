@@ -119,7 +119,7 @@ public class CheckpointCoordinatorNettyClient implements Closeable {
 			} catch (InterruptedException ignored) { }
 		}
 		submitFuture.whenCompleteAsync((acknowledge, failure) -> {
-			LOG.info("++++++ Channel write completed");
+			LOG.debug("++++++ Channel write completed");
 		});
 //		return submitFuture;
 	}

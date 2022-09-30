@@ -113,7 +113,7 @@ public class FSMetricsManager implements Serializable, MetricsManager {
 
 	public void updateTaskId(String taskDescription, Integer idInModel) {
 //		synchronized (status) {
-		LOG.info("###### Starting update task metricsmanager from " + workerName + "-" + instanceId + " to " + workerName + "-" + idInModel);
+		LOG.debug("###### Starting update task metricsmanager from " + workerName + "-" + instanceId + " to " + workerName + "-" + idInModel);
 		// not only need to update task id, but also the states.
 		if (idInModel == Integer.MAX_VALUE/2) {
 			System.out.println("end execution: " + workerName + "-" + instanceId + " time: " + System.currentTimeMillis());
@@ -140,7 +140,7 @@ public class FSMetricsManager implements Serializable, MetricsManager {
 		latency = 0;
 		epoch = 0;
 
-		LOG.info("###### End update task metricsmanager");
+		LOG.debug("###### End update task metricsmanager");
 //		}
 	}
 

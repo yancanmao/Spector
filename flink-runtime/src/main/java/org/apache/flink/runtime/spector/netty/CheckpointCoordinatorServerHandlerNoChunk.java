@@ -40,7 +40,7 @@ public class CheckpointCoordinatorServerHandlerNoChunk extends ChannelInboundHan
 	@Override
 	public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
 		if (msg instanceof TaskAcknowledgement) {
-			LOG.info("++++++ Receive TaskAcknowledgement");
+			LOG.debug("++++++ Receive TaskAcknowledgement");
 			TaskAcknowledgement taskAcknowledgement = (TaskAcknowledgement) msg;
 			checkpointCoordinatorGateway.acknowledgeCheckpoint(
 				taskAcknowledgement.getJobID(),
