@@ -1288,6 +1288,8 @@ public class CheckpointCoordinator {
 			periodicScheduling = true;
 			long initialDelay = ThreadLocalRandom.current().nextLong(
 				minPauseBetweenCheckpointsNanos / 1_000_000L, baseInterval + 1L);
+			// avoid random start of checkpoint to affect the performance of other mechanisms.
+			initialDelay = baseInterval;
 			currentPeriodicTrigger = timer.scheduleAtFixedRate(
 					new ScheduledTrigger(), initialDelay, baseInterval, TimeUnit.MILLISECONDS);
 		}
