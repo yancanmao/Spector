@@ -254,16 +254,16 @@ public class StreamInputProcessor<IN> {
 				}
 			}
 
-//			// the buffer got empty
-//			if (deserializationDuration > 0) {
-//				// inform the MetricsManager that the buffer is consumed
-//				metricsManager.inputBufferConsumed(System.nanoTime(), deserializationDuration, processingDuration, recordsProcessed, endToEndLatency);
-//
-//				deserializationDuration = 0;
-//				processingDuration = 0;
-//				recordsProcessed = 0;
-//				endToEndLatency = 0;
-//			}
+			// the buffer got empty
+			if (deserializationDuration > 0) {
+				// inform the MetricsManager that the buffer is consumed
+				metricsManager.inputBufferConsumed(System.nanoTime(), deserializationDuration, processingDuration, recordsProcessed, endToEndLatency);
+
+				deserializationDuration = 0;
+				processingDuration = 0;
+				recordsProcessed = 0;
+				endToEndLatency = 0;
+			}
 
 			final BufferOrEvent bufferOrEvent = barrierHandler.getNextNonBlocked();
 			if (bufferOrEvent != null) {
@@ -311,9 +311,9 @@ public class StreamInputProcessor<IN> {
 		recordsProcessed++;
 
 		metricsManager.groundTruth(arrvialTs, queuingDelay + processingDelay / 1000000);
-		processingDuration = 0;
-		recordsProcessed = 0;
-		deserializationDuration = 0;
+//		processingDuration = 0;
+//		recordsProcessed = 0;
+//		deserializationDuration = 0;
 	}
 
 	public void cleanup() throws IOException {

@@ -271,8 +271,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	 * dispatch checkpointed state to backup task based on the fine-grained state management policies
 	 * by default, it replicate state to all other backup task
 	 */
-	public void dispatchLatestCheckpointedStateToStandbyTasks(
-		CompletedCheckpoint checkpoint) {
+	public void dispatchLatestCheckpointedStateToStandbyTasks(CompletedCheckpoint checkpoint) {
 		Map<JobVertexID, ExecutionJobVertex> tasks = executionGraph.getAllVertices();
 		// re-assign the task states
 		final Map<OperatorID, OperatorState> operatorStates = checkpoint.getOperatorStates();

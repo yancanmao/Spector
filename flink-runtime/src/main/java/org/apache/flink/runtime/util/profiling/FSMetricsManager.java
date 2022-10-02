@@ -158,6 +158,58 @@ public class FSMetricsManager implements Serializable, MetricsManager {
 	 */
 	@Override
 	public void inputBufferConsumed(long timestamp, long deserializationDuration, long processing, long numRecords, long endToEndLatency) {
+		if (currentWindowStart == 0) {
+			currentWindowStart = timestamp;
+		}
+
+		status.setProcessingEnd(timestamp);
+
+		// aggregate the metrics
+		recordsIn += numRecords;
+		recordsOut += status.getNumRecordsOut();
+		usefulTime += processing + deserializationDuration;
+//			usefulTime += processing + status.getSerializationDuration()
+//				- status.getWaitingForWriteBufferDuration();
+
+		latency += endToEndLatency;
+
+		// clear status counters
+		status.clearCounters();
+
+		// if window size is reached => output
+		if (timestamp - currentWindowStart > windowSize) {
+			// compute rates
+			long duration = timestamp - currentWindowStart;
+//			double trueProcessingRate = (recordsIn / (usefulTime / 1000.0)) * 1000000;
+//			double trueOutputRate = (recordsOut / (usefulTime / 1000.0)) * 1000000;
+//			double observedProcessingRate = (recordsIn / (duration / 1000.0)) * 1000000;
+//			double observedOutputRate = (recordsOut / (duration / 1000.0)) * 1000000;
+			double trueProcessingRate = (recordsIn / (usefulTime / 1000.0)) * 1000;
+			double trueOutputRate = (recordsOut / (usefulTime / 1000.0)) * 1000;
+			double observedProcessingRate = (recordsIn / (duration / 1000.0)) * 1000;
+			double observedOutputRate = (recordsOut / (duration / 1000.0)) * 1000;
+			float endToEndLantecy = (float) latency / recordsIn;
+
+			double utilization = (double) usefulTime / duration;
+
+			// for network calculus
+			totalRecordsIn += recordsIn;
+			totalRecordsOut += recordsOut;
+
+			// log the rates: one file per epoch
+			String ratesLine = jobVertexId + ","
+				+ workerName + "-" + instanceId + ","
+				+ numInstances  + ","
+				+ trueProcessingRate + ","
+				+ trueOutputRate + ","
+				+ observedProcessingRate + ","
+				+ observedOutputRate + ","
+				+ endToEndLantecy + ","
+				+ utilization + ","
+				+ System.currentTimeMillis();
+
+			System.out.println(ratesLine);
+		}
 	}
 
 	@Override
