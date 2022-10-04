@@ -15,6 +15,7 @@ import org.apache.flink.runtime.spector.netty.data.TaskBackupState;
 import org.apache.flink.runtime.spector.netty.data.TaskDeployment;
 import org.apache.flink.runtime.spector.netty.data.TaskExecutorSocketAddress;
 import org.apache.flink.runtime.spector.netty.socket.NettySocketClient;
+import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.shaded.netty4.io.netty.channel.Channel;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelFutureListener;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelPipeline;
@@ -24,9 +25,7 @@ import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.Objec
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
-import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -129,7 +128,7 @@ public class TaskExecutorNettyClient implements Closeable {
 		ExecutionAttemptID executionAttemptID,
 		JobVertexID jobvertexId,
 		JobManagerTaskRestore taskRestore,
-		Time timeout) {
+		KeyGroupRange keyGroupRange, int idInModel, Time timeout) {
 		CompletableFuture<Acknowledge> submitFuture = new CompletableFuture<>();
 		Channel channel = clientList.get(RandomUtils.nextInt(0, clientList.size())).getChannel();
 		while (true) {
@@ -138,6 +137,8 @@ public class TaskExecutorNettyClient implements Closeable {
 					executionAttemptID,
 					jobvertexId,
 					taskRestore,
+					keyGroupRange,
+					idInModel,
 					timeout);
 				if (!taskDeploymentEnabled) {
 					try {

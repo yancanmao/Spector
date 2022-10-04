@@ -18,13 +18,14 @@
 
 package org.apache.flink.runtime.state;
 
+import org.apache.flink.core.memory.DataInputView;
+import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.io.Serializable;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -52,7 +53,7 @@ public class KeyGroupRange implements KeyGroupsList, Serializable {
 	/**
 	 * Empty KeyGroup Constructor
 	 */
-	private KeyGroupRange() {
+	public KeyGroupRange() {
 		this.startKeyGroup = 0;
 		this.endKeyGroup = -1;
 	}
@@ -247,5 +248,37 @@ public class KeyGroupRange implements KeyGroupsList, Serializable {
 	 */
 	public static KeyGroupRange of(int startKeyGroup, int endKeyGroup) {
 		return startKeyGroup <= endKeyGroup ? new KeyGroupRange(startKeyGroup, endKeyGroup) : EMPTY_KEY_GROUP_RANGE;
+	}
+
+	public void write(DataOutputView out) throws IOException {
+		out.writeInt(startKeyGroup);
+		out.write(endKeyGroup);
+		out.writeInt(fromAlignedToHashed.size());
+		for (Map.Entry<Integer, Integer> entry : fromAlignedToHashed.entrySet()) {
+			out.writeInt(entry.getKey());
+			out.writeInt(entry.getValue());
+		}
+		out.writeInt(fromHashedToAligned.size());
+		for (Map.Entry<Integer, Integer> entry : fromHashedToAligned.entrySet()) {
+			out.writeInt(entry.getKey());
+			out.writeInt(entry.getValue());
+		}
+	}
+
+	public void read(DataInputView in) throws IOException {
+		startKeyGroup = in.readInt();
+		endKeyGroup = in.readInt();
+		int size = in.readInt();
+		for (int i = 0; i < size; ++i) {
+			int key = in.readInt();
+			int value = in.readInt();
+			fromAlignedToHashed.put(key, value);
+		}
+		size = in.readInt();
+		for (int i = 0; i < size; ++i) {
+			int key = in.readInt();
+			int value = in.readInt();
+			fromHashedToAligned.put(key, value);
+		}
 	}
 }

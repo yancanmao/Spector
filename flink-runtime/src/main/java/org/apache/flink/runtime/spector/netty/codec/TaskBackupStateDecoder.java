@@ -2,7 +2,6 @@ package org.apache.flink.runtime.spector.netty.codec;
 
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.runtime.spector.netty.data.TaskBackupState;
-import org.apache.flink.runtime.spector.netty.data.TaskDeployment;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.ByteToMessageDecoder;

@@ -60,10 +60,12 @@ public class TaskExecutorServerHandler extends ChannelInboundHandlerAdapter {
 			if (eventType.equals("TaskBackupState")) {
 				TaskBackupState taskBackupState = new TaskBackupState();
 				taskBackupState.read(new DataInputViewStreamWrapper(new ByteArrayInputStream(bytes)));
-				CompletableFuture<Acknowledge> future = taskExecutorGateway.dispatchStateToStandbyTask(
+				CompletableFuture<Acknowledge> future = taskExecutorGateway.dispatchStateToTask(
 					taskBackupState.getExecutionAttemptID(),
 					taskBackupState.getJobvertexId(),
 					taskBackupState.getTaskRestore(),
+					taskBackupState.getKeyGroupRange(),
+					taskBackupState.getIdInModel(),
 					taskBackupState.getTimeout());
 				future.whenCompleteAsync((ack, failure) -> {
 					if (failure != null) {

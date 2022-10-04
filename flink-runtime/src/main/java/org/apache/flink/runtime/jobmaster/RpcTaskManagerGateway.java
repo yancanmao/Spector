@@ -32,6 +32,7 @@ import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.StackTraceSampleResponse;
 import org.apache.flink.runtime.spector.migration.ReconfigOptions;
 import org.apache.flink.runtime.spector.netty.TaskExecutorNettyClient;
+import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.util.Preconditions;
 
@@ -148,11 +149,13 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
-	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, JobManagerTaskRestore taskRestore, Time timeout) {
+	public CompletableFuture<Acknowledge> dispatchStateToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId,
+															  JobManagerTaskRestore taskRestore, KeyGroupRange keyGroupRange,
+															  int idInModel, Time timeout) {
 //		if (nettyStateTransmissionEnable && taskExecutorNettyClient != null) {
-//			return taskExecutorNettyClient.dispatchStateToStandbyTask(executionAttemptID, jobvertexId, taskRestore, timeout);
+//			return taskExecutorNettyClient.dispatchStateToStandbyTask(executionAttemptID, jobvertexId, taskRestore, keyGroupRange, idInModel, timeout);
 //		} else {
-			return taskExecutorGateway.dispatchStateToStandbyTask(executionAttemptID, jobvertexId, taskRestore, timeout);
+			return taskExecutorGateway.dispatchStateToTask(executionAttemptID, jobvertexId, taskRestore, keyGroupRange, idInModel, timeout);
 //		}
 	}
 }

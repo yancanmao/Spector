@@ -48,10 +48,12 @@ public class TaskExecutorServerHandlerNoChunk extends ChannelInboundHandlerAdapt
 				DEFAULT_RPC_TIMEOUT);
 		} else if (msg instanceof TaskBackupState) {
 			TaskBackupState taskBackupState = (TaskBackupState) msg;
-			taskExecutorGateway.dispatchStateToStandbyTask(
+			taskExecutorGateway.dispatchStateToTask(
 				taskBackupState.getExecutionAttemptID(),
 				taskBackupState.getJobvertexId(),
 				taskBackupState.getTaskRestore(),
+				taskBackupState.getKeyGroupRange(),
+				taskBackupState.getIdInModel(),
 				taskBackupState.getTimeout()
 			);
 		}  else {

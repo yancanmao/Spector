@@ -1006,4 +1006,12 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	public String getVertexId() {
 		return taskNameWithSubtask;
 	}
+
+	public KeyGroupRange getKeyGroupRange() {
+		return keyGroupRange;
+	}
+
+	public int getIdInModel() {
+		return idInModel;
+	}
 }

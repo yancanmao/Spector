@@ -91,25 +91,24 @@ public class JobManagerTaskRestore implements Serializable {
 		if (stateRestore2 == null) {
 			return;
 		}
-		// Merge all key state from old and new state restore.
+
 		Map<Integer, KeyedStateHandle> hashedKeyGroupToManagedStateHandle =
 			getHashedKeyGroupToHandleFromStateRestore(this, OperatorSubtaskState::getManagedKeyedState);
 		Map<Integer, KeyedStateHandle> hashedKeyGroupToRawStateHandle =
 			getHashedKeyGroupToHandleFromStateRestore(this, OperatorSubtaskState::getRawKeyedState);
 
-		Map<Integer, KeyedStateHandle> newHashedKeyGroupToManagedStateHandle =
+		Map<Integer, KeyedStateHandle> hashedKeyGroupToManagedStateHandle2 =
 			getHashedKeyGroupToHandleFromStateRestore(stateRestore2, OperatorSubtaskState::getManagedKeyedState);
-		Map<Integer, KeyedStateHandle> newHashedKeyGroupToRawStateHandle =
+		Map<Integer, KeyedStateHandle> hashedKeyGroupToRawStateHandle2 =
 			getHashedKeyGroupToHandleFromStateRestore(stateRestore2, OperatorSubtaskState::getRawKeyedState);
 
 
-		System.out.println(hashedKeyGroupToManagedStateHandle.keySet());
-		System.out.println(newHashedKeyGroupToManagedStateHandle.keySet());
+		// The state restore 2 always be the old version, merge the old version to the new version when the new version does not contain the key
+		hashedKeyGroupToManagedStateHandle2.forEach(hashedKeyGroupToManagedStateHandle::putIfAbsent);
+		hashedKeyGroupToRawStateHandle2.forEach(hashedKeyGroupToRawStateHandle::putIfAbsent);
 
-		hashedKeyGroupToManagedStateHandle.putAll(newHashedKeyGroupToManagedStateHandle);
-		hashedKeyGroupToRawStateHandle.putAll(newHashedKeyGroupToRawStateHandle);
-
-		System.out.println(hashedKeyGroupToManagedStateHandle.keySet());
+//		hashedKeyGroupToManagedStateHandle.putAll(hashedKeyGroupToManagedStateHandle2);
+//		hashedKeyGroupToRawStateHandle.putAll(hashedKeyGroupToRawStateHandle2);
 
 		Map.Entry<OperatorID, OperatorSubtaskState> operatorSubtaskStateEntry = getOperatorSubtaskState(this);
 

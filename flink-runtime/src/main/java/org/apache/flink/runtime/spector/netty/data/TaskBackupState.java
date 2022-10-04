@@ -2,18 +2,27 @@ package org.apache.flink.runtime.spector.netty.data;
 
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.core.memory.DataInputView;
-import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
+import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
+import org.apache.flink.runtime.jobgraph.OperatorID;
+import org.apache.flink.runtime.state.KeyGroupRange;
 
+import javax.annotation.Nullable;
 import java.io.Serializable;
+import java.util.Map;
 
 public class TaskBackupState implements NettyMessage, Serializable {
 	private ExecutionAttemptID executionAttemptID;
 	private JobVertexID jobvertexId;
 	private JobManagerTaskRestore taskRestore;
+
+	private KeyGroupRange keyGroupRange;
+
+	private int idInModel;
+
 	private Time timeout;
 
 	public TaskBackupState() {}
@@ -22,10 +31,14 @@ public class TaskBackupState implements NettyMessage, Serializable {
 		ExecutionAttemptID executionAttemptID,
 		JobVertexID jobvertexId,
 		JobManagerTaskRestore taskRestore,
+		@Nullable KeyGroupRange keyGroupRange,
+		@Nullable int idInModel,
 		Time timeout) {
 		this.executionAttemptID = executionAttemptID;
 		this.jobvertexId = jobvertexId;
 		this.taskRestore = taskRestore;
+		this.keyGroupRange = keyGroupRange;
+		this.idInModel = idInModel;
 		this.timeout = timeout;
 	}
 
@@ -41,6 +54,14 @@ public class TaskBackupState implements NettyMessage, Serializable {
 		return taskRestore;
 	}
 
+	public KeyGroupRange getKeyGroupRange() {
+		return keyGroupRange;
+	}
+
+	public int getIdInModel() {
+		return idInModel;
+	}
+
 	public Time getTimeout() {
 		return timeout;
 	}
@@ -51,6 +72,13 @@ public class TaskBackupState implements NettyMessage, Serializable {
 		out.writeLong(jobvertexId.getLowerPart());
 		out.writeLong(jobvertexId.getUpperPart());
 		taskRestore.write(out);
+		out.writeInt(idInModel);
+		if (keyGroupRange != null) {
+			out.writeBoolean(true);
+			keyGroupRange.write(out);
+		} else {
+			out.writeBoolean(false);
+		}
     }
 
 	public void read(DataInputView in) throws Exception {
@@ -58,5 +86,10 @@ public class TaskBackupState implements NettyMessage, Serializable {
 		jobvertexId = new JobVertexID(in.readLong(), in.readLong());
 		taskRestore = new JobManagerTaskRestore();
 		taskRestore.read(in);
+		idInModel = in.readInt();
+		if (in.readBoolean()) {
+			keyGroupRange = new KeyGroupRange();
+			keyGroupRange.read(in);
+		}
 	}
 }

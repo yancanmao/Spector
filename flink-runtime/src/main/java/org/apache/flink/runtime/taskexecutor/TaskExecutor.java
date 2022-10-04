@@ -83,10 +83,7 @@ import org.apache.flink.runtime.spector.netty.CheckpointCoordinatorNettyClient;
 import org.apache.flink.runtime.spector.netty.TaskExecutorNettyServer;
 import org.apache.flink.runtime.spector.netty.data.CheckpointCoordinatorSocketAddress;
 import org.apache.flink.runtime.spector.netty.data.TaskExecutorSocketAddress;
-import org.apache.flink.runtime.state.TaskExecutorLocalStateStoresManager;
-import org.apache.flink.runtime.state.TaskLocalStateStore;
-import org.apache.flink.runtime.state.TaskStateManager;
-import org.apache.flink.runtime.state.TaskStateManagerImpl;
+import org.apache.flink.runtime.state.*;
 import org.apache.flink.runtime.taskexecutor.exceptions.CheckpointException;
 import org.apache.flink.runtime.taskexecutor.exceptions.PartitionException;
 import org.apache.flink.runtime.taskexecutor.exceptions.RegistrationTimeoutException;
@@ -804,34 +801,56 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	}
 
 	@Override
-	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(
+	public CompletableFuture<Acknowledge> dispatchStateToTask(
 		ExecutionAttemptID executionAttemptID,
 		JobVertexID jobvertexId,
 		JobManagerTaskRestore taskRestore,
+		KeyGroupRange keyGroupRange,
+		int idInModel,
 		Time timeout) {
-		log.info("++++++ " + jobvertexId + " Receive backup state");
-		TaskStateManager taskStateManager = backupStateManager.replicas.get(jobvertexId);
+		Task task = taskSlotTable.getTask(executionAttemptID);
+		if (task == null) {
+			log.info("++++++ " + jobvertexId + " Receive backup state");
+			TaskStateManager taskStateManager = backupStateManager.replicas.get(jobvertexId);
 
-		if (taskStateManager != null) {
-			JobID jobID = taskStateManager.getJobID();
-			JobManagerConnection jobManagerConnection = jobManagerTable.get(jobID);
+			if (taskStateManager != null) {
+				JobID jobID = taskStateManager.getJobID();
+				JobManagerConnection jobManagerConnection = jobManagerTable.get(jobID);
 
-			backupStateManager.mergeState(jobvertexId, taskRestore);
+				backupStateManager.mergeState(jobvertexId, taskRestore);
 //			taskStateManager.setTaskRestore(taskRestore);
 
-			log.debug("++++++ " + jobvertexId + " Acking to the jobmaster");
-			jobManagerConnection.getJobManagerGateway().acknowledgeReplication(
-				jobID,
-				executionAttemptID,
-				DONE);
+				log.debug("++++++ " + jobvertexId + " Acking to the jobmaster");
+				jobManagerConnection.getJobManagerGateway().acknowledgeReplication(
+					jobID,
+					executionAttemptID,
+					DONE);
+
+				return CompletableFuture.completedFuture(Acknowledge.get());
+			} else {
+				final String message = "Cannot find standby task " + executionAttemptID + " to dispatch state to it.";
+				log.debug(message);
+
+				throw new RuntimeException("++++++ Cannot find the corresponding taskStateManager");
+//			return FutureUtils.completedExceptionally(new TaskException(message));
+			}
+		} else {
+			log.info("++++++ update task state of execution: " + executionAttemptID);
+
+			JobManagerTaskRestore backupTaskRestore = backupStateManager.getTaskRestoreFromReplica(task.getJobVertexId());
+
+			if (taskRestore != null) {
+				taskRestore.merge(backupTaskRestore);
+			} else {
+				taskRestore = backupTaskRestore;
+			}
+
+			task.assignNewState(
+				keyGroupRange,
+				idInModel,
+				taskRestore);
 
 			return CompletableFuture.completedFuture(Acknowledge.get());
-		} else {
-			final String message = "Cannot find standby task " + executionAttemptID + " to dispatch state to it.";
-			log.debug(message);
-
-			throw new RuntimeException("++++++ Cannot find the corresponding taskStateManager");
-//			return FutureUtils.completedExceptionally(new TaskException(message));
 		}
 	}
 

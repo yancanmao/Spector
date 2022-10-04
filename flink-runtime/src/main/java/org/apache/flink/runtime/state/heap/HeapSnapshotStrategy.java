@@ -210,7 +210,7 @@ class HeapSnapshotStrategy<K>
 							tableSnapshot.releaseChangeLogs();
 						}
 					}
-					LOG.info("++++--- Snapshot cleanup completed");
+					LOG.info("++++--- Snapshot keygroups and cleanup completed");
 				}
 
 				@Override
@@ -366,13 +366,13 @@ class HeapSnapshotStrategy<K>
 					for (StateSnapshot tableSnapshot : cowStateStableSnapshots.values()) {
 						tableSnapshot.release();
 							// reset changelogs for current checkpoint.
-						if (tableSnapshot.getChangelogs() != null
-							&& affectedKeygroups != null) {
-							tableSnapshot.releaseChangeLogs(affectedKeygroups);
-							// TODO: remove the corresponding keygroups from state table.
-						}
+						// TODO: do not release the changeloged keys when just doing state migration.
+//						if (tableSnapshot.getChangelogs() != null
+//							&& affectedKeygroups != null) {
+//							tableSnapshot.releaseChangeLogs(affectedKeygroups);
+//						}
 					}
-					LOG.info("++++--- Snapshot cleanup completed");
+					LOG.info("++++--- Snapshot affected keygroups completed");
 				}
 
 				@Override

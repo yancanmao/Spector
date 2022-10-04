@@ -394,7 +394,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
 
 		CompletableFuture<Acknowledge> dispatchStateResultFuture = FutureUtils.retry(
-			() -> taskManagerGateway.dispatchStateToStandbyTask(attemptId, vertex.getJobvertexId(), taskRestore, rpcTimeout),
+			() -> taskManagerGateway.dispatchStateToTask(attemptId, vertex.getJobvertexId(), taskRestore, vertex.getKeyGroupRange(), vertex.getIdInModel(), rpcTimeout),
 			NUM_CANCEL_CALL_TRIES,
 			executor);
 
@@ -1026,24 +1026,48 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			throw new IllegalStateException("The vertex must be in RUNNING state to be reconfiged. Found state " + this.state);
 		}
 
-		final TaskDeploymentDescriptor deployment = vertex.createDeploymentDescriptor(
-			attemptId,
-			slot,
-			taskRestore,
-			attemptNumber,
-			isStandby,
-			srcAffectedKeygroups,
-			dstAffectedKeygroups);
+		if (taskRestore != null) {
+			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
 
-		// null taskRestore to let it be GC'ed
-		taskRestore = null;
+			final ComponentMainThreadExecutor jobMasterMainThreadExecutor =
+				vertex.getExecutionGraph().getJobMasterMainThreadExecutor();
 
-		final ComponentMainThreadExecutor jobMasterMainThreadExecutor =
-			vertex.getExecutionGraph().getJobMasterMainThreadExecutor();
+			// null taskRestore to let it be GC'ed
+			taskRestore = null;
 
-		final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+			return CompletableFuture
+				.supplyAsync(() -> taskManagerGateway.dispatchStateToTask(attemptId, vertex.getJobvertexId(), taskRestore,
+					vertex.getKeyGroupRange(), vertex.getIdInModel(), rpcTimeout), executor)
+				.thenCompose(Function.identity())
+				.handleAsync((ack, failure) -> {
+					if (failure != null) {
+						LOG.error("++++++ scheduleReconfig err: ", failure);
+						throw new CompletionException(failure);
+					}
+					return null;
+				}, jobMasterMainThreadExecutor);
+		} else {
 
-		return CompletableFuture
+			checkState(taskRestore == null, "++++++ task restore need to be null");
+
+			final TaskDeploymentDescriptor deployment = vertex.createDeploymentDescriptor(
+				attemptId,
+				slot,
+				taskRestore,
+				attemptNumber,
+				isStandby,
+				srcAffectedKeygroups,
+				dstAffectedKeygroups);
+
+			// null taskRestore to let it be GC'ed
+			taskRestore = null;
+
+			final ComponentMainThreadExecutor jobMasterMainThreadExecutor =
+				vertex.getExecutionGraph().getJobMasterMainThreadExecutor();
+
+			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+
+			return CompletableFuture
 				.supplyAsync(() -> taskManagerGateway.reconfigTask(attemptId, deployment, reconfigOptions, rpcTimeout), executor)
 				.thenCompose(Function.identity())
 				.handleAsync((ack, failure) -> {
@@ -1053,6 +1077,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 					}
 					return null;
 				}, jobMasterMainThreadExecutor);
+		}
 	}
 
 	public CompletableFuture<Void> scheduleReconfig(
