@@ -275,34 +275,34 @@ public class StateAssignmentOperation {
 		} else if (operation == Operation.REPARTITION_STATE) {
 			checkNotNull(jobExecutionPlan, "++++++ JobExecutionPlan Cannot be null for repartition");
 
-			// replicate to standby tasks
-			LOG.info("++++++ Replicate to standby tasks");
-			reDistributePartitionableStates(
-				operatorStates,
-				newParallelism,
-				operatorIDs,
-				newManagedOperatorStates,
-				newRawOperatorStates);
-
-			reDistributeKeyedStatesToStandbyTasks(
-				operatorStates,
-				operatorIDs,
-				newManagedKeyedState,
-				newRawKeyedState);
-
-			backupTaskStateToExecutionJobVertices(
-				executionJobVertex,
-				newManagedOperatorStates,
-				newRawOperatorStates,
-				newManagedKeyedState,
-				newRawKeyedState
-			);
-
-			// forward non-replicated state to destination tasks
-			newManagedOperatorStates.clear();
-			newRawOperatorStates.clear();
-			newManagedKeyedState.clear();
-			newRawKeyedState.clear();
+//			// replicate to standby tasks
+//			LOG.info("++++++ Replicate to standby tasks");
+//			reDistributePartitionableStates(
+//				operatorStates,
+//				newParallelism,
+//				operatorIDs,
+//				newManagedOperatorStates,
+//				newRawOperatorStates);
+//
+//			reDistributeKeyedStatesToStandbyTasks(
+//				operatorStates,
+//				operatorIDs,
+//				newManagedKeyedState,
+//				newRawKeyedState);
+//
+//			backupTaskStateToExecutionJobVertices(
+//				executionJobVertex,
+//				newManagedOperatorStates,
+//				newRawOperatorStates,
+//				newManagedKeyedState,
+//				newRawKeyedState
+//			);
+//
+//			// forward non-replicated state to destination tasks
+//			newManagedOperatorStates.clear();
+//			newRawOperatorStates.clear();
+//			newManagedKeyedState.clear();
+//			newRawKeyedState.clear();
 
 			LOG.info("++++++ Transfer non-replicated states to destination tasks");
 			reDistributePartitionableStates(
@@ -744,7 +744,12 @@ public class StateAssignmentOperation {
 					// the keyGroup we get from partitionAssignment is the hashed one (most origin without remapping)
 					int assignedKeyGroup = partitionAssignment.get(subTaskIndex).get(i);
 
-					if (backupKeyGroups.contains(assignedKeyGroup) || !migrateInKeygroups.contains(assignedKeyGroup)) {
+//					if (backupKeyGroups.contains(assignedKeyGroup) || !migrateInKeygroups.contains(assignedKeyGroup)) {
+//						continue;
+//					}
+
+					// do not consider the state migration here, the backuped state has been filtered out at checkpoint phase. Here only exists those changed keys to migrate.
+					if (!migrateInKeygroups.contains(assignedKeyGroup)) {
 						continue;
 					}
 
