@@ -10,6 +10,7 @@ import java.util.Map;
 
 public class GlobalStateManager {
 	// OperatorId -> {hashedKeygroup -> <alignedKeygroup, statehandle, isChanged>}
-	public static Map<Integer, Tuple3<Long, StreamStateHandle, Boolean>> globalManagedStateHandles = new HashMap<>();
-	public static Map<Integer, Tuple3<Long, StreamStateHandle, Boolean>> globalRawStateHandles = new HashMap<>();
+	// TODO: current setting only works for a single operator.
+	public static Map<OperatorID, Map<Integer, Tuple3<Long, StreamStateHandle, Boolean>>> globalManagedStateHandles = new HashMap<>();
+	public static Map<OperatorID, Map<Integer, Tuple3<Long, StreamStateHandle, Boolean>>> globalRawStateHandles = new HashMap<>();
 }

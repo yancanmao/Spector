@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.spector.netty.socket;
 
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.queryablestate.network.NettyBufferPool;
 import org.apache.flink.runtime.util.ExecutorThreadFactory;
 import org.apache.flink.util.AutoCloseableAsync;
 
@@ -82,6 +83,12 @@ public class NettySocketClient implements AutoCloseableAsync {
 		if (lowWaterMark > 0 && highWaterMark > 0) {
 			bootstrap.option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(lowWaterMark, highWaterMark));
 		}
+
+		final NettyBufferPool bufferPool = new NettyBufferPool(1);
+
+		bootstrap
+			.option(ChannelOption.ALLOCATOR, bufferPool);
+
 		bootstrap.group(group)
 			.channel(NioSocketChannel.class)
 			.handler(new ChannelInitializer<SocketChannel>() {

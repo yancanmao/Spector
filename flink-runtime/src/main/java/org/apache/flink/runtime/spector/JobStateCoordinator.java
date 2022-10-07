@@ -21,6 +21,7 @@ package org.apache.flink.runtime.spector;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.checkpoint.*;
+import org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Operation;
 import org.apache.flink.runtime.clusterframework.types.SlotID;
 import org.apache.flink.runtime.clusterframework.types.TaskManagerSlot;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
@@ -105,7 +106,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	private final Map<InstanceID, List<TaskManagerSlot>> slotsMap;
 
 	// for replicating states confirmation
-	private final Map<ExecutionAttemptID, ExecutionVertex> pendingAckStandbyTasks;
+	private final Map<ExecutionAttemptID, ExecutionVertex> pendingAckTasks;
 
 	private final ReconfigurationProfiler reconfigurationProfiler;
 
@@ -133,7 +134,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		this.backupKeyGroups = new HashSet<>();
 		initBackupKeyGroups(executionGraph.getJobConfiguration());
 		this.slotsMap = new HashMap<>();
-		this.pendingAckStandbyTasks = new HashMap<>();
+		this.pendingAckTasks = new HashMap<>();
 
 		this.reconfigurationProfiler = new ReconfigurationProfiler(executionGraph.getJobConfiguration());
 	}
@@ -267,29 +268,6 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		}, mainThreadExecutor);
 	}
 
-	/**
-	 * dispatch checkpointed state to backup task based on the fine-grained state management policies
-	 * by default, it replicate state to all other backup task
-	 */
-	public void dispatchLatestCheckpointedStateToStandbyTasks(CompletedCheckpoint checkpoint) {
-		Map<JobVertexID, ExecutionJobVertex> tasks = executionGraph.getAllVertices();
-		// re-assign the task states
-		final Map<OperatorID, OperatorState> operatorStates = checkpoint.getOperatorStates();
-
-		StateAssignmentOperation stateAssignmentOperation = checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT ?
-			new StateAssignmentOperation(checkpoint.getCheckpointID(), tasks, operatorStates,
-				true, REPARTITION_STATE, backupKeyGroups)
-			: new StateAssignmentOperation(checkpoint.getCheckpointID(), tasks, operatorStates,
-				true, DISPATCH_STATE_TO_STANDBY_TASK, backupKeyGroups);
-		checkNotNull(jobExecutionPlan, "jobExecutionPlan should not be null.");
-		stateAssignmentOperation.setRedistributeStrategy(jobExecutionPlan);
-		stateAssignmentOperation.setPendingStandbyTasks(pendingAckStandbyTasks);
-
-		stateAssignmentOperation.assignStates();
-		// check replication progress once, in case no keys are replicated.
-		checkReplicationProgress();
-	}
-
 	// TODO: see if other place need to add this
 	public CompletableFuture<?> cancelStandbyExecution(ExecutionJobVertex executionJobVertex) {
 		if (!standbyExecutionVertexes.get(executionJobVertex.getJobVertexId()).isEmpty()) {
@@ -311,40 +289,78 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	}
 
 	@Override
-	public void onCompleteCheckpoint(CompletedCheckpoint checkpoint) {
+	public void onCompleteCheckpoint(CompletedCheckpoint checkpoint) throws Exception {
+		checkNotNull(checkpoint);
+
 		if (checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT) {
 			reconfigurationProfiler.onSyncEnd();
+			LOG.info("++++++ redistribute operator states");
+			migrateStateToDestinationTasks(checkpoint);
+		} else {
+			LOG.info("++++++ checkpoint complete, start to dispatch state to replica");
+			reconfigurationProfiler.onReplicationStart();
+			dispatchLatestCheckpointedStateToStandbyTasks(checkpoint);
 		}
-		checkNotNull(checkpoint);
-		LOG.info("++++++ checkpoint complete, start to dispatch state to replica");
-		reconfigurationProfiler.onReplicationStart();
-		dispatchLatestCheckpointedStateToStandbyTasks(checkpoint);
-//		if (checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT) {
-//			LOG.info("++++++ redistribute operator states");
-//			handleCollectedStates(new HashMap<>(checkpoint.getOperatorStates()));
-//		}
+	}
+
+	/**
+	 * dispatch checkpointed state to backup task based on the fine-grained state management policies
+	 * by default, it replicate state to all other backup task
+	 */
+	public void dispatchLatestCheckpointedStateToStandbyTasks(CompletedCheckpoint checkpoint) {
+		Preconditions.checkState(checkpoint.getProperties().getCheckpointType() == CheckpointType.CHECKPOINT, "++++++  Need to be a CHECKPOINT");
+
+		prepareAssignStates(checkpoint, DISPATCH_STATE_TO_STANDBY_TASK);
+		// check replication progress once, in case no keys are replicated.
+		checkStateOperationProgress();
+	}
+
+	/**
+	 * dispatch checkpointed state to backup task based on the fine-grained state management policies
+	 * by default, it replicate state to all other backup task
+	 */
+	public void migrateStateToDestinationTasks(CompletedCheckpoint checkpoint) throws ExecutionGraphException {
+		Preconditions.checkState(checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT, "++++++ Need to be a RECONFIGPOINT");
+
+		prepareAssignStates(checkpoint, REPARTITION_STATE);
+		// start to transfer the state to the destination tasks
+		assignNewStates();
+		checkStateOperationProgress();
+	}
+
+	private void prepareAssignStates(CompletedCheckpoint checkpoint, Operation operation) {
+		Map<JobVertexID, ExecutionJobVertex> tasks = executionGraph.getAllVertices();
+		// re-assign the task states
+		final Map<OperatorID, OperatorState> operatorStates = checkpoint.getOperatorStates();
+
+		StateAssignmentOperation stateAssignmentOperation =
+			new StateAssignmentOperation(checkpoint.getCheckpointID(), tasks, operatorStates,
+				true, operation, backupKeyGroups);
+		checkNotNull(jobExecutionPlan, "jobExecutionPlan should not be null.");
+		stateAssignmentOperation.setRedistributeStrategy(jobExecutionPlan);
+		stateAssignmentOperation.setPendingTasks(pendingAckTasks);
+
+		stateAssignmentOperation.assignStates();
 	}
 
 	public void onAckReplication(ExecutionAttemptID executionAttemptID, AckStatus ackStatus) {
 		if (ackStatus == DONE) {
-			pendingAckStandbyTasks.remove(executionAttemptID);
+			pendingAckTasks.remove(executionAttemptID);
 			LOG.info("++++++ Receive Ack from execution: " + executionAttemptID);
-			checkReplicationProgress();
+			checkStateOperationProgress();
 		} else if (ackStatus == FAILED) {
-			throw new RuntimeException("++++++ Replication failed for some reason.");
+			throw new RuntimeException("++++++ Replication/Migration failed for some reason.");
 		}
 	}
 
-	private void checkReplicationProgress() {
-		if (pendingAckStandbyTasks.isEmpty()) {
-			LOG.info("++++++ Dispatch state to replica completed.");
-			reconfigurationProfiler.onReplicationEnd();
-			if (inProcess) {
-				try {
-					assignNewState();
-				} catch (ExecutionGraphException e) {
-					throw new RuntimeException(e);
-				}
+	private void checkStateOperationProgress() {
+		if (pendingAckTasks.isEmpty()) {
+			String stateOperationType = inProcess ? "MIGRATION" : "REPLICATION";
+			LOG.info("++++++ State Operation: " + stateOperationType + " completed.");
+			if (stateOperationType.equals("MIGRATION")) {
+				completeReconfiguration();
+			} else {
+				reconfigurationProfiler.onReplicationEnd();
 			}
 		}
 	}
@@ -520,7 +536,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	private void handleCollectedStates(Map<OperatorID, OperatorState> operatorStates) throws Exception {
 		switch (actionType) {
 			case REPARTITION:
-				assignNewState();
+				assignNewStates();
 				break;
 			case SCALE_OUT:
 				throw new UnsupportedOperationException();
@@ -533,13 +549,12 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		}
 	}
 
-	private void assignNewState() throws ExecutionGraphException {
+	private void assignNewStates() throws ExecutionGraphException {
 		reconfigurationProfiler.onUpdateStart();
 
 //		Map<JobVertexID, ExecutionJobVertex> tasks = new HashMap<>();
 //		tasks.put(targetVertex.getJobVertexId(), targetVertex);
 
-		// TODO: assign unreplicated states to tasks.
 //		StateAssignmentOperation stateAssignmentOperation =
 //			new StateAssignmentOperation(checkpointId, tasks, operatorStates,
 //				true, REPARTITION_STATE);
@@ -574,22 +589,26 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		FutureUtils
 			.combineAll(rescaledFuture)
 			.thenRunAsync(() -> {
-				LOG.info("++++++ Assign new state for repartition Completed");
-				CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
-
-				checkNotNull(checkpointCoordinator);
-				if (checkpointCoordinator.isPeriodicCheckpointingConfigured()) {
-					checkpointCoordinator.startCheckpointScheduler();
-				}
-
-				clean();
-
-				// notify streamSwitch that change is finished
-				reconfigurationProfiler.onUpdateEnd();
-				reconfigurationProfiler.onReconfigurationEnd();
-				controlPlane.onMigrationExecutorsStopped(targetVertex.getJobVertexId());
-				controlPlane.onChangeImplemented(targetVertex.getJobVertexId());
+				LOG.info("++++++ Waiting for state transfer completion");
 			}, mainThreadExecutor);
+	}
+
+	private void completeReconfiguration() {
+		LOG.info("++++++ Assign new state for repartition Completed");
+		CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
+
+		checkNotNull(checkpointCoordinator);
+		if (checkpointCoordinator.isPeriodicCheckpointingConfigured()) {
+			checkpointCoordinator.startCheckpointScheduler();
+		}
+
+		clean();
+
+		// notify streamSwitch that change is finished
+		reconfigurationProfiler.onUpdateEnd();
+		reconfigurationProfiler.onReconfigurationEnd();
+		controlPlane.onMigrationExecutorsStopped(targetVertex.getJobVertexId());
+		controlPlane.onChangeImplemented(targetVertex.getJobVertexId());
 	}
 
 	private void failExecution(Throwable throwable) {
@@ -600,7 +619,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	private void clean() {
 		inProcess = false;
 		notYetAcknowledgedTasks.clear();
-		pendingAckStandbyTasks.clear();
+		pendingAckTasks.clear();
 	}
 
 

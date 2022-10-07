@@ -2,8 +2,10 @@ package org.apache.flink.runtime.spector.netty.socket;
 
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.IllegalConfigurationException;
+import org.apache.flink.queryablestate.network.NettyBufferPool;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.util.ExecutorThreadFactory;
+import org.apache.flink.shaded.guava18.com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.apache.flink.shaded.netty4.io.netty.bootstrap.ServerBootstrap;
 import org.apache.flink.shaded.netty4.io.netty.bootstrap.ServerBootstrapConfig;
 import org.apache.flink.shaded.netty4.io.netty.channel.*;
@@ -20,12 +22,19 @@ import java.net.InetSocketAddress;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 
 public class NettySocketServer implements AutoCloseableAsync {
 	private static final Logger LOG = LoggerFactory.getLogger(NettySocketServer.class);
+
+	/** AbstractServerBase config: low water mark. */
+	private static final int LOW_WATER_MARK = 8 * 1024;
+
+	/** AbstractServerBase config: high water mark. */
+	private static final int HIGH_WATER_MARK = 32 * 1024;
 
 	private final String tag;
 
@@ -73,6 +82,17 @@ public class NettySocketServer implements AutoCloseableAsync {
 			.group(bossGroup, workerGroup)
 			.channel(NioServerSocketChannel.class);
 
+		final ThreadFactory threadFactory = new ThreadFactoryBuilder()
+			.setDaemon(true)
+			.setNameFormat("Flink test" + " EventLoop Thread %d")
+			.build();
+
+		final NettyBufferPool bufferPool = new NettyBufferPool(1);
+
+		bootstrap
+			.option(ChannelOption.ALLOCATOR, bufferPool)
+			.childOption(ChannelOption.ALLOCATOR, bufferPool);
+
 
 		bootstrap.childHandler(new ChannelInitializer<SocketChannel>() {
 			@Override
@@ -82,6 +102,17 @@ public class NettySocketServer implements AutoCloseableAsync {
 				}
 			}
 		});
+
+		final int defaultHighWaterMark = 64 * 1024; // from DefaultChannelConfig (not exposed)
+		//noinspection ConstantConditions
+		// (ignore warning here to make this flexible in case the configuration values change)
+		if (LOW_WATER_MARK > defaultHighWaterMark) {
+			bootstrap.childOption(ChannelOption.WRITE_BUFFER_HIGH_WATER_MARK, HIGH_WATER_MARK);
+			bootstrap.childOption(ChannelOption.WRITE_BUFFER_LOW_WATER_MARK, LOW_WATER_MARK);
+		} else { // including (newHighWaterMark < defaultLowWaterMark)
+			bootstrap.childOption(ChannelOption.WRITE_BUFFER_LOW_WATER_MARK, LOW_WATER_MARK);
+			bootstrap.childOption(ChannelOption.WRITE_BUFFER_HIGH_WATER_MARK, HIGH_WATER_MARK);
+		}
 
 		Iterator<Integer> portsIterator;
 		try {
