@@ -1032,14 +1032,14 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			final ComponentMainThreadExecutor jobMasterMainThreadExecutor =
 				vertex.getExecutionGraph().getJobMasterMainThreadExecutor();
 
-			// null taskRestore to let it be GC'ed
-			taskRestore = null;
-
 			return CompletableFuture
 				.supplyAsync(() -> taskManagerGateway.dispatchStateToTask(attemptId, vertex.getJobvertexId(), taskRestore,
 					vertex.getKeyGroupRange(), vertex.getIdInModel(), rpcTimeout), executor)
 				.thenCompose(Function.identity())
 				.handleAsync((ack, failure) -> {
+					// null taskRestore to let it be GC'ed
+					taskRestore = null;
+
 					if (failure != null) {
 						LOG.error("++++++ scheduleReconfig err: ", failure);
 						throw new CompletionException(failure);

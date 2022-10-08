@@ -252,7 +252,7 @@ public class KeyGroupRange implements KeyGroupsList, Serializable {
 
 	public void write(DataOutputView out) throws IOException {
 		out.writeInt(startKeyGroup);
-		out.write(endKeyGroup);
+		out.writeInt(endKeyGroup);
 		out.writeInt(fromAlignedToHashed.size());
 		for (Map.Entry<Integer, Integer> entry : fromAlignedToHashed.entrySet()) {
 			out.writeInt(entry.getKey());
