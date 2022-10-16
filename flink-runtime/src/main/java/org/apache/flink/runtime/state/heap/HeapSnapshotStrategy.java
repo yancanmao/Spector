@@ -161,12 +161,8 @@ class HeapSnapshotStrategy<K>
 						keyGroupRangeOffsets[keyGroupPos] = localStream.getPos();
 
 						int hashedKeyGroup = keyGroupRange.mapFromAlignedToHashed(alignedKeyGroupId);
-						outView.writeInt(hashedKeyGroup);
 
-						LOG.info("+++++--- keyGroupRange: " + keyGroupRange +
-							", alignedKeyGroupIndex: " + alignedKeyGroupId +
-							", offset: " + keyGroupRangeOffsets[keyGroupPos] +
-							", hashedKeyGroup: " + hashedKeyGroup);
+
 
 						for (Map.Entry<StateUID, StateSnapshot> stateSnapshot :
 							cowStateStableSnapshots.entrySet()) {
@@ -177,19 +173,26 @@ class HeapSnapshotStrategy<K>
 							if ((stateSnapshot.getValue()).getChangelogs() != null) {
 								if (stateSnapshot.getValue().getChangelogs()
 									.containsKey(hashedKeyGroup)) {
+									LOG.info("+++++--- keyGroupRange: " + keyGroupRange +
+										", alignedKeyGroupIndex: " + alignedKeyGroupId +
+										", offset: " + keyGroupRangeOffsets[keyGroupPos] +
+										", hashedKeyGroup: " + hashedKeyGroup);
+									outView.writeInt(hashedKeyGroup); // only write state when it is changeloged
 									changelogs[keyGroupPos] = true;
+									try (
+										OutputStream kgCompressionOut =
+											keyGroupCompressionDecorator.decorateWithCompression(localStream)) {
+										DataOutputViewStreamWrapper kgCompressionView =
+											new DataOutputViewStreamWrapper(kgCompressionOut);
+										kgCompressionView.writeShort(stateNamesToId.get(stateSnapshot.getKey()));
+										partitionedSnapshot.writeStateInKeyGroup(kgCompressionView, alignedKeyGroupId);
+									} // this will just close the outer compression stream
 								}
 							}
-							try (
-								OutputStream kgCompressionOut =
-									keyGroupCompressionDecorator.decorateWithCompression(localStream)) {
-								DataOutputViewStreamWrapper kgCompressionView =
-									new DataOutputViewStreamWrapper(kgCompressionOut);
-								kgCompressionView.writeShort(stateNamesToId.get(stateSnapshot.getKey()));
-								partitionedSnapshot.writeStateInKeyGroup(kgCompressionView, alignedKeyGroupId);
-							} // this will just close the outer compression stream
 						}
 					}
+
+					LOG.info("++++++ Changelogged state handle: " );
 
 					if (snapshotCloseableRegistry.unregisterCloseable(streamWithResultProvider)) {
 						KeyGroupRangeOffsets kgOffs = new KeyGroupRangeOffsets(keyGroupRange, keyGroupRangeOffsets, changelogs);
