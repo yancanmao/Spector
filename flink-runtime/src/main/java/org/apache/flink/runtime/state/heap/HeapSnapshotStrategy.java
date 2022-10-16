@@ -192,8 +192,6 @@ class HeapSnapshotStrategy<K>
 						}
 					}
 
-					LOG.info("++++++ Changelogged state handle: " );
-
 					if (snapshotCloseableRegistry.unregisterCloseable(streamWithResultProvider)) {
 						KeyGroupRangeOffsets kgOffs = new KeyGroupRangeOffsets(keyGroupRange, keyGroupRangeOffsets, changelogs);
 						SnapshotResult<StreamStateHandle> result =
