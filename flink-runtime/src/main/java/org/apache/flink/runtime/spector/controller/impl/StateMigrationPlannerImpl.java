@@ -20,6 +20,8 @@ package org.apache.flink.runtime.spector.controller.impl;
 
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.checkpoint.CheckpointCoordinator;
+import org.apache.flink.runtime.executiongraph.ExecutionGraph;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.spector.controller.ReconfigExecutor;
 import org.apache.flink.runtime.spector.controller.StateMigrationPlanner;
@@ -33,6 +35,7 @@ import java.util.Map;
 
 import static org.apache.flink.runtime.spector.SpectorOptions.NUM_AFFECTED_KEYS;
 import static org.apache.flink.runtime.spector.SpectorOptions.SYNC_KEYS;
+import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * Set the plan for the state migration according to the Configurations
@@ -54,11 +57,14 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 
 	public final int syncKeys;
 
+	public final ExecutionGraph executionGraph;
+
 	public StateMigrationPlannerImpl(Configuration configuration,
 									 JobVertexID jobVertexID,
 									 int parallelism,
 									 Map<String, List<String>> executorMapping,
-									 ReconfigExecutor reconfigExecutor) {
+									 ReconfigExecutor reconfigExecutor,
+									 ExecutionGraph executionGraph) {
 		this.configuration = configuration;
 
 		int numAffectedKeys = configuration.getInteger(NUM_AFFECTED_KEYS);
@@ -75,6 +81,8 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 		}
 
 		this.reconfigExecutor = reconfigExecutor;
+
+		this.executionGraph = executionGraph;
 	}
 
 	@Override
@@ -88,6 +96,13 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 	}
 
 	public void makePlan(Map<String, List<String>> executorMapping) {
+		// Stop checkpoint coordinator then start the reconfiguration
+		LOG.info("++++++ Stop Checkpoint Coordinator and start to make plan");
+		CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
+		checkNotNull(checkpointCoordinator);
+		checkpointCoordinator.stopCheckpointScheduler();
+
+
 		int newParallelism = executorMapping.keySet().size();
 		// find out the affected keys.
 		// order the migrating keys
@@ -116,6 +131,11 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 		} else {
 			// scale out
 			throw new UnsupportedOperationException();
+		}
+
+		checkNotNull(checkpointCoordinator);
+		if (checkpointCoordinator.isPeriodicCheckpointingConfigured()) {
+			checkpointCoordinator.startCheckpointScheduler();
 		}
 	}
 

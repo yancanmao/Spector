@@ -73,7 +73,7 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 	 */
 	private final int keyGroupOffset;
 
-	private HashMap<Integer, Boolean> changelogs;
+	private final HashMap<Integer, Boolean> changelogs;
 
 	// ------------------------------------------------------------------------
 

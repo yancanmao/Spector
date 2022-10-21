@@ -393,10 +393,10 @@ public class StateAssignmentOperation {
 
 			// Put snapshotted state to global state store for future usage
 			globalManagedStateHandles
-				.getOrDefault(operatorState.getOperatorID(), new HashMap<>())
+				.computeIfAbsent(operatorState.getOperatorID(), t -> new HashMap<>())
 				.putAll(hashedKeyGroupToManagedStateHandle);
 			globalRawStateHandles
-				.getOrDefault(operatorState.getOperatorID(), new HashMap<>())
+				.computeIfAbsent(operatorState.getOperatorID(), t -> new HashMap<>())
 				.putAll(hashedKeyGroupToRawStateHandle);
 
 
@@ -755,6 +755,10 @@ public class StateAssignmentOperation {
 				Set<Integer> migrateInKeygroups =
 					new HashSet<>(jobExecutionPlan.getAffectedKeygroupsForDestination(subTaskIndex));
 
+				// stats for debug
+				int migrateInKeyGroupSize = migrateInKeygroups.size();
+				int actualMigratingSize = 0;
+
 				Set<Integer> snapshotedKeygroups = new HashSet<>(hashedKeyGroupToManagedStateHandle.keySet());
 
 				OperatorInstanceID instanceID = OperatorInstanceID.of(subTaskIndex, newOperatorIDs.get(operatorIndex));
@@ -782,6 +786,9 @@ public class StateAssignmentOperation {
 						rawStateTuple = hashedKeyGroupToRawStateHandle
 							.get(assignedKeyGroup);
 					} else if (!backupKeyGroups.contains(assignedKeyGroup)) {
+						if (!globalManagedStateHandles.get(operatorState.getOperatorID()).containsKey(assignedKeyGroup)) {
+							continue; // skip if the state has not been snapshotted yet
+						}
 						// for non-snapshoted state, if it is still not in replicated state
 						// get state handle from globalManagedStateHandles/globalRawStateHandles
 						managedStateTuple = globalManagedStateHandles
@@ -794,6 +801,8 @@ public class StateAssignmentOperation {
 						// otherwise just recover state from standby tasks.
 						continue;
 					}
+
+					actualMigratingSize++;
 
 					KeyGroupRange alignedKeyGroupRange = jobExecutionPlan.getAlignedKeyGroupRange(subTaskIndex);
 					// keyGroupRange which length is 1
@@ -811,6 +820,8 @@ public class StateAssignmentOperation {
 							rawStateTuple.f1));
 					}
 				}
+
+				LOG.info("++++++ Total KeyGroups to migrate: " + actualMigratingSize + "/" + migrateInKeyGroupSize);
 
 				newManagedKeyedState.put(instanceID, subManagedKeyedStates);
 				newRawKeyedState.put(instanceID, subRawKeyedStates);

@@ -402,6 +402,11 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	}
 
 	@Override
+	public ExecutionGraph getExecutionGraph() {
+		return this.executionGraph;
+	}
+
+	@Override
 	public void setInitialJobExecutionPlan(JobVertexID vertexID, JobExecutionPlan jobExecutionPlan) {
 		// TODO: by far, we only need to a single operator, but we need to have multiple operator remapping
 		this.jobExecutionPlan = jobExecutionPlan;
@@ -445,6 +450,9 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 
 		checkNotNull(checkpointCoordinator);
 		checkpointCoordinator.setReconfigpointAcknowledgeListener(this);
+
+		// stop checkpoint coordinator then start the reconfiguration
+		checkpointCoordinator.stopCheckpointScheduler();
 
 		this.targetVertex = tasks.get(vertexID);
 
@@ -519,7 +527,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 			})
 			.thenRunAsync(() -> {
 				try {
-					checkpointCoordinator.stopCheckpointScheduler();
+//					checkpointCoordinator.stopCheckpointScheduler();
 
 					checkpointId = checkpointCoordinator
 						.triggerReconfigPoint(System.currentTimeMillis()).getCheckpointId();
@@ -595,12 +603,12 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 
 	private void completeReconfiguration() {
 		LOG.info("++++++ Assign new state for repartition Completed");
-		CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
+//		CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
 
-		checkNotNull(checkpointCoordinator);
-		if (checkpointCoordinator.isPeriodicCheckpointingConfigured()) {
-			checkpointCoordinator.startCheckpointScheduler();
-		}
+//		checkNotNull(checkpointCoordinator);
+//		if (checkpointCoordinator.isPeriodicCheckpointingConfigured()) {
+//			checkpointCoordinator.startCheckpointScheduler();
+//		}
 
 		clean();
 

@@ -67,7 +67,8 @@ public class ControlPlane {
 					vertexID,
 					parallelism,
 					executorMapping,
-					reconfigExecutor);
+					reconfigExecutor,
+					jobReconfigActor.getExecutionGraph());
 
 				OperatorController controller = new DummyController(
 					configuration,
