@@ -786,6 +786,9 @@ public class StateAssignmentOperation {
 						rawStateTuple = hashedKeyGroupToRawStateHandle
 							.get(assignedKeyGroup);
 					} else if (!backupKeyGroups.contains(assignedKeyGroup)) {
+						if (!globalManagedStateHandles.containsKey(operatorState.getOperatorID())) {
+							continue;
+						}
 						if (!globalManagedStateHandles.get(operatorState.getOperatorID()).containsKey(assignedKeyGroup)) {
 							continue; // skip if the state has not been snapshotted yet
 						}
