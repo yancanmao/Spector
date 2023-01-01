@@ -306,7 +306,9 @@ class HeapSnapshotStrategy<K>
 						totalStateCount++;
 
 						if (affectedKeygroups.contains(hashedKeyGroup)) {
-							checkAndSerializeKeyState(localStream, outView, keyGroupRangeOffsets, changelogs, changelogCount, keyGroupPos, alignedKeyGroupId, hashedKeyGroup, cowStateStableSnapshots, stateNamesToId);
+							if (checkAndSerializeKeyState(localStream, outView, keyGroupRangeOffsets, changelogs, changelogCount, keyGroupPos, alignedKeyGroupId, hashedKeyGroup, cowStateStableSnapshots, stateNamesToId)) {
+								changelogCount++;
+							}
 						}
 					}
 
@@ -328,8 +330,9 @@ class HeapSnapshotStrategy<K>
 						tableSnapshot.release();
 							// reset changelogs for current checkpoint.
 						// TODO: do not release the changeloged keys when just doing state migration.
-//						if (tableSnapshot.getChangelogs() != null
-//							&& affectedKeygroups != null) {
+						// TODO: for window operations we need to clean up the priority queues which contains timers for the associated keys.
+						// TODO: our current work around is to bypass those timer and rely on the timer clean scheme to clean them up, not elegant.
+//						if (affectedKeygroups != null && tableSnapshot instanceof HeapPriorityQueueStateSnapshot) {
 //							tableSnapshot.releaseChangeLogs(affectedKeygroups);
 //						}
 					}
@@ -351,7 +354,7 @@ class HeapSnapshotStrategy<K>
 		return task;
 	}
 
-	private void checkAndSerializeKeyState(
+	private boolean checkAndSerializeKeyState(
 		CheckpointStreamFactory.CheckpointStateOutputStream localStream,
 		DataOutputViewStreamWrapper outView,
 		long[] keyGroupRangeOffsets,
@@ -362,37 +365,47 @@ class HeapSnapshotStrategy<K>
 		int hashedKeyGroup,
 		Map<StateUID, StateSnapshot> cowStateStableSnapshots,
 		Map<StateUID, Integer> stateNamesToId) throws IOException {
+
+		// first read the changelogs, then compress all state from both kvstate and pqstate
 		for (Map.Entry<StateUID, StateSnapshot> stateSnapshot :
 			cowStateStableSnapshots.entrySet()) {
-			StateSnapshot.StateKeyGroupWriter partitionedSnapshot =
-
-				stateSnapshot.getValue().getKeyGroupWriter();
 
 			if ((stateSnapshot.getValue()).getChangelogs() != null) {
 				if (stateSnapshot.getValue().getChangelogs()
 					.containsKey(hashedKeyGroup)) {
 					changelogCount++;
 
-					LOG.info("+++++--- keyGroupRange: " + keyGroupRange +
-						", alignedKeyGroupIndex: " + alignedKeyGroupId +
-						", offset: " + keyGroupRangeOffsets[keyGroupPos] +
-						", hashedKeyGroup: " + hashedKeyGroup);
-
-					outView.writeInt(hashedKeyGroup);
-
 					changelogs[keyGroupPos] = true;
-
-					try (
-						OutputStream kgCompressionOut =
-							keyGroupCompressionDecorator.decorateWithCompression(localStream)) {
-						DataOutputViewStreamWrapper kgCompressionView =
-							new DataOutputViewStreamWrapper(kgCompressionOut);
-						kgCompressionView.writeShort(stateNamesToId.get(stateSnapshot.getKey()));
-						partitionedSnapshot.writeStateInKeyGroup(kgCompressionView, alignedKeyGroupId);
-					} // this will just close the outer compression stream
 				}
 			}
 		}
+
+		if (changelogs[keyGroupPos]) {
+
+			outView.writeInt(hashedKeyGroup);
+
+			LOG.info("+++++--- keyGroupRange: " + keyGroupRange +
+				", alignedKeyGroupIndex: " + alignedKeyGroupId +
+				", offset: " + keyGroupRangeOffsets[keyGroupPos] +
+				", hashedKeyGroup: " + hashedKeyGroup);
+
+			for (Map.Entry<StateUID, StateSnapshot> stateSnapshot :
+			cowStateStableSnapshots.entrySet()) {
+			StateSnapshot.StateKeyGroupWriter partitionedSnapshot =
+				stateSnapshot.getValue().getKeyGroupWriter();
+
+				try (
+					OutputStream kgCompressionOut =
+						keyGroupCompressionDecorator.decorateWithCompression(localStream)) {
+					DataOutputViewStreamWrapper kgCompressionView =
+						new DataOutputViewStreamWrapper(kgCompressionOut);
+					kgCompressionView.writeShort(stateNamesToId.get(stateSnapshot.getKey()));
+					partitionedSnapshot.writeStateInKeyGroup(kgCompressionView, alignedKeyGroupId);
+				} // this will just close the outer compression stream
+			}
+		}
+
+		return changelogs[keyGroupPos];
 	}
 
 	@Override
