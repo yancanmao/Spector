@@ -706,11 +706,11 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 	}
 
 	@Override
-	public void acknowledgeReplication(
+	public void acknowledgeStateTransmissionCompletion(
 		final JobID jobID,
 		final ExecutionAttemptID executionAttemptID,
 		final AckStatus ackStatus) {
-		jobStateCoordinator.onAckReplication(executionAttemptID, ackStatus);
+		jobStateCoordinator.onAckStateTransmission(executionAttemptID, ackStatus);
 	}
 
 	// TODO: This method needs a leader session ID

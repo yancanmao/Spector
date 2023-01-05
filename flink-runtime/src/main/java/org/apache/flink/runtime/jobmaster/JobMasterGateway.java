@@ -26,8 +26,6 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.checkpoint.CheckpointCoordinatorGateway;
-import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
-import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.TaskManagerSlot;
@@ -48,7 +46,6 @@ import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.OperatorBackPressureStatsResponse;
 import org.apache.flink.runtime.rpc.FencedRpcGateway;
 import org.apache.flink.runtime.rpc.RpcTimeout;
-import org.apache.flink.runtime.spector.JobStateCoordinator;
 import org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus;
 import org.apache.flink.runtime.spector.netty.data.TaskExecutorSocketAddress;
 import org.apache.flink.runtime.taskexecutor.AccumulatorReport;
@@ -301,7 +298,7 @@ public interface JobMasterGateway extends
 
 	CompletableFuture<Collection<TaskManagerSlot>> getAllSlots();
 
-	void acknowledgeReplication(
+	void acknowledgeStateTransmissionCompletion(
 		final JobID jobID,
 		final ExecutionAttemptID executionAttemptID,
 		final AckStatus ackStatus);

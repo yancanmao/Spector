@@ -387,7 +387,7 @@ public class TestingJobMasterGateway implements JobMasterGateway {
 	}
 
 	@Override
-	public void acknowledgeReplication(JobID jobID, ExecutionAttemptID executionAttemptID, JobStateCoordinator.AckStatus ackStatus) {
+	public void acknowledgeStateTransmissionCompletion(JobID jobID, ExecutionAttemptID executionAttemptID, JobStateCoordinator.AckStatus ackStatus) {
 
 	}
 }

@@ -821,7 +821,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 //			taskStateManager.setTaskRestore(taskRestore);
 
 				log.debug("++++++ " + jobvertexId + " Replicate completed, Acking to the jobmaster");
-				jobManagerConnection.getJobManagerGateway().acknowledgeReplication(
+				jobManagerConnection.getJobManagerGateway().acknowledgeStateTransmissionCompletion(
 					jobID,
 					executionAttemptID,
 					DONE);
@@ -853,7 +853,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				taskRestore);
 
 			log.debug("++++++ " + jobvertexId + " Migrate completed, Acking to the jobmaster");
-			jobManagerConnection.getJobManagerGateway().acknowledgeReplication(
+			jobManagerConnection.getJobManagerGateway().acknowledgeStateTransmissionCompletion(
 				jobID,
 				executionAttemptID,
 				DONE);

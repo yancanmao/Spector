@@ -343,7 +343,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		stateAssignmentOperation.assignStates();
 	}
 
-	public void onAckReplication(ExecutionAttemptID executionAttemptID, AckStatus ackStatus) {
+	public void onAckStateTransmission(ExecutionAttemptID executionAttemptID, AckStatus ackStatus) {
 		if (ackStatus == DONE) {
 			pendingAckTasks.remove(executionAttemptID);
 			LOG.info("++++++ Receive Ack from execution: " + executionAttemptID);
@@ -597,7 +597,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		FutureUtils
 			.combineAll(rescaledFuture)
 			.thenRunAsync(() -> {
-				LOG.info("++++++ Waiting for state transfer completion");
+				LOG.info("++++++ State migration completed");
 			}, mainThreadExecutor);
 	}
 
