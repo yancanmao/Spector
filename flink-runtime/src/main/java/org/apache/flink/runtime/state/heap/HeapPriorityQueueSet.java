@@ -102,8 +102,14 @@ public class HeapPriorityQueueSet<T extends HeapPriorityQueueElement>
 		keyGroupsInLocalRange = keyGroupsInLocalRange == 0 ? 1 : keyGroupsInLocalRange;
 
 		final int deduplicationSetSize = 1 + minimumCapacity / keyGroupsInLocalRange;
-		this.deduplicationMapsByKeyGroup = new HashMap[keyGroupsInLocalRange];
-		for (int i = 0; i < keyGroupsInLocalRange; ++i) {
+//		this.deduplicationMapsByKeyGroup = new HashMap[keyGroupsInLocalRange];
+//		for (int i = 0; i < keyGroupsInLocalRange; ++i) {
+//			deduplicationMapsByKeyGroup[i] = new HashMap<>(deduplicationSetSize);
+//		}
+
+		// set this one to the full keygroup size, and accessing with hashed keygroup index
+		this.deduplicationMapsByKeyGroup = new HashMap[totalNumberOfKeyGroups];
+		for (int i = 0; i < totalNumberOfKeyGroups; ++i) {
 			deduplicationMapsByKeyGroup[i] = new HashMap<>(deduplicationSetSize);
 		}
 	}
@@ -112,7 +118,20 @@ public class HeapPriorityQueueSet<T extends HeapPriorityQueueElement>
 	@Nullable
 	public T poll() {
 		final T toRemove = super.poll();
-		return toRemove != null ? getDedupMapForElement(toRemove).remove(toRemove) : null;
+		if (toRemove != null) {
+			int hashedKeyGroup = KeyGroupRangeAssignment.assignToKeyGroup(
+				keyExtractor.extractKeyFromElement(toRemove),
+				totalNumberOfKeyGroups);
+			if (!keyGroupRange.containsHashedKeyGroup(hashedKeyGroup)) {
+				// skip if the time window of associated key has been removed.
+				return null;
+			} else {
+				return getDedupMapForElement(toRemove).remove(toRemove);
+			}
+		} else {
+			return null;
+		}
+//		return toRemove != null ? getDedupMapForElement(toRemove).remove(toRemove) : null;
 	}
 
 	/**
@@ -170,12 +189,13 @@ public class HeapPriorityQueueSet<T extends HeapPriorityQueueElement>
 	}
 
 	private int globalKeyGroupToLocalIndex(int hashedKeyGroup) {
-		int alignedKeyGroup = keyGroupRange.mapFromHashedToAligned(hashedKeyGroup);
-//		checkArgument(keyGroupRange.contains(keyGroup));
-//		LOG.info("++++---- keyGroupRange: " + keyGroupRange +
-//			", alignedKeyGroupIndex: " + alignedKeyGroup +
-//			", hashedKeyGroup: " + hashedKeyGroup);
-		return alignedKeyGroup - keyGroupRange.getStartKeyGroup();
+//		int alignedKeyGroup = keyGroupRange.mapFromHashedToAligned(hashedKeyGroup);
+////		checkArgument(keyGroupRange.contains(keyGroup));
+////		LOG.info("++++---- keyGroupRange: " + keyGroupRange +
+////			", alignedKeyGroupIndex: " + alignedKeyGroup +
+////			", hashedKeyGroup: " + hashedKeyGroup);
+//		return alignedKeyGroup - keyGroupRange.getStartKeyGroup();
+		return hashedKeyGroup;
 	}
 
 	@Nonnull
