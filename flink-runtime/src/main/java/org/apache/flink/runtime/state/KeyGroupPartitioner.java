@@ -21,12 +21,15 @@ package org.apache.flink.runtime.state;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.util.Preconditions;
+import org.apache.hadoop.util.hash.Hash;
 
 import javax.annotation.Nonnegative;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.TreeMap;
 
 /**
  * Class that contains the base algorithm for partitioning data into key-groups. This algorithm currently works
@@ -74,7 +77,8 @@ public class KeyGroupPartitioner<T> {
 	 * This is a helper array that caches the key-group for each element, so we do not have to compute them twice.
 	 */
 	@Nonnull
-	protected final int[] elementKeyGroups;
+//	protected final int[] elementKeyGroups;
+	protected final TreeMap<Integer, Integer> elementKeyGroups;
 
 	/** Cached value of keyGroupRange#firstKeyGroup. */
 	@Nonnegative
@@ -124,7 +128,8 @@ public class KeyGroupPartitioner<T> {
 		this.keyExtractorFunction = keyExtractorFunction;
 		this.elementWriterFunction = elementWriterFunction;
 		this.firstKeyGroup = keyGroupRange.getStartKeyGroup();
-		this.elementKeyGroups = new int[numberOfElements];
+//		this.elementKeyGroups = new int[numberOfElements];
+		this.elementKeyGroups = new TreeMap<>();
 		this.counterHistogram = new int[keyGroupRange.getNumberOfKeyGroups()];
 		this.computedResult = null;
 	}
@@ -152,11 +157,11 @@ public class KeyGroupPartitioner<T> {
 			int hashedKeyGroup = KeyGroupRangeAssignment.assignToKeyGroup(
 				keyExtractorFunction.extractKeyFromElement(partitioningSource[i]), totalKeyGroups);
 //			// TODO: temporarily bypassing those redundant elements that have been migrated but not removed locally.
-//			if (keyGroupRange.containsHashedKeyGroup(hashedKeyGroup)) {
+			if (keyGroupRange.containsHashedKeyGroup(hashedKeyGroup)) {
 				int alignedKeyGroup = keyGroupRange.mapFromHashedToAligned(hashedKeyGroup);
 
 				reportKeyGroupOfElementAtIndex(i, alignedKeyGroup);
-//			}
+			}
 		}
 	}
 
@@ -166,7 +171,8 @@ public class KeyGroupPartitioner<T> {
 	protected void reportKeyGroupOfElementAtIndex(int index, int keyGroup) {
 		try {
 			final int keyGroupIndex = keyGroup - firstKeyGroup;
-			elementKeyGroups[index] = keyGroupIndex;
+//			elementKeyGroups[index] = keyGroupIndex;
+			elementKeyGroups.put(index, keyGroupIndex);
 			++counterHistogram[keyGroupIndex];
 		} catch (Exception e) {
 			throw new RuntimeException();
@@ -189,8 +195,13 @@ public class KeyGroupPartitioner<T> {
 	private void executePartitioning(int outputNumberOfElements) {
 
 		// We repartition the entries by their pre-computed key-groups, using the histogram values as write indexes
-		for (int inIdx = 0; inIdx < outputNumberOfElements; ++inIdx) {
-			int effectiveKgIdx = elementKeyGroups[inIdx];
+//		for (int inIdx = 0; inIdx < outputNumberOfElements; ++inIdx) {
+//			int effectiveKgIdx = elementKeyGroups[inIdx];
+//			int outIdx = counterHistogram[effectiveKgIdx]++;
+//			partitioningDestination[outIdx] = partitioningSource[inIdx];
+//		}
+		for (int inIdx : elementKeyGroups.keySet()) {
+			int effectiveKgIdx = elementKeyGroups.get(inIdx);
 			int outIdx = counterHistogram[effectiveKgIdx]++;
 			partitioningDestination[outIdx] = partitioningSource[inIdx];
 		}
