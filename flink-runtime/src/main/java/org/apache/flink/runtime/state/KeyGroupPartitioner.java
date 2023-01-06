@@ -151,9 +151,12 @@ public class KeyGroupPartitioner<T> {
 		for (int i = 0; i < numberOfElements; ++i) {
 			int hashedKeyGroup = KeyGroupRangeAssignment.assignToKeyGroup(
 				keyExtractorFunction.extractKeyFromElement(partitioningSource[i]), totalKeyGroups);
-			int alignedKeyGroup = keyGroupRange.mapFromHashedToAligned(hashedKeyGroup);
+//			// TODO: temporarily bypassing those redundant elements that have been migrated but not removed locally.
+//			if (keyGroupRange.containsHashedKeyGroup(hashedKeyGroup)) {
+				int alignedKeyGroup = keyGroupRange.mapFromHashedToAligned(hashedKeyGroup);
 
-			reportKeyGroupOfElementAtIndex(i, alignedKeyGroup);
+				reportKeyGroupOfElementAtIndex(i, alignedKeyGroup);
+//			}
 		}
 	}
 
