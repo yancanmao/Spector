@@ -373,12 +373,12 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 
 	public void start() {
 		notifyNewVertices(executionGraph.getExecutionJobVertices())
-			.whenComplete((ignore, t) -> {
+			.whenCompleteAsync((ignore, t) -> {
 				controlPlane.startControllers();
 				CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
 				checkNotNull(checkpointCoordinator);
 				checkpointCoordinator.setReconfigpointAcknowledgeListener(this);
-			});
+			}, mainThreadExecutor);
 	}
 
 	public void stop() {
