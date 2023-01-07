@@ -325,7 +325,6 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		prepareAssignStates(checkpoint, REPARTITION_STATE);
 		// start to transfer the state to the destination tasks
 		assignNewStates();
-		checkStateOperationProgress();
 	}
 
 	private void prepareAssignStates(CompletedCheckpoint checkpoint, Operation operation) {
@@ -557,7 +556,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		}
 	}
 
-	private void assignNewStates() throws ExecutionGraphException {
+	private CompletableFuture<Void> assignNewStates() throws ExecutionGraphException {
 		reconfigurationProfiler.onUpdateStart();
 
 //		Map<JobVertexID, ExecutionJobVertex> tasks = new HashMap<>();
@@ -594,10 +593,11 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		}
 		LOG.info("++++++ Assign new state futures created");
 
-		FutureUtils
+		return FutureUtils
 			.combineAll(rescaledFuture)
 			.thenRunAsync(() -> {
 				LOG.info("++++++ State migration completed");
+				checkStateOperationProgress();
 			}, mainThreadExecutor);
 	}
 
