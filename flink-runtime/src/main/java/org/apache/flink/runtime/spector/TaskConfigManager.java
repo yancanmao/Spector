@@ -37,6 +37,7 @@ import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.spector.migration.ReconfigID;
 import org.apache.flink.runtime.spector.migration.ReconfigOptions;
+import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.taskmanager.TaskActions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -98,7 +99,7 @@ public class TaskConfigManager {
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
 		Collection<Integer> srcAffectedKeygroups,
-		Collection<Integer> dstAffectedKeygroups) {
+		Collection<Integer> dstAffectedKeygroups, KeyGroupRange keyGroupRange) {
 
 		TaskReconfigMeta meta = new TaskReconfigMeta(
 			reconfigId,
@@ -106,7 +107,8 @@ public class TaskConfigManager {
 			resultPartitionDeploymentDescriptors,
 			inputGateDeploymentDescriptors,
 			srcAffectedKeygroups,
-			dstAffectedKeygroups);
+			dstAffectedKeygroups,
+			keyGroupRange);
 
 		long timeStart = System.currentTimeMillis();
 		while (reconfigMeta != null) {
@@ -151,6 +153,15 @@ public class TaskConfigManager {
 
 	public boolean isUpdateGates() {
 		return reconfigMeta.getReconfigOptions().isUpdatingGates();
+	}
+
+
+	public boolean isUpdatingKeyGroupRange() {
+		return reconfigMeta.getReconfigOptions().isUpdatingKeyGroupRange();
+	}
+
+	public KeyGroupRange getKeyGroupRange() {
+		return reconfigMeta.getKeyGroupRange();
 	}
 
 	public void createNewResultPartitions() throws IOException {

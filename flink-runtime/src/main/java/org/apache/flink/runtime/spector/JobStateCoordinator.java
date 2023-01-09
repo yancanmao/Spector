@@ -494,7 +494,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 			if (!jobExecutionPlan.isAffectedTask(subtaskIndex)) {
 				rescaleCandidatesFutures.add(
 					execution.scheduleReconfig(reconfigId, ReconfigOptions.UPDATE_BOTH,
-						null, null, null));
+						jobExecutionPlan.getAlignedKeyGroupRange(subtaskIndex), null, null));
 			} else {
 				if (jobExecutionPlan.isSourceSubtask(subtaskIndex) || jobExecutionPlan.isDestinationSubtask(subtaskIndex)) {
 					List<Integer> srcKeygroups = jobExecutionPlan.isSourceSubtask(subtaskIndex) ?
@@ -583,13 +583,14 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 					ReconfigOptions.UPDATE_REDISTRIBUTE_STATE,
 					jobExecutionPlan.getAlignedKeyGroupRange(i),
 					jobExecutionPlan.getIdInModel(i));
-			} else {
-				scheduledRescale = executionAttempt.scheduleReconfig(reconfigId,
-					ReconfigOptions.UPDATE_KEYGROUP_RANGE_ONLY,
-					jobExecutionPlan.getAlignedKeyGroupRange(i), null, null);
+				rescaledFuture.add(scheduledRescale);
 			}
-
-			rescaledFuture.add(scheduledRescale);
+//			else {
+//				scheduledRescale = executionAttempt.scheduleReconfig(reconfigId,
+//					ReconfigOptions.UPDATE_KEYGROUP_RANGE_ONLY,
+//					jobExecutionPlan.getAlignedKeyGroupRange(i), null, null);
+//			}
+//			rescaledFuture.add(scheduledRescale);
 		}
 		LOG.info("++++++ Assign new state futures created");
 

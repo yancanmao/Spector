@@ -6,6 +6,7 @@ import org.apache.flink.runtime.io.network.partition.ResultPartition;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.spector.migration.ReconfigID;
 import org.apache.flink.runtime.spector.migration.ReconfigOptions;
+import org.apache.flink.runtime.state.KeyGroupRange;
 
 import java.util.Collection;
 
@@ -24,13 +25,15 @@ class TaskReconfigMeta {
 	private final Collection<Integer> srcAffectedKeygroups;
 	private final Collection<Integer> dstAffectedKeygroups;
 
+	private final KeyGroupRange keyGroupRange;
+
 	TaskReconfigMeta(
 		ReconfigID reconfigId,
 		ReconfigOptions reconfigOptions,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
 		Collection<Integer> srcAffectedKeygroups,
-		Collection<Integer> dstAffectedKeygroups) {
+		Collection<Integer> dstAffectedKeygroups, KeyGroupRange keyGroupRange) {
 
 		this.reconfigId = checkNotNull(reconfigId);
 		this.reconfigOptions = checkNotNull(reconfigOptions);
@@ -42,6 +45,7 @@ class TaskReconfigMeta {
 
 		this.srcAffectedKeygroups = srcAffectedKeygroups;
 		this.dstAffectedKeygroups = dstAffectedKeygroups;
+		this.keyGroupRange = keyGroupRange;
 	}
 
 	public ReconfigID getReconfigId() {
@@ -78,6 +82,10 @@ class TaskReconfigMeta {
 
 	public Collection<Integer> getDstAffectedKeygroups() {
 		return dstAffectedKeygroups;
+	}
+
+	public KeyGroupRange getKeyGroupRange() {
+		return keyGroupRange;
 	}
 
 	public InputGateDeploymentDescriptor getMatchedInputGateDescriptor(SingleInputGate gate) {

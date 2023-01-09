@@ -67,7 +67,7 @@ public class ReconfigOptions implements Serializable {
 
 	public final static ReconfigOptions UPDATE_GATES_ONLY = new ReconfigOptions(false, true, false, false);
 
-	public final static ReconfigOptions UPDATE_BOTH = new ReconfigOptions(true, true, false, false);
+	public final static ReconfigOptions UPDATE_BOTH = new ReconfigOptions(true, true, false, true);
 
 	public final static ReconfigOptions UPDATE_REDISTRIBUTE_STATE = new ReconfigOptions(false, false, true, false);
 

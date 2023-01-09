@@ -1373,7 +1373,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		ReconfigOptions reconfigOptions,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
-		Collection<Integer> srcAffectedKeygroups, Collection<Integer> dstAffectedKeygroups) {
+		Collection<Integer> srcAffectedKeygroups, Collection<Integer> dstAffectedKeygroups,
+		KeyGroupRange keyGroupRange) {
 
 		taskConfigManager.prepareReconfigMeta(
 			reconfigId,
@@ -1381,7 +1382,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			resultPartitionDeploymentDescriptors,
 			inputGateDeploymentDescriptors,
 			srcAffectedKeygroups,
-			dstAffectedKeygroups);
+			dstAffectedKeygroups,
+			keyGroupRange);
 	}
 
 	public void assignNewState(KeyGroupRange keyGroupRange, int idInModel, JobManagerTaskRestore taskRestore) {

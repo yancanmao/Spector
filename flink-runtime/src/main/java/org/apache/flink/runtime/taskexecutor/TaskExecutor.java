@@ -729,7 +729,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 						tdd.getProducedPartitions(),
 						tdd.getInputGates(),
 						tdd.getSrcAffectedKeygroups(),
-						tdd.getDstAffectedKeygroups());
+						tdd.getDstAffectedKeygroups(),
+						tdd.getKeyGroupRange());
 
 					if (reconfigOptions.isSettingAffectedkeys()) {
 						log.info("++++++ set affected keys for this source subtask "
@@ -742,10 +743,10 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 						task.createNewResultPartitions();
 					}
 
-					if (reconfigOptions.isUpdatingKeyGroupRange()) {
-						log.info("++++++ update task keyGroupRange for subtask: " + tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId());
-						task.updateKeyGroupRange(tdd.getKeyGroupRange());
-					}
+//					if (reconfigOptions.isUpdatingKeyGroupRange()) {
+//						log.info("++++++ update task keyGroupRange for subtask: " + tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId());
+//						task.updateKeyGroupRange(tdd.getKeyGroupRange());
+//					}
 				}
 
 				return CompletableFuture.completedFuture(Acknowledge.get());
