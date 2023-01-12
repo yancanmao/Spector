@@ -133,6 +133,7 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 			throw new UnsupportedOperationException();
 		}
 
+		LOG.info("++++++ Resume Checkpoint Coordinator.");
 		checkNotNull(checkpointCoordinator);
 		if (checkpointCoordinator.isPeriodicCheckpointingConfigured()) {
 			checkpointCoordinator.startCheckpointScheduler();

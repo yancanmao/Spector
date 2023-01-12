@@ -108,6 +108,8 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	// for replicating states confirmation
 	private final Map<ExecutionAttemptID, ExecutionVertex> pendingAckTasks;
 
+	private boolean isKeygroupFullyUpdated = false;
+
 	private final ReconfigurationProfiler reconfigurationProfiler;
 
 
@@ -191,7 +193,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	 * create backup tasks on task manager, maintain backup state for more efficient state management.
 	 * @param newExecutionJobVerticesTopological
 	 */
-	public CompletableFuture<Void> notifyNewVertices(List<ExecutionJobVertex> newExecutionJobVerticesTopological) {
+	public void notifyNewVertices(List<ExecutionJobVertex> newExecutionJobVerticesTopological) {
 		final ArrayList<CompletableFuture<Void>> schedulingFutures = new ArrayList<>();
 
 		LOG.info("++++++ Waiting for standby tasks for: " + newExecutionJobVerticesTopological);
@@ -207,14 +209,17 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		}
 
 		// once all execution of current executionJobVertex are in running state, deploy backup executions
-		return FutureUtils.combineAll(currentExecutionFutures).whenComplete((ignored, t) -> {
+		FutureUtils.combineAll(currentExecutionFutures).whenComplete((ignored, t) -> {
+			checkState(executionGraph.getSlotProvider() instanceof SchedulerImpl,
+				"++++++ slotProvider must be SchedulerImpl");
+			setSlotsMap(((SchedulerImpl) executionGraph.getSlotProvider()).getAllSlots());
+			checkState(slotsMap.size() > 0, "++++++ Empty slotsMap");
+
+			Object[] slotsPerTMArray = slotsMap.values().toArray();
+
+			Set<SlotID> allocatedSlots = new HashSet<>();
+
 			for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
-				Preconditions.checkState(executionGraph.getSlotProvider() instanceof SchedulerImpl,
-					"++++++ slotProvider must be SchedulerImpl");
-
-				setSlotsMap(((SchedulerImpl) executionGraph.getSlotProvider()).getAllSlots());
-
-				Preconditions.checkState(slotsMap.size() > 0, "++++++ Empty slotsMap");
 
 				if (t == null) {
 					// create a set of executionVertex
@@ -235,14 +240,18 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 					for (int i = 0; i < createCandidates.size(); i++) {
 						SlotID allocatedSlot = null;
 						Execution executionAttempt = createCandidates.get(i).getCurrentExecutionAttempt();
-						for (TaskManagerSlot taskManagerSlot : (List<TaskManagerSlot>) slotsMap.values().toArray()[i]) {
-							if (taskManagerSlot.getState() == FREE) {
+						for (TaskManagerSlot taskManagerSlot : (List<TaskManagerSlot>) slotsPerTMArray[i]) {
+							if (taskManagerSlot.getState() == FREE && !allocatedSlots.contains(taskManagerSlot.getSlotId())) {
 								allocatedSlot = taskManagerSlot.getSlotId();
+								allocatedSlots.add(allocatedSlot);
 								break;
 							}
 						}
-						Preconditions.checkState(allocatedSlot != null);
-						// TODO: schedule backup tasks to different task managers for execution
+
+						LOG.info("++++++ Allocating slot: " + allocatedSlot + " for subtask: " + executionAttempt);
+
+						checkNotNull(allocatedSlot,
+							"++++++ Failed to allocate slot for subtask: " + executionAttempt);
 						schedulingFutures.add(executionAttempt.scheduleForExecution(allocatedSlot));
 					}
 				} else {
@@ -253,19 +262,55 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 						.completeExceptionally(t);
 				}
 			}
-		}).thenRunAsync(() -> {
-			final CompletableFuture<Void> allSchedulingFutures = FutureUtils.waitForAll(schedulingFutures);
-			allSchedulingFutures.whenComplete((Void ignored2, Throwable t2) -> {
-				Preconditions.checkState(standbyExecutionVertexes.size() == newExecutionJobVerticesTopological.size(),
-					"++++++ Inconsistent standby tasks number");
-				if (t2 != null) {
-					LOG.warn("Scheduling of standby tasks failed. Cancelling the scheduling of standby tasks.");
-					for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
-						cancelStandbyExecution(executionJobVertex);
+		}).whenCompleteAsync((ignore, t) -> {
+			if (t != null) {
+				LOG.error("++++++ Failed to deploy standby tasks: " + t);
+				throw new CompletionException(t);
+			} else {
+				final CompletableFuture<Void> allSchedulingFutures = FutureUtils.waitForAll(schedulingFutures);
+				allSchedulingFutures.whenComplete((Void ignored2, Throwable t2) -> {
+					LOG.info("++++++ Standby tasks allocation completed");
+
+					Preconditions.checkState(standbyExecutionVertexes.size() == newExecutionJobVerticesTopological.size(),
+						"++++++ Inconsistent standby tasks number");
+
+					controlPlane.startControllers();
+					CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
+					checkNotNull(checkpointCoordinator);
+					checkpointCoordinator.setReconfigpointAcknowledgeListener(this);
+
+					if (t2 != null) {
+						LOG.warn("Scheduling of standby tasks failed. Cancelling the scheduling of standby tasks.");
+						for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
+							cancelStandbyExecution(executionJobVertex);
+						}
 					}
-				}
-			});
+				});
+			}
 		}, mainThreadExecutor);
+
+//		.thenRunAsync(() -> {
+//			final CompletableFuture<Void> allSchedulingFutures = FutureUtils.waitForAll(schedulingFutures);
+//			allSchedulingFutures.whenComplete((Void ignored2, Throwable t2) -> {
+//				LOG.info("++++++ Standby tasks allocation completed");
+//
+//				Preconditions.checkState(standbyExecutionVertexes.size() == newExecutionJobVerticesTopological.size(),
+//					"++++++ Inconsistent standby tasks number");
+//
+//
+//				controlPlane.startControllers();
+//				CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
+//				checkNotNull(checkpointCoordinator);
+//				checkpointCoordinator.setReconfigpointAcknowledgeListener(this);
+//
+//				if (t2 != null) {
+//					LOG.warn("Scheduling of standby tasks failed. Cancelling the scheduling of standby tasks.");
+//					for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
+//						cancelStandbyExecution(executionJobVertex);
+//					}
+//				}
+//			});
+//		}, mainThreadExecutor);
 	}
 
 	// TODO: see if other place need to add this
@@ -312,6 +357,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 
 		prepareAssignStates(checkpoint, DISPATCH_STATE_TO_STANDBY_TASK);
 		// check replication progress once, in case no keys are replicated.
+		isKeygroupFullyUpdated = true;
 		checkStateOperationProgress();
 	}
 
@@ -353,7 +399,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	}
 
 	private void checkStateOperationProgress() {
-		if (pendingAckTasks.isEmpty()) {
+		if (pendingAckTasks.isEmpty() && isKeygroupFullyUpdated) {
 			String stateOperationType = inProcess ? "MIGRATION" : "REPLICATION";
 			LOG.info("++++++ State Operation: " + stateOperationType + " completed.");
 			if (stateOperationType.equals("MIGRATION")) {
@@ -372,13 +418,17 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	}
 
 	public void start() {
-		notifyNewVertices(executionGraph.getExecutionJobVertices())
-			.whenCompleteAsync((ignore, t) -> {
-				controlPlane.startControllers();
-				CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
-				checkNotNull(checkpointCoordinator);
-				checkpointCoordinator.setReconfigpointAcknowledgeListener(this);
-			}, mainThreadExecutor);
+		notifyNewVertices(executionGraph.getExecutionJobVertices());
+//			.whenCompleteAsync((ignore, t) -> {
+//				if (t != null) {
+//					LOG.info("++++++ Failed to deploy standby tasks.");
+//				} else {
+//					controlPlane.startControllers();
+//					CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
+//					checkNotNull(checkpointCoordinator);
+//					checkpointCoordinator.setReconfigpointAcknowledgeListener(this);
+//				}
+//			}, mainThreadExecutor);
 	}
 
 	public void stop() {
@@ -450,8 +500,8 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		checkNotNull(checkpointCoordinator);
 		checkpointCoordinator.setReconfigpointAcknowledgeListener(this);
 
-		// stop checkpoint coordinator then start the reconfiguration
-		checkpointCoordinator.stopCheckpointScheduler();
+//		// stop checkpoint coordinator then start the reconfiguration
+//		checkpointCoordinator.stopCheckpointScheduler();
 
 		this.targetVertex = tasks.get(vertexID);
 
@@ -558,6 +608,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 
 	private CompletableFuture<Void> assignNewStates() throws ExecutionGraphException {
 		reconfigurationProfiler.onUpdateStart();
+		isKeygroupFullyUpdated = false; // set this to false to wait until all schedule reconfig being processed.
 
 //		Map<JobVertexID, ExecutionJobVertex> tasks = new HashMap<>();
 //		tasks.put(targetVertex.getJobVertexId(), targetVertex);
@@ -580,7 +631,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 
 			if (jobExecutionPlan.isAffectedTask(i)) {
 				scheduledRescale = executionAttempt.scheduleReconfig(reconfigId,
-					ReconfigOptions.UPDATE_REDISTRIBUTE_STATE,
+					ReconfigOptions.REDISTRIBUTE_STATE,
 					jobExecutionPlan.getAlignedKeyGroupRange(i),
 					jobExecutionPlan.getIdInModel(i));
 				rescaledFuture.add(scheduledRescale);
@@ -598,6 +649,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 			.combineAll(rescaledFuture)
 			.thenRunAsync(() -> {
 				LOG.info("++++++ State migration completed");
+				isKeygroupFullyUpdated = true;
 				checkStateOperationProgress();
 			}, mainThreadExecutor);
 	}
@@ -629,6 +681,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		inProcess = false;
 		notYetAcknowledgedTasks.clear();
 		pendingAckTasks.clear();
+		isKeygroupFullyUpdated = false;
 	}
 
 

@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.taskexecutor;
 
+import com.esotericsoftware.minlog.Log;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
@@ -556,6 +557,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 			// if is standby task, skip all things aggressively
 			if (tdd.getIsStandby()) {
+				Log.info("++++++ Deploying standby task: " + taskInformation.getJobVertexId()
+					+ " id: " + tdd.getSubtaskIndex());
 				CheckpointResponder checkpointResponder = jobManagerConnection.getCheckpointResponder();
 
 				final TaskLocalStateStore localStateStore = localStateStoresManager.localStateStoreForSubtask(
@@ -574,7 +577,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 					checkpointResponder);
 
 				Preconditions.checkState(!backupStateManager.replicas.containsKey(taskInformation.getJobVertexId()),
-					"++++++backupStateManager should only maintain a replica for each jobVertex");
+					"++++++ backupStateManager should only maintain a replica for each jobVertex");
 				backupStateManager.put(taskInformation.getJobVertexId(), taskStateManager);
 
 				jobManagerConnection.getTaskManagerActions().updateTaskExecutionState(
