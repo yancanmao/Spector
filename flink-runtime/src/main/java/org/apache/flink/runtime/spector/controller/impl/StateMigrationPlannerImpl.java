@@ -102,6 +102,7 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 		checkNotNull(checkpointCoordinator);
 		checkpointCoordinator.stopCheckpointScheduler();
 
+		while (reconfigExecutor.checkReplicationProgress());
 
 		int newParallelism = executorMapping.keySet().size();
 		// find out the affected keys.

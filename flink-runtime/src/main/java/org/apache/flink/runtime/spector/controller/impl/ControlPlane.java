@@ -175,6 +175,11 @@ public class ControlPlane {
 			handleTreatment(executorMapping);
 		}
 
+		@Override
+		public boolean checkReplicationProgress() {
+			return jobReconfigActor.checkReplicationProgress();
+		}
+
 		private void handleTreatment(Map<String, List<String>> executorMapping) {
 			int newParallelism = executorMapping.keySet().size();
 
@@ -187,7 +192,11 @@ public class ControlPlane {
 
 				// if there are multiple reconfig triggers, only one of them should be happened first.
 				synchronized (jobReconfigActor) {
-					jobReconfigActor.repartition(jobVertexID, jobExecutionPlan);
+					try {
+						jobReconfigActor.repartition(jobVertexID, jobExecutionPlan);
+					} catch (InterruptedException e) {
+						throw new RuntimeException(e);
+					}
 				}
 			} else {
 				// scale out

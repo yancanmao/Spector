@@ -8,4 +8,6 @@ public interface ReconfigExecutor {
 	void remap(Map<String, List<String>> executorMapping);
 
 	void scale(int parallelism, Map<String, List<String>> executorMapping);
+
+	boolean checkReplicationProgress();
 }

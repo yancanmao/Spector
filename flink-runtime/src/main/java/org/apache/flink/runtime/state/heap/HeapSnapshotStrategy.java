@@ -167,7 +167,9 @@ class HeapSnapshotStrategy<K>
 
 						totalStateCount++;
 
-						checkAndSerializeKeyState(localStream, outView, keyGroupRangeOffsets, changelogs, changelogCount, keyGroupPos, alignedKeyGroupId, hashedKeyGroup, cowStateStableSnapshots, stateNamesToId);
+						if (checkAndSerializeKeyState(localStream, outView, keyGroupRangeOffsets, changelogs, keyGroupPos, alignedKeyGroupId, hashedKeyGroup, cowStateStableSnapshots, stateNamesToId)) {
+							changelogCount++;
+						}
 					}
 
 					LOG.info("++++++ Changeloged State: " + changelogCount + "/" + totalStateCount);
@@ -306,7 +308,7 @@ class HeapSnapshotStrategy<K>
 						totalStateCount++;
 
 						if (affectedKeygroups.contains(hashedKeyGroup)) {
-							if (checkAndSerializeKeyState(localStream, outView, keyGroupRangeOffsets, changelogs, changelogCount, keyGroupPos, alignedKeyGroupId, hashedKeyGroup, cowStateStableSnapshots, stateNamesToId)) {
+							if (checkAndSerializeKeyState(localStream, outView, keyGroupRangeOffsets, changelogs, keyGroupPos, alignedKeyGroupId, hashedKeyGroup, cowStateStableSnapshots, stateNamesToId)) {
 								changelogCount++;
 							}
 						}
@@ -359,7 +361,6 @@ class HeapSnapshotStrategy<K>
 		DataOutputViewStreamWrapper outView,
 		long[] keyGroupRangeOffsets,
 		boolean[] changelogs,
-		int changelogCount,
 		int keyGroupPos,
 		int alignedKeyGroupId,
 		int hashedKeyGroup,
@@ -373,8 +374,6 @@ class HeapSnapshotStrategy<K>
 			if ((stateSnapshot.getValue()).getChangelogs() != null) {
 				if (stateSnapshot.getValue().getChangelogs()
 					.containsKey(hashedKeyGroup)) {
-					changelogCount++;
-
 					changelogs[keyGroupPos] = true;
 				}
 			}

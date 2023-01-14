@@ -80,7 +80,9 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	private final Object lock = new Object();
 
 	// mutable fields
-	private volatile boolean inProcess;
+	private volatile boolean reconfigInProgress;
+
+	private volatile boolean replicationInProgress;
 
 	private volatile ActionType actionType;
 
@@ -343,6 +345,9 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 			migrateStateToDestinationTasks(checkpoint);
 		} else {
 			LOG.info("++++++ checkpoint complete, start to dispatch state to replica");
+			Preconditions.checkState(!reconfigInProgress,
+				"++++++ A reconfig is in progress, cannot do replication at the moment");
+			replicationInProgress = true;
 			reconfigurationProfiler.onReplicationStart();
 			dispatchLatestCheckpointedStateToStandbyTasks(checkpoint);
 		}
@@ -356,8 +361,8 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		Preconditions.checkState(checkpoint.getProperties().getCheckpointType() == CheckpointType.CHECKPOINT, "++++++  Need to be a CHECKPOINT");
 
 		prepareAssignStates(checkpoint, DISPATCH_STATE_TO_STANDBY_TASK);
-		// check replication progress once, in case no keys are replicated.
 		isKeygroupFullyUpdated = true;
+		// check replication progress once, in case no keys are replicated.
 		checkStateOperationProgress();
 	}
 
@@ -400,12 +405,13 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 
 	private void checkStateOperationProgress() {
 		if (pendingAckTasks.isEmpty() && isKeygroupFullyUpdated) {
-			String stateOperationType = inProcess ? "MIGRATION" : "REPLICATION";
+			String stateOperationType = reconfigInProgress ? "MIGRATION" : "REPLICATION";
 			LOG.info("++++++ State Operation: " + stateOperationType + " completed.");
 			if (stateOperationType.equals("MIGRATION")) {
 				completeReconfiguration();
 			} else {
 				reconfigurationProfiler.onReplicationEnd();
+				replicationInProgress = false;
 			}
 		}
 	}
@@ -436,7 +442,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	}
 
 	public void assignExecutionGraph(ExecutionGraph executionGraph) {
-		checkState(!inProcess, "ExecutionGraph changed after rescaling starts");
+		checkState(!reconfigInProgress, "ExecutionGraph changed after rescaling starts");
 		this.executionGraph = executionGraph;
 
 		controlPlane.stopControllers();
@@ -462,9 +468,14 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	}
 
 	@Override
-	public void repartition(JobVertexID vertexID, JobExecutionPlan jobExecutionPlan) {
-		checkState(!inProcess, "Current rescaling hasn't finished.");
-		inProcess = true;
+	public boolean checkReplicationProgress() {
+		return replicationInProgress;
+	}
+
+	@Override
+	public void repartition(JobVertexID vertexID, JobExecutionPlan jobExecutionPlan) throws InterruptedException {
+		checkState(!reconfigInProgress && !replicationInProgress, "Current rescaling hasn't finished.");
+		reconfigInProgress = true;
 		reconfigurationProfiler.onReconfigurationStart();
 		actionType = ActionType.REPARTITION;
 
@@ -678,7 +689,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	}
 
 	private void clean() {
-		inProcess = false;
+		reconfigInProgress = false;
 		notYetAcknowledgedTasks.clear();
 		pendingAckTasks.clear();
 		isKeygroupFullyUpdated = false;

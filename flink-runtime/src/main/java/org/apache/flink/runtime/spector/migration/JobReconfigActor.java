@@ -13,7 +13,9 @@ public interface JobReconfigActor {
 
 	void setInitialJobExecutionPlan(JobVertexID vertexID, JobExecutionPlan JobExecutionPlan);
 
-	void repartition(JobVertexID vertexID, JobExecutionPlan jobExecutionPlan);
+	boolean checkReplicationProgress();
+
+	void repartition(JobVertexID vertexID, JobExecutionPlan jobExecutionPlan) throws InterruptedException;
 
 //	void scaleOut(JobVertexID vertexID, int newParallelism, JobExecutionPlan jobExecutionPlan);
 
