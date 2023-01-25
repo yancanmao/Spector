@@ -255,6 +255,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 						}
 						else {
 							StreamRecord<IN1> record = recordOrWatermark.asRecord();
+							int keygroup = record.getKeyGroup();
 							synchronized (lock) {
 								numRecordsIn.inc();
 								streamOperator.setKeyContextElement1(record);
@@ -263,7 +264,7 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 								streamOperator.processElement1(recordOrWatermark.<IN1>asRecord());
 								long curTime = System.nanoTime();
 
-								metricsManager.incRecordIn(record.getKeyGroup());
+								metricsManager.incRecordIn(keygroup);
 //								System.out.println("key group is: " + record.getKeyGroup());
 
 								processingDuration += curTime - processingStart;

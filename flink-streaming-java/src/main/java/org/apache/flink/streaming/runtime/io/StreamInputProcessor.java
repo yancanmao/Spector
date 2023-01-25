@@ -41,6 +41,7 @@ import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
+import org.apache.flink.streaming.runtime.operators.windowing.WindowOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -48,6 +49,7 @@ import org.apache.flink.streaming.runtime.streamstatus.StatusWatermarkValve;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
+import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -115,11 +117,14 @@ public class StreamInputProcessor<IN> {
 	private boolean isFinished;
 
 	private final ArrayDeque<StreamRecord<IN>> bufferedRecord;
+	private final Map<Integer, ArrayDeque<StreamRecord<IN>>> bufferedRecordsByKeys;
 
 	/**
 	 * Future for standby tasks that completes when they are required to run
 	 */
 	private final HashSet<Integer> migratingKeys;
+	private final HashSet<Integer> migratedKeys;
+	private volatile boolean isUnderMigration;
 
 	private MetricsManager metricsManager;
 	private long deserializationDuration = 0;
@@ -172,8 +177,11 @@ public class StreamInputProcessor<IN> {
 		this.watermarkGauge = watermarkGauge;
 		metrics.gauge("checkpointAlignmentTime", barrierHandler::getAlignmentDurationNanos);
 
+		this.isUnderMigration = false;
 		this.bufferedRecord = new ArrayDeque<>();
+		this.bufferedRecordsByKeys = new HashMap<>();
 		this.migratingKeys = new HashSet<>();
+		this.migratedKeys = new HashSet<>();
 	}
 
 	public boolean processInput() throws Exception {
@@ -190,14 +198,20 @@ public class StreamInputProcessor<IN> {
 		}
 
 		while (true) {
-			if (migratingKeys.isEmpty() && !bufferedRecord.isEmpty()) {
+			// check difference between migratingKeys and bufferedRecord to process those state that have been recovered
+			if (!bufferedRecordsByKeys.isEmpty()) {
 				// process buffered state when the migrating keys are empty
 				synchronized (lock) {
-					LOG.info("++++++ Consuming buffered records: " + bufferedRecord.size());
-					StreamRecord<IN> record = bufferedRecord.poll();
-					while (record != null) {
-						processElement(record);
-						record = bufferedRecord.poll();
+					LOG.info("++++++ Consuming buffered records for migrated keys: " + migratedKeys + " size: " + bufferedRecord.size());
+					for (int migratedKeygroup : migratedKeys) {
+						ArrayDeque<StreamRecord<IN>> bufferedRecordForKey = bufferedRecordsByKeys.remove(migratedKeygroup);
+						if (bufferedRecordForKey != null) {
+							StreamRecord<IN> record = bufferedRecordForKey.poll();
+							while (record != null) {
+								processElement(record);
+								record = bufferedRecordForKey.poll();
+							}
+						}
 					}
 				}
 				return true;
@@ -241,9 +255,11 @@ public class StreamInputProcessor<IN> {
 						// now we can do the actual processing
 						StreamRecord<IN> record = recordOrMark.asRecord();
 						int keyGroup = record.getKeyGroup();
-						if (migratingKeys.contains(keyGroup)) {
+						if (isUnderMigration && migratingKeys.contains(keyGroup)) {
 							// buffer the records for migrating keys
 							bufferedRecord.add(record);
+							ArrayDeque<StreamRecord<IN>> bufferedRecordsForKey = bufferedRecordsByKeys.computeIfAbsent(keyGroup, t -> new ArrayDeque<>());
+							bufferedRecordsForKey.add(record);
 						} else {
 							synchronized (lock) {
 								processElement(record);
@@ -297,6 +313,11 @@ public class StreamInputProcessor<IN> {
 		numRecordsIn.inc();
 		streamOperator.setKeyContextElement1(record);
 
+//		if (streamOperator instanceof WindowOperator) {
+//			long delayStart = System.nanoTime(); // if window, delay 0.1ms
+//			while (System.nanoTime() - delayStart < 100_000) {}
+//		}
+
 		long arrvialTs = record.getLatencyTimestamp();
 		long queuingDelay = System.currentTimeMillis() - arrvialTs;
 
@@ -310,7 +331,7 @@ public class StreamInputProcessor<IN> {
 		processingDuration += processingDelay;
 		recordsProcessed++;
 
-		metricsManager.groundTruth(arrvialTs, queuingDelay + processingDelay / 1000000);
+		metricsManager.groundTruth(arrvialTs, queuingDelay + processingDelay / 1000_000);
 //		processingDuration = 0;
 //		recordsProcessed = 0;
 //		deserializationDuration = 0;
@@ -354,13 +375,27 @@ public class StreamInputProcessor<IN> {
 	}
 
 	public void setMigratingKeys(Collection<Integer> affectedKeygroups) {
+		Preconditions.checkState(!isUnderMigration
+				&& migratedKeys.isEmpty()
+				&& migratingKeys.isEmpty()
+				&& bufferedRecordsByKeys.isEmpty(),
+			"++++++ The last state migration state is not cleared");
 		LOG.info("++++++ Add affected keygroup: " + affectedKeygroups);
+		isUnderMigration = true;
 		migratingKeys.addAll(affectedKeygroups);
 	}
 
 	public void completeMigration() {
 		LOG.info("++++++ Complete migrating affected keygroup: " + migratingKeys);
+		isUnderMigration = false;
 		migratingKeys.clear();
+		migratedKeys.clear();
+	}
+
+	public void completeMigrationForKey(int keygroup) {
+		LOG.info("++++++ Complete migrating affected keygroup: " + keygroup);
+		migratingKeys.remove(keygroup);
+		migratedKeys.add(keygroup);
 	}
 
 	private class ForwardingValveOutputHandler implements StatusWatermarkValve.ValveOutputHandler {

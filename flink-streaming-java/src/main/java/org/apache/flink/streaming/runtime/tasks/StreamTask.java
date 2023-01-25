@@ -913,6 +913,10 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		throw new UnsupportedOperationException("++++++ resume not supported for current extension");
 	}
 
+	protected void resume(int keygroup) { // resume processing of updated keys
+		throw new UnsupportedOperationException("++++++ resume not supported for current extension");
+	}
+
 	private void initReconnect() {
 		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
 

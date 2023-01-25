@@ -149,4 +149,13 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 			inputProcessor.completeMigration();
 		}
 	}
+
+	@Override
+	public void resume(int keygroup) {
+		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
+
+		if (taskConfigManager.isDestination()) {
+			inputProcessor.completeMigrationForKey(keygroup);
+		}
+	}
 }
