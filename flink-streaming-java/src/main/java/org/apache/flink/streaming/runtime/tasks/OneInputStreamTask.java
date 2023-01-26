@@ -128,13 +128,15 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 	public void reconnect() {
 		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
 
+		if (!taskConfigManager.isReconfigTarget()) {
+			return;
+		}
+
 		if (taskConfigManager.isDestination()) {
 			inputProcessor.setMigratingKeys(taskConfigManager.getDstAffectedKeygroups());
 		}
 
-		if (!taskConfigManager.isReconfigTarget()) {
-			return;
-		}
+
 
 		if (taskConfigManager.isUpdateGates()) {
 			inputProcessor.reconnect();

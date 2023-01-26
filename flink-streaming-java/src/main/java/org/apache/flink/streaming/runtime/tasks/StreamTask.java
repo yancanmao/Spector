@@ -913,7 +913,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		throw new UnsupportedOperationException("++++++ resume not supported for current extension");
 	}
 
-	protected void resume(int keygroup) { // resume processing of updated keys
+	@Override
+	public void resume(int keygroup) { // resume processing of updated keys
 		throw new UnsupportedOperationException("++++++ resume not supported for current extension");
 	}
 
@@ -923,7 +924,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		if (!taskConfigManager.isReconfigTarget()) {
 			return;
 		}
-		LOG.info("++++++ trigger target vertex rescaling: " + this.toString());
+		LOG.info("++++++ trigger target vertex rescaling: " + this);
 
 		try {
 			// update gate

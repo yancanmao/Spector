@@ -618,6 +618,10 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	}
 
 	private CompletableFuture<Void> assignNewStates() throws ExecutionGraphException {
+
+		long start = System.currentTimeMillis();
+		while (System.currentTimeMillis() - start < 5000){}
+
 		reconfigurationProfiler.onUpdateStart();
 		isKeygroupFullyUpdated = false; // set this to false to wait until all schedule reconfig being processed.
 

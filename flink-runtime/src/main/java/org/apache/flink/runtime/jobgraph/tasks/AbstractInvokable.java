@@ -257,4 +257,8 @@ public abstract class AbstractInvokable {
 	public void updateKeyGroupRange(KeyGroupRange keyGroupRange) {
 		throw new UnsupportedOperationException(String.format("updateKeyGroupRange not supported by %s", this.getClass().getName()));
 	}
+
+	public void resume(int keygroup) {
+		throw new UnsupportedOperationException(String.format("updateKeyGroupRange not supported by %s", this.getClass().getName()));
+	}
 }

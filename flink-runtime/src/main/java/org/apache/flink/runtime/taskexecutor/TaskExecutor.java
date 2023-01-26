@@ -738,7 +738,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 					if (reconfigOptions.isSettingAffectedkeys()) {
 						log.info("++++++ set affected keys for this source subtask "
 							+ tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId()
-							+ " afffected keygroups src: " + tdd.getSrcAffectedKeygroups()
+							+ " affected keygroups src: " + tdd.getSrcAffectedKeygroups()
 							+ " dst: " + tdd.getDstAffectedKeygroups());
 					}
 

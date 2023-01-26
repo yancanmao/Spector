@@ -1,4 +1,4 @@
 cd flink-runtime
 mvn clean install -DskipTests -Dcheckstyle.skip -Drat.skip=true
-cd ../cd flink-streaming-java
+cd ../flink-streaming-java
 mvn clean install -DskipTests -Dcheckstyle.skip -Drat.skip=true

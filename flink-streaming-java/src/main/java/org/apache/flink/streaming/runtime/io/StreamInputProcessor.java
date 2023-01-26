@@ -41,7 +41,6 @@ import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
-import org.apache.flink.streaming.runtime.operators.windowing.WindowOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -55,6 +54,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -116,14 +117,14 @@ public class StreamInputProcessor<IN> {
 
 	private boolean isFinished;
 
-	private final ArrayDeque<StreamRecord<IN>> bufferedRecord;
+//	private final ArrayDeque<StreamRecord<IN>> bufferedRecord;
 	private final Map<Integer, ArrayDeque<StreamRecord<IN>>> bufferedRecordsByKeys;
 
 	/**
 	 * Future for standby tasks that completes when they are required to run
 	 */
-	private final HashSet<Integer> migratingKeys;
-	private final HashSet<Integer> migratedKeys;
+	private final Set<Integer> migratingKeys;
+	private final Deque<Integer> migratedKeys;
 	private volatile boolean isUnderMigration;
 
 	private MetricsManager metricsManager;
@@ -178,10 +179,10 @@ public class StreamInputProcessor<IN> {
 		metrics.gauge("checkpointAlignmentTime", barrierHandler::getAlignmentDurationNanos);
 
 		this.isUnderMigration = false;
-		this.bufferedRecord = new ArrayDeque<>();
+//		this.bufferedRecord = new ArrayDeque<>();
 		this.bufferedRecordsByKeys = new HashMap<>();
 		this.migratingKeys = new HashSet<>();
-		this.migratedKeys = new HashSet<>();
+		this.migratedKeys = new ConcurrentLinkedDeque<>();
 	}
 
 	public boolean processInput() throws Exception {
@@ -200,23 +201,26 @@ public class StreamInputProcessor<IN> {
 		while (true) {
 			// check difference between migratingKeys and bufferedRecord to process those state that have been recovered
 			if (!bufferedRecordsByKeys.isEmpty()) {
-				// process buffered state when the migrating keys are empty
-				synchronized (lock) {
-					LOG.info("++++++ Consuming buffered records for migrated keys: " + migratedKeys + " size: " + bufferedRecord.size());
-					for (int migratedKeygroup : migratedKeys) {
+				if (isUnderMigration && !migratedKeys.isEmpty()) { // progressively continue
+					LOG.info("++++++ Progressively consuming buffered records for keys: " + migratedKeys);
+					// process buffered state when the migrating keys are empty
+					Integer migratedKeygroup = migratedKeys.poll();
+					while (migratedKeygroup != null) {
 						ArrayDeque<StreamRecord<IN>> bufferedRecordForKey = bufferedRecordsByKeys.remove(migratedKeygroup);
-						if (bufferedRecordForKey != null) {
-							StreamRecord<IN> record = bufferedRecordForKey.poll();
-							while (record != null) {
-								processElement(record);
-								record = bufferedRecordForKey.poll();
-							}
-						}
+						consumeBufferForKey(migratedKeygroup, bufferedRecordForKey);
+						migratedKeygroup = migratedKeys.poll();
 					}
 				}
-				return true;
+				if (!isUnderMigration) { // continue after all state migrated
+					LOG.info("++++++ Consuming all buffered records for keys: " + bufferedRecordsByKeys.keySet());
+					for (int migratedKeygroup : bufferedRecordsByKeys.keySet()) {
+						ArrayDeque<StreamRecord<IN>> bufferedRecordForKey = bufferedRecordsByKeys.get(migratedKeygroup);
+						consumeBufferForKey(migratedKeygroup, bufferedRecordForKey);
+					}
+					bufferedRecordsByKeys.clear();
+				}
 			}
-			else if (currentRecordDeserializer != null) {
+			if (currentRecordDeserializer != null) {
 				long start = System.nanoTime();
 
 				DeserializationResult result = currentRecordDeserializer.getNextRecord(deserializationDelegate);
@@ -257,7 +261,7 @@ public class StreamInputProcessor<IN> {
 						int keyGroup = record.getKeyGroup();
 						if (isUnderMigration && migratingKeys.contains(keyGroup)) {
 							// buffer the records for migrating keys
-							bufferedRecord.add(record);
+//							bufferedRecord.add(record);
 							ArrayDeque<StreamRecord<IN>> bufferedRecordsForKey = bufferedRecordsByKeys.computeIfAbsent(keyGroup, t -> new ArrayDeque<>());
 							bufferedRecordsForKey.add(record);
 						} else {
@@ -305,6 +309,19 @@ public class StreamInputProcessor<IN> {
 					throw new IllegalStateException("Trailing data in checkpoint barrier handler.");
 				}
 				return false;
+			}
+		}
+	}
+
+	private void consumeBufferForKey(int migratedKeygroup, ArrayDeque<StreamRecord<IN>> bufferedRecordForKey) throws Exception {
+		if (bufferedRecordForKey != null) {
+			LOG.info("++++++ Consuming buffered records for migrated key: " + migratedKeygroup + " size: " + bufferedRecordForKey.size());
+			StreamRecord<IN> record = bufferedRecordForKey.poll();
+			while (record != null) {
+				synchronized (lock) {
+					processElement(record);
+				}
+				record = bufferedRecordForKey.poll();
 			}
 		}
 	}
@@ -386,7 +403,7 @@ public class StreamInputProcessor<IN> {
 	}
 
 	public void completeMigration() {
-		LOG.info("++++++ Complete migrating affected keygroup: " + migratingKeys);
+		LOG.info("++++++ Complete migrating all affected keygroups: " + migratingKeys);
 		isUnderMigration = false;
 		migratingKeys.clear();
 		migratedKeys.clear();

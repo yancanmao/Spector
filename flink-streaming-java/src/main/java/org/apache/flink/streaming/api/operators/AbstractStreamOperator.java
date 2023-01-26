@@ -292,22 +292,32 @@ public abstract class AbstractStreamOperator<OUT>
 		// TODO: managed tate handle also need to be updated.
 		List<StateObjectCollection<KeyedStateHandle>> stateHandlesList = prioritizedOperatorSubtaskStates.getPrioritizedManagedKeyedState();
 		int idx = 0;
+		// step 2: create a state table update operation to update the state table by read the input view
 		while (idx < stateHandlesList.size()) {
 			Collection<KeyedStateHandle> stateHandles = stateHandlesList.get(idx);
 			++idx;
 			// recover keygroup from the state handle
 			if (keyedStateBackend instanceof HeapKeyedStateBackend) {
-				final HeapUpdateOperation<?> heapUpdateOperation = new HeapUpdateOperation(stateHandles,
+				final HeapUpdateOperation<?> heapUpdateOperation = new HeapUpdateOperation(
+					stateHandles,
 					(HeapKeyedStateBackend<?>) keyedStateBackend,
 					keySerializer,
 					keyGroupRange,
 					maxNumberOfParallelSubtasks,
 					streamTaskCloseableRegistry,
-					migrateInKeygroup);
+					migrateInKeygroup, containingTask);
 				heapUpdateOperation.updateHeapState();
+//				heapUpdateOperation.init();
+//				for (KeyedStateHandle keyedStateHandle : stateHandles) {
+//					List<Integer> hashedKeygroups = heapUpdateOperation.updateHeapStatePerKey(keyedStateHandle);
+//					if (hashedKeygroups != null) {
+//						for (int keygroup : hashedKeygroups) {
+//							containingTask.resume(keygroup);
+//						}
+//					}
+//				}
 			}
 		}
-		// step 2: create a state table update operation to update the state table by read the input view
 	}
 
 	private static void closeFromRegistry(Closeable closeable, CloseableRegistry registry) {
