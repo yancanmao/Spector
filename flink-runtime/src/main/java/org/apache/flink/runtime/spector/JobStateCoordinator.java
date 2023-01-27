@@ -110,7 +110,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	// for replicating states confirmation
 	private final Map<ExecutionAttemptID, ExecutionVertex> pendingAckTasks;
 
-	private boolean isKeygroupFullyUpdated = false;
+	private boolean scheduleReconfigCompleted = false;
 
 	private final ReconfigurationProfiler reconfigurationProfiler;
 
@@ -361,7 +361,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		Preconditions.checkState(checkpoint.getProperties().getCheckpointType() == CheckpointType.CHECKPOINT, "++++++  Need to be a CHECKPOINT");
 
 		prepareAssignStates(checkpoint, DISPATCH_STATE_TO_STANDBY_TASK);
-		isKeygroupFullyUpdated = true;
+		scheduleReconfigCompleted = true;
 		// check replication progress once, in case no keys are replicated.
 		checkStateOperationProgress();
 	}
@@ -404,7 +404,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	}
 
 	private void checkStateOperationProgress() {
-		if (pendingAckTasks.isEmpty() && isKeygroupFullyUpdated) {
+		if (pendingAckTasks.isEmpty() && scheduleReconfigCompleted) {
 			String stateOperationType = reconfigInProgress ? "MIGRATION" : "REPLICATION";
 			LOG.info("++++++ State Operation: " + stateOperationType + " completed.");
 			if (stateOperationType.equals("MIGRATION")) {
@@ -619,11 +619,11 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 
 	private CompletableFuture<Void> assignNewStates() throws ExecutionGraphException {
 
-		long start = System.currentTimeMillis();
-		while (System.currentTimeMillis() - start < 5000){}
+//		long start = System.currentTimeMillis();
+//		while (System.currentTimeMillis() - start < 5000){}
 
 		reconfigurationProfiler.onUpdateStart();
-		isKeygroupFullyUpdated = false; // set this to false to wait until all schedule reconfig being processed.
+		scheduleReconfigCompleted = false; // set this to false to wait until all schedule reconfig being processed.
 
 //		Map<JobVertexID, ExecutionJobVertex> tasks = new HashMap<>();
 //		tasks.put(targetVertex.getJobVertexId(), targetVertex);
@@ -645,6 +645,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 			CompletableFuture<Void> scheduledRescale;
 
 			if (jobExecutionPlan.isAffectedTask(i)) {
+				LOG.info("++++++ Schedule State Update for task: " + i);
 				scheduledRescale = executionAttempt.scheduleReconfig(reconfigId,
 					ReconfigOptions.REDISTRIBUTE_STATE,
 					jobExecutionPlan.getAlignedKeyGroupRange(i),
@@ -664,7 +665,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 			.combineAll(rescaledFuture)
 			.thenRunAsync(() -> {
 				LOG.info("++++++ State migration completed");
-				isKeygroupFullyUpdated = true;
+				scheduleReconfigCompleted = true;
 				checkStateOperationProgress();
 			}, mainThreadExecutor);
 	}
@@ -696,7 +697,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		reconfigInProgress = false;
 		notYetAcknowledgedTasks.clear();
 		pendingAckTasks.clear();
-		isKeygroupFullyUpdated = false;
+		scheduleReconfigCompleted = false;
 	}
 
 

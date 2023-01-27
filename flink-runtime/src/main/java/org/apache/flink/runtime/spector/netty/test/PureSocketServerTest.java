@@ -16,16 +16,7 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.spector.netty;
-
-import org.apache.flink.runtime.spector.netty.socket.NettySocketClient;
-import org.apache.flink.runtime.spector.netty.socket.NettySocketServer;
-import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
-import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
-import org.apache.flink.shaded.netty4.io.netty.channel.ChannelInboundHandlerAdapter;
-import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ClassResolvers;
-import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ObjectDecoder;
-import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ObjectEncoder;
+package org.apache.flink.runtime.spector.netty.test;
 
 import java.io.IOException;
 import java.io.ObjectInputStream;
@@ -34,7 +25,6 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 
 /**

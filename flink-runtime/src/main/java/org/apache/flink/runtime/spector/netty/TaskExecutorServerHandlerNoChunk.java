@@ -19,7 +19,7 @@
 package org.apache.flink.runtime.spector.netty;
 
 import org.apache.flink.api.common.time.Time;
-import org.apache.flink.runtime.spector.netty.data.TaskBackupState;
+import org.apache.flink.runtime.spector.netty.data.TaskState;
 import org.apache.flink.runtime.spector.netty.data.TaskDeployment;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
@@ -46,15 +46,15 @@ public class TaskExecutorServerHandlerNoChunk extends ChannelInboundHandlerAdapt
 				taskDeployment.getJobMasterId(),
 				taskDeployment.getReconfigOptions(),
 				DEFAULT_RPC_TIMEOUT);
-		} else if (msg instanceof TaskBackupState) {
-			TaskBackupState taskBackupState = (TaskBackupState) msg;
+		} else if (msg instanceof TaskState) {
+			TaskState taskState = (TaskState) msg;
 			taskExecutorGateway.dispatchStateToTask(
-				taskBackupState.getExecutionAttemptID(),
-				taskBackupState.getJobvertexId(),
-				taskBackupState.getTaskRestore(),
-				taskBackupState.getKeyGroupRange(),
-				taskBackupState.getIdInModel(),
-				taskBackupState.getTimeout()
+				taskState.getExecutionAttemptID(),
+				taskState.getJobvertexId(),
+				taskState.getTaskRestore(),
+				taskState.getKeyGroupRange(),
+				taskState.getIdInModel(),
+				taskState.getTimeout()
 			);
 		}  else {
 			throw new UnsupportedOperationException();

@@ -4,17 +4,14 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
-import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
-import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.KeyGroupRange;
 
 import javax.annotation.Nullable;
 import java.io.Serializable;
-import java.util.Map;
 
-public class TaskBackupState implements NettyMessage, Serializable {
+public class TaskState implements NettyMessage, Serializable {
 	private ExecutionAttemptID executionAttemptID;
 	private JobVertexID jobvertexId;
 	private JobManagerTaskRestore taskRestore;
@@ -25,9 +22,9 @@ public class TaskBackupState implements NettyMessage, Serializable {
 
 	private Time timeout;
 
-	public TaskBackupState() {}
+	public TaskState() {}
 
-	public TaskBackupState(
+	public TaskState(
 		ExecutionAttemptID executionAttemptID,
 		JobVertexID jobvertexId,
 		JobManagerTaskRestore taskRestore,

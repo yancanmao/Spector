@@ -11,7 +11,7 @@ import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.spector.migration.ReconfigOptions;
 import org.apache.flink.runtime.spector.netty.codec.TaskBackupStateDecoder;
 import org.apache.flink.runtime.spector.netty.codec.TaskBackupStateEncoder;
-import org.apache.flink.runtime.spector.netty.data.TaskBackupState;
+import org.apache.flink.runtime.spector.netty.data.TaskState;
 import org.apache.flink.runtime.spector.netty.data.TaskDeployment;
 import org.apache.flink.runtime.spector.netty.data.TaskExecutorSocketAddress;
 import org.apache.flink.runtime.spector.netty.socket.NettySocketClient;
@@ -124,7 +124,7 @@ public class TaskExecutorNettyClient implements Closeable {
 		return submitFuture;
 	}
 
-	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(
+	public CompletableFuture<Acknowledge> dispatchStateToTask(
 		ExecutionAttemptID executionAttemptID,
 		JobVertexID jobvertexId,
 		JobManagerTaskRestore taskRestore,
@@ -133,7 +133,7 @@ public class TaskExecutorNettyClient implements Closeable {
 		Channel channel = clientList.get(RandomUtils.nextInt(0, clientList.size())).getChannel();
 		while (true) {
 			if (channel.isWritable()) {
-				TaskBackupState taskBackupState = new TaskBackupState(
+				TaskState taskState = new TaskState(
 					executionAttemptID,
 					jobvertexId,
 					taskRestore,
@@ -142,12 +142,12 @@ public class TaskExecutorNettyClient implements Closeable {
 					timeout);
 				if (!taskDeploymentEnabled) {
 					try {
-						chunkedWriteAndFlush(submitFuture, channel, taskBackupState, executionAttemptID);
+						chunkedWriteAndFlush(submitFuture, channel, taskState, executionAttemptID);
 					} catch (Exception e) {
 						throw new RuntimeException(e);
 					}
 				} else {
-					channel.writeAndFlush(taskBackupState)
+					channel.writeAndFlush(taskState)
 						.addListener((ChannelFutureListener) channelFuture -> {
 							if (channelFuture.isSuccess()) {
 								submitFuture.complete(Acknowledge.get());

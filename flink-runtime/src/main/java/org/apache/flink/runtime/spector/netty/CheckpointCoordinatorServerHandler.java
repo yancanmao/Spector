@@ -20,8 +20,11 @@ package org.apache.flink.runtime.spector.netty;
 
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
+import org.apache.flink.queryablestate.network.messages.MessageType;
 import org.apache.flink.runtime.checkpoint.CheckpointCoordinatorGateway;
 import org.apache.flink.runtime.spector.netty.data.TaskAcknowledgement;
+import org.apache.flink.runtime.spector.netty.utils.NettySocketUtils;
+import org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.NettyMessageType;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelInboundHandlerAdapter;
 import org.slf4j.Logger;
@@ -31,6 +34,8 @@ import java.io.ByteArrayInputStream;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.NettyMessageType.TASK_ACKNOWLEDGEMENT;
+import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.NettyMessageType.TASK_DEPLOYMENT;
 import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.chunkedChannelRead;
 
 /**
@@ -55,7 +60,7 @@ public class CheckpointCoordinatorServerHandler extends ChannelInboundHandlerAda
 
 	public void fireAck(byte[] bytes, String eventType) {
 		try {
-			if (eventType.equals("TaskAcknowledgement")) {
+			if (NettyMessageType.valueOf(eventType) == TASK_ACKNOWLEDGEMENT) {
 				TaskAcknowledgement taskAcknowledgement = new TaskAcknowledgement();
 				taskAcknowledgement.read(new DataInputViewStreamWrapper(new ByteArrayInputStream(bytes)));
 				checkpointCoordinatorGateway.acknowledgeCheckpoint(

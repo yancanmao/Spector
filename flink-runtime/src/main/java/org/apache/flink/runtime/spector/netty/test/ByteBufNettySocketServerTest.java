@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.spector.netty;
+package org.apache.flink.runtime.spector.netty.test;
 
 import org.apache.flink.runtime.spector.netty.socket.NettySocketClient;
 import org.apache.flink.runtime.spector.netty.socket.NettySocketServer;
@@ -26,9 +26,6 @@ import org.apache.flink.shaded.netty4.io.netty.buffer.CompositeByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelInboundHandlerAdapter;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.LengthFieldBasedFrameDecoder;
-import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ClassResolvers;
-import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ObjectDecoder;
-import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ObjectEncoder;
 import org.apache.flink.shaded.netty4.io.netty.handler.stream.ChunkedWriteHandler;
 import org.apache.flink.shaded.netty4.io.netty.util.ReferenceCountUtil;
 

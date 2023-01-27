@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.spector.netty;
+package org.apache.flink.runtime.spector.netty.test;
 
 import org.apache.flink.queryablestate.network.ChunkedByteBuf;
 import org.apache.flink.runtime.spector.netty.socket.NettySocketClient;

@@ -99,6 +99,7 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> reconfigTask(ExecutionAttemptID executionAttemptID, TaskDeploymentDescriptor tdd, ReconfigOptions reconfigOptions, Time timeout) {
+		// TODO: this is not supported now, the state migration has been migrated into **this.dispatchStateToTask()**
 //		if (nettyStateTransmissionEnable && taskExecutorNettyClient != null && tdd.getTaskRestore() != null) {
 //			return taskExecutorNettyClient.reconfigTask(executionAttemptID, tdd, jobMasterId, reconfigOptions, timeout);
 //		} else {
@@ -152,10 +153,10 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 	public CompletableFuture<Acknowledge> dispatchStateToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId,
 															  JobManagerTaskRestore taskRestore, KeyGroupRange keyGroupRange,
 															  int idInModel, Time timeout) {
-//		if (nettyStateTransmissionEnable && taskExecutorNettyClient != null) {
-//			return taskExecutorNettyClient.dispatchStateToStandbyTask(executionAttemptID, jobvertexId, taskRestore, keyGroupRange, idInModel, timeout);
-//		} else {
+		if (nettyStateTransmissionEnable && taskExecutorNettyClient != null) {
+			return taskExecutorNettyClient.dispatchStateToTask(executionAttemptID, jobvertexId, taskRestore, keyGroupRange, idInModel, timeout);
+		} else {
 			return taskExecutorGateway.dispatchStateToTask(executionAttemptID, jobvertexId, taskRestore, keyGroupRange, idInModel, timeout);
-//		}
+		}
 	}
 }

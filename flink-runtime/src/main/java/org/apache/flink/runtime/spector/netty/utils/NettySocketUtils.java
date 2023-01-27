@@ -7,29 +7,33 @@ import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.spector.netty.data.NettyMessage;
 import org.apache.flink.runtime.spector.netty.data.TaskAcknowledgement;
-import org.apache.flink.runtime.spector.netty.data.TaskBackupState;
+import org.apache.flink.runtime.spector.netty.data.TaskState;
 import org.apache.flink.runtime.spector.netty.data.TaskDeployment;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.Unpooled;
 import org.apache.flink.shaded.netty4.io.netty.channel.Channel;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelFutureListener;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
-import org.apache.flink.shaded.netty4.io.netty.channel.ChannelId;
 import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayOutputStream;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
+
+import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.NettyMessageType.*;
 
 public class NettySocketUtils {
 	private static final Logger LOG = LoggerFactory.getLogger(NettySocketUtils.class);
+
+	public enum NettyMessageType {
+		TASK_STATE_RESTORE,
+		TASK_ACKNOWLEDGEMENT,
+		TASK_DEPLOYMENT
+	}
 
 	public static byte[] getBytes(NettyMessage nettyMessage) throws Exception {
 		ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -51,13 +55,15 @@ public class NettySocketUtils {
 
 		byte[] id = executionAttemptID.getBytes();
 
-		String eventType = "";
-		if (nettyMessage instanceof TaskBackupState) {
-			eventType = "TaskBackupState";
+		NettyMessageType eventType;
+		if (nettyMessage instanceof TaskState) {
+			eventType = TASK_STATE_RESTORE;
 		} else if (nettyMessage instanceof TaskDeployment) {
-			eventType = "TaskDeployment";
+			eventType = TASK_DEPLOYMENT;
 		} else if (nettyMessage instanceof TaskAcknowledgement) {
-			eventType = "TaskAcknowledgement";
+			eventType = TASK_ACKNOWLEDGEMENT;
+		} else {
+			throw new UnsupportedOperationException();
 		}
 
 		// fire the tranmission start
@@ -78,13 +84,16 @@ public class NettySocketUtils {
 		}
 
 		// fire an identifier as end of file
-		channel.writeAndFlush(executionAttemptID.toHexString() + ":-1").addListener((ChannelFutureListener) channelFuture -> {
-			if (channelFuture.isSuccess()) {
-				submitFuture.complete(Acknowledge.get());
-			} else {
-				submitFuture.completeExceptionally(channelFuture.cause());
-			}
-		});
+		channel.writeAndFlush(executionAttemptID.toHexString() + ":-1");
+//			.addListener((ChannelFutureListener) channelFuture -> {
+//			if (channelFuture.isSuccess()) {
+//				submitFuture.complete(Acknowledge.get());
+//			} else {
+//				submitFuture.completeExceptionally(channelFuture.cause());
+//			}
+//		});
+
+		submitFuture.complete(Acknowledge.get());
 	}
 
 	public static void chunkedChannelRead(
