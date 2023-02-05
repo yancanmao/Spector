@@ -153,10 +153,12 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 	public CompletableFuture<Acknowledge> dispatchStateToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId,
 															  JobManagerTaskRestore taskRestore, KeyGroupRange keyGroupRange,
 															  int idInModel, Time timeout) {
-		if (nettyStateTransmissionEnable && taskExecutorNettyClient != null) {
-			return taskExecutorNettyClient.dispatchStateToTask(executionAttemptID, jobvertexId, taskRestore, keyGroupRange, idInModel, timeout);
-		} else {
+		// TODO: comment out this is mainly to make state migration less efficient to test the different sensitivity study in localhost
+		// TODO: this can be released to get more efficient state migration.
+//		if (nettyStateTransmissionEnable && taskExecutorNettyClient != null) {
+//			return taskExecutorNettyClient.dispatchStateToTask(executionAttemptID, jobvertexId, taskRestore, keyGroupRange, idInModel, timeout);
+//		} else {
 			return taskExecutorGateway.dispatchStateToTask(executionAttemptID, jobvertexId, taskRestore, keyGroupRange, idInModel, timeout);
-		}
+//		}
 	}
 }

@@ -28,13 +28,9 @@ import org.apache.flink.runtime.spector.controller.StateMigrationPlanner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
-import static org.apache.flink.runtime.spector.SpectorOptions.NUM_AFFECTED_KEYS;
-import static org.apache.flink.runtime.spector.SpectorOptions.SYNC_KEYS;
+import static org.apache.flink.runtime.spector.SpectorOptions.*;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
@@ -55,9 +51,13 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 
 	private volatile boolean waitForMigrationDeployed;
 
-	public final int syncKeys;
+	private final int syncKeys;
 
-	public final ExecutionGraph executionGraph;
+	private final String orderFunction;
+
+	private final ExecutionGraph executionGraph;
+
+
 
 	public StateMigrationPlannerImpl(Configuration configuration,
 									 JobVertexID jobVertexID,
@@ -70,6 +70,8 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 		int numAffectedKeys = configuration.getInteger(NUM_AFFECTED_KEYS);
 		this.syncKeys = configuration.getInteger(SYNC_KEYS) == 0 ?
 			numAffectedKeys : configuration.getInteger(SYNC_KEYS);
+
+		this.orderFunction = configuration.getString(ORDER_FUNCTION);
 
 		this.jobVertexID = jobVertexID;
 		this.numOpenedSubtask = parallelism;
@@ -97,7 +99,7 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 
 	public void makePlan(Map<String, List<String>> executorMapping) {
 		// Stop checkpoint coordinator then start the reconfiguration
-		LOG.info("++++++ Stop Checkpoint Coordinator and start to make plan");
+		LOG.info("++++++ Stop Checkpoint Coordinator and start to make finalPlan");
 		CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
 		checkNotNull(checkpointCoordinator);
 		checkpointCoordinator.stopCheckpointScheduler();
@@ -107,15 +109,15 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 		int newParallelism = executorMapping.keySet().size();
 		// find out the affected keys.
 		// order the migrating keys
-		// return the state migration plan to reconfig executor
+		// return the state migration finalPlan to reconfig executor
 		Map<String, Tuple2<String, String>> affectedKeys = getAffectedKeys(executorMapping);
 
-		prioritizeKeys(affectedKeys);
-		List<Map<String, Tuple2<String, String>>> plan = batching(affectedKeys);
+		Map<String, Tuple2<String, String>> prioritizedKeySequence = prioritizeKeys(affectedKeys);
+		List<Map<String, Tuple2<String, String>>> finalPlan = batching(prioritizedKeySequence);
 
 		if (numOpenedSubtask >= newParallelism) {
 			// repartition
-			for (Map<String, Tuple2<String, String>> batchedAffectedKeys : plan) {
+			for (Map<String, Tuple2<String, String>> batchedAffectedKeys : finalPlan) {
 				Map<String, List<String>> fluidExecutorMapping = deepCopy(oldExecutorMapping);
 				for (String affectedKey : batchedAffectedKeys.keySet()) {
 					Tuple2<String, String> srcToDst = batchedAffectedKeys.get(affectedKey);
@@ -189,7 +191,19 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 		return plan;
 	}
 
-	public void prioritizeKeys(Map<String, Tuple2<String, String>> affectedKeys) {
+	public Map<String, Tuple2<String, String>> prioritizeKeys(Map<String, Tuple2<String, String>> affectedKeys) {
+		TreeMap<String, Tuple2<String, String>> prioritizedKeySequence;
+		prioritizedKeySequence = new TreeMap<>(Comparator.comparing(Integer::valueOf));
+		prioritizedKeySequence.putAll(affectedKeys);
+		if (orderFunction.equals("default")) {
+			// Option 1:
+			return prioritizedKeySequence;
+		} else if (orderFunction.equals("reverse")) {
+			// option 2:
+			return prioritizedKeySequence.descendingMap();
+		} else {
+			throw new UnsupportedOperationException();
+		}
 	}
 
 	private void triggerAction(String logStr, Runnable runnable, Map<String, List<String>> partitionAssignment) {

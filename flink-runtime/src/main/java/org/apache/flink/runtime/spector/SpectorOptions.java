@@ -7,6 +7,10 @@ import static org.apache.flink.configuration.ConfigOptions.key;
 public class SpectorOptions {
 	// Main stat migration settings
 
+	public final static ConfigOption<String> ORDER_FUNCTION =
+		key("spector.reconfig.order_function")
+			.defaultValue("default");
+
 	public final static ConfigOption<Integer> NUM_AFFECTED_KEYS =
 			key("spector.reconfig.affected_keys")
 			.defaultValue(64);
