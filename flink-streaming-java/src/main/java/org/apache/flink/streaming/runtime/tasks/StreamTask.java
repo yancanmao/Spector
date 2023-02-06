@@ -953,6 +953,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				taskConfigManager.unregisterPartitions((ResultPartition[]) oldWriterCopies);
 			}
 
+			if (taskConfigManager.isUpdatingKeyGroupRange()) {
+				LOG.info("++++++ update task keyGroupRange for subtask");
+				this.updateKeyGroupRange(taskConfigManager.getKeyGroupRange());
+			}
+
 			reconnect();
 		} catch (Exception e) {
 			LOG.info("++++++ error", e);
