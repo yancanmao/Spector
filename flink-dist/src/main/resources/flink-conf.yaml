@@ -308,6 +308,8 @@ cluster.evenly-spread-out-slots: true
 #==============================================================================
 #
 
+spector.reconfig.scenario: shuffle
+
 #controller.target.operators: Splitter FlatMap,Count
 #spector.reconfig.start: 5000,10000
 
@@ -320,6 +322,7 @@ spector.reconfig.affected_tasks: 2
 spector.reconfig.interval: 1000000
 spector.reconfig.sync_keys: 32
 spector.replicate_keys_filter: 1
+spector.reconfig.order_function: default
 
 netty.state.transmission.enabled: true
 netty.optimized.acknowledgement.enabled: false # do not make it true, not supported

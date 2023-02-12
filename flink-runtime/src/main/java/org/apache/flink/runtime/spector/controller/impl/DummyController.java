@@ -6,6 +6,7 @@ import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.spector.controller.StateMigrationPlanner;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
+import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,6 +18,7 @@ import static org.apache.flink.runtime.spector.SpectorOptions.*;
 public class DummyController extends Thread implements org.apache.flink.runtime.spector.controller.OperatorController {
 
 	private static final Logger LOG = LoggerFactory.getLogger(DummyController.class);
+	private final String reconfigScenario;
 
 	private StateMigrationPlanner stateMigrationPlanner;
 
@@ -43,6 +45,7 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 	public DummyController(Configuration configuration, String name, int start,
 						   StateMigrationPlanner stateMigrationPlanner, Map<String, List<String>> executorMapping) {
 		this.name = name;
+		this.reconfigScenario = configuration.getString(RECONFIG_SCENARIO);
 		this.numAffectedKeys = configuration.getInteger(NUM_AFFECTED_KEYS);
 		this.numAffectedTasks = configuration.getInteger(NUM_AFFECTED_TASKS);
 		this.start = start;
@@ -107,7 +110,13 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 			isStopped = false;
 
 			while(!isStopped) {
-				stateMigration(numAffectedTasks, numAffectedKeys);
+				if (reconfigScenario.equals("shuffle")) {
+					stateShuffle(numAffectedTasks, numAffectedKeys);
+				} else if (reconfigScenario.equals("load_balance")) {
+					loadBalance();
+				} else {
+					throw new UnsupportedOperationException();
+				}
 				Thread.sleep(interval);
 			}
 
@@ -120,16 +129,59 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 	/**
 	 * set number of keys to migrate and select equi-sized number of keys from each task to migrate.
 	 */
-	private void stateMigration(int numAffectedTasks, int numAffectedKeys) throws InterruptedException {
+	private void stateShuffle(int numAffectedTasks, int numAffectedKeys) throws InterruptedException {
 		Map<String, List<String>> newExecutorMapping = deepCopy(executorMapping);
 		Map<String, List<String>> selectedTasks = selectAffectedTasks(numAffectedTasks, newExecutorMapping);
 		equiShuffle(numAffectedKeys, selectedTasks);
+
+		executorMappingCheck(newExecutorMapping);
 
 		// run state migration
 		triggerNonblockingAction(
 			"trigger 1 repartition",
 			() -> stateMigrationPlanner.remap(newExecutorMapping),
 			newExecutorMapping);
+	}
+
+	private void loadBalance() {
+		// hard coded experiment, where migrating the affected keys 3&4 from task 1 to task 2.
+		Map<String, List<String>> newExecutorMapping = new HashMap<>();
+		newExecutorMapping.put("0", new ArrayList<>());
+		newExecutorMapping.put("1", new ArrayList<>());
+		newExecutorMapping.get("0").add(0 + "");
+		newExecutorMapping.get("0").add(1 + "");
+		newExecutorMapping.get("1").add(2 + "");
+		newExecutorMapping.get("1").add(3 + "");
+		newExecutorMapping.get("1").add(4 + "");
+		newExecutorMapping.get("1").add(5 + "");
+		newExecutorMapping.get("1").add(6 + "");
+		newExecutorMapping.get("1").add(7 + "");
+
+
+		executorMappingCheck(newExecutorMapping);
+
+
+		// run state migration
+		triggerNonblockingAction(
+			"trigger 1 repartition",
+			() -> stateMigrationPlanner.remap(newExecutorMapping),
+			newExecutorMapping);
+	}
+
+	private void executorMappingCheck(Map<String, List<String>> newExecutorMapping) {
+		int maxParallelism = 0;
+		int newMaxParallelism = 0;
+
+		for (List<String> keys : executorMapping.values()) {
+			maxParallelism += keys.size();
+		}
+
+		for (List<String> keys : newExecutorMapping.values()) {
+			newMaxParallelism += keys.size();
+		}
+
+		Preconditions.checkState(maxParallelism == newMaxParallelism,
+			"++++++ new executor mapping has inconsistent max parallelism");
 	}
 
 	/**

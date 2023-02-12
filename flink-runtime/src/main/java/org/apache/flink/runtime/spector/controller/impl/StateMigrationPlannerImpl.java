@@ -174,20 +174,25 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 		return affectedKeys;
 	}
 
-	private List<Map<String, Tuple2<String, String>>> batching(Map<String, Tuple2<String, String>> affectedKeys) {
+	private List<Map<String, Tuple2<String, String>>> batching(Map<String, Tuple2<String, String>> prioritizedKeySequence) {
 		List<Map<String, Tuple2<String, String>>> plan = new ArrayList<>();
 
 		int count = 0;
 		Map<String, Tuple2<String, String>> batchedAffectedKeys = new HashMap<>();
 
-		for (String affectedKey : affectedKeys.keySet()) {
-			batchedAffectedKeys.put(affectedKey, affectedKeys.get(affectedKey));
+		for (String affectedKey : prioritizedKeySequence.keySet()) {
+			batchedAffectedKeys.put(affectedKey, prioritizedKeySequence.get(affectedKey));
 			count++;
 			if (count % syncKeys == 0) {
 				plan.add(batchedAffectedKeys);
 				batchedAffectedKeys = new HashMap<>();
 			}
 		}
+
+		if (!batchedAffectedKeys.isEmpty()) {
+			plan.add(batchedAffectedKeys);
+		}
+
 		return plan;
 	}
 

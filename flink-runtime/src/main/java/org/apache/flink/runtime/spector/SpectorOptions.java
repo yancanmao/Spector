@@ -7,6 +7,11 @@ import static org.apache.flink.configuration.ConfigOptions.key;
 public class SpectorOptions {
 	// Main stat migration settings
 
+	public final static ConfigOption<String> RECONFIG_SCENARIO =
+		key("spector.reconfig.scenario")
+			.defaultValue("shuffle");
+
+
 	public final static ConfigOption<String> ORDER_FUNCTION =
 		key("spector.reconfig.order_function")
 			.defaultValue("default");
