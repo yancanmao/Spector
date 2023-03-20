@@ -20,6 +20,7 @@ package org.apache.flink.runtime.util.profiling;
 
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,7 +28,10 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.io.Serializable;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import static org.apache.flink.runtime.spector.SpectorOptions.*;
 
@@ -65,13 +69,8 @@ public class FSMetricsManager implements Serializable, MetricsManager {
 
 	private long epoch = 0;	// The current aggregation interval. The MetricsManager outputs one rates file per epoch.
 
-	private int nRecords;
-
-	private final int numKeygroups;
-
-	private HashMap<Integer, Long> kgLatencyMap = new HashMap<>(); // keygroup -> avgLatency
-	private HashMap<Integer, Integer> kgNRecordsMap = new HashMap<>(); // keygroup -> nRecords
-	private long lastTimeSlot = 0l;
+	// keygroup -> avgLatency
+	// keygroup -> nRecords
 
 	private final OutputStreamDecorator outputStreamDecorator;
 
@@ -80,7 +79,6 @@ public class FSMetricsManager implements Serializable, MetricsManager {
 	 * @param configuration this job's configuration
 	 */
 	public FSMetricsManager(String taskDescription, JobVertexID jobVertexId, Configuration configuration, int idInModel, int maximumKeygroups) {
-		numKeygroups = maximumKeygroups;
 
 		taskId = taskDescription;
 		String workerId = taskId.replace("Timestamps/Watermarks", "Timestamps-Watermarks");
@@ -93,7 +91,7 @@ public class FSMetricsManager implements Serializable, MetricsManager {
 		status = new ProcessingStatus();
 
 		windowSize = configuration.getLong(WINDOW_SIZE);
-		nRecords = configuration.getInteger(N_RECORDS);
+		int nRecords = configuration.getInteger(N_RECORDS);
 
 		currentWindowStart = status.getProcessingStart();
 
@@ -209,6 +207,14 @@ public class FSMetricsManager implements Serializable, MetricsManager {
 				+ System.currentTimeMillis();
 
 			System.out.println(ratesLine);
+
+			// clear counters
+			recordsIn = 0;
+			recordsOut = 0;
+			usefulTime = 0;
+			currentWindowStart = 0;
+			latency = 0;
+			epoch++;
 		}
 	}
 
@@ -263,6 +269,63 @@ public class FSMetricsManager implements Serializable, MetricsManager {
 	 */
 	@Override
 	public void outputBufferFull(long timestamp) {
+		if (taskId.contains("Source")) {
+
+//			synchronized (status) {
+
+			if (currentWindowStart == 0) {
+				currentWindowStart = timestamp;
+			}
+
+			setOutBufferStart(timestamp);
+
+			// aggregate the metrics
+			recordsOut += status.getNumRecordsOut();
+			if (status.getWaitingForWriteBufferDuration() > 0) {
+				waitingTime += status.getWaitingForWriteBufferDuration();
+			}
+
+			// clear status counters
+			status.clearCounters();
+
+			// if window size is reached => output
+			if (timestamp - currentWindowStart > windowSize) {
+
+				// compute rates
+				long duration = timestamp - currentWindowStart;
+				usefulTime = duration - waitingTime;
+//				double trueOutputRate = (recordsOut / (usefulTime / 1000.0)) * 1000000;
+//				double observedOutputRate = (recordsOut / (duration / 1000.0)) * 1000000;
+				double trueOutputRate = (recordsOut / (usefulTime / 1000.0)) * 1000;
+				double observedOutputRate = (recordsOut / (duration / 1000.0)) * 1000;
+				totalRecordsOut += recordsOut;
+
+				// for network calculus
+				totalRecordsIn += recordsIn;
+				totalRecordsOut += recordsOut;
+
+				// log the rates: one file per epoch
+				String ratesLine = jobVertexId + ","
+					+ workerName + "-" + instanceId + ","
+					+ numInstances  + ","
+					+ 0 + ","
+					+ trueOutputRate + ","
+					+ 0 + ","
+					+ observedOutputRate + ","
+					+ 0 + ","
+					+ 0 + ","
+					+ System.currentTimeMillis();
+
+				System.out.println(ratesLine);
+
+				// clear counters
+				recordsOut = 0;
+				usefulTime = 0;
+				waitingTime = 0;
+				currentWindowStart = 0;
+				epoch++;
+			}
+		}
 	}
 
 	private void setOutBufferStart(long start) {

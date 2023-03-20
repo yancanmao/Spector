@@ -84,4 +84,8 @@ public class SpectorOptions {
 	public final static ConfigOption<Integer> MODEL_METRICS_RETRIEVE_WARMUP =
 			key("model.metrics.warmup")
 			.defaultValue(100);
+
+	public final static ConfigOption<Integer> STATE_TRANSFER_DELAY =
+		key("model.state.transfer.delay")
+			.defaultValue(200);
 }

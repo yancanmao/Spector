@@ -348,7 +348,8 @@ public class StreamInputProcessor<IN> {
 		processingDuration += processingDelay;
 		recordsProcessed++;
 
-		metricsManager.groundTruth(arrvialTs, queuingDelay + processingDelay / 1000_000);
+//		metricsManager.groundTruth(arrvialTs, queuingDelay + processingDelay / 1000_000);
+		metricsManager.groundTruth(System.currentTimeMillis(), queuingDelay + processingDelay / 1000_000);
 //		processingDuration = 0;
 //		recordsProcessed = 0;
 //		deserializationDuration = 0;

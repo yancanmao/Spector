@@ -156,6 +156,14 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 		newExecutorMapping.get("1").add(5 + "");
 		newExecutorMapping.get("1").add(6 + "");
 		newExecutorMapping.get("1").add(7 + "");
+		newExecutorMapping.get("1").add(8 + "");
+		newExecutorMapping.get("1").add(9 + "");
+		newExecutorMapping.get("1").add(10 + "");
+		newExecutorMapping.get("1").add(11 + "");
+		newExecutorMapping.get("1").add(12 + "");
+		newExecutorMapping.get("1").add(13 + "");
+		newExecutorMapping.get("1").add(14 + "");
+		newExecutorMapping.get("1").add(15 + "");
 
 
 		executorMappingCheck(newExecutorMapping);

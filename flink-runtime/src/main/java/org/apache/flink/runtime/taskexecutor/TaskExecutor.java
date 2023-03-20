@@ -204,6 +204,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	// ------------------------------------------------------------------------
 
 	private final HardwareDescription hardwareDescription;
+	private final int stateTransferDelay;
 
 	private FileCache fileCache;
 
@@ -285,6 +286,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		this.backupStateManager = new BackupStateManager();
 
 		nettyStateTransmissionEnabled = taskManagerConfiguration.getConfiguration().getBoolean(NETTY_STATE_TRANSMISSION_ENABLED);
+		this.stateTransferDelay = taskManagerConfiguration.getConfiguration().getInteger(STATE_TRANSFER_DELAY);
 
 		try {
 			boolean taskDeploymentEnabled =
@@ -839,6 +841,9 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 //			return FutureUtils.completedExceptionally(new TaskException(message));
 			}
 		} else {
+//			long start = System.currentTimeMillis();
+//			while (System.currentTimeMillis() - start < stateTransferDelay){}
+
 			log.info("++++++ update task state of execution: " + executionAttemptID);
 			JobID jobID = task.getJobID();
 			JobManagerConnection jobManagerConnection = jobManagerTable.get(jobID);

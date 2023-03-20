@@ -206,6 +206,13 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 		} else if (orderFunction.equals("reverse")) {
 			// option 2:
 			return prioritizedKeySequence.descendingMap();
+		} else if (orderFunction.equals("random")) {
+			List<String> list = new ArrayList<>(prioritizedKeySequence.keySet());
+			Collections.shuffle(list);
+
+			Map<String, Tuple2<String, String>> shuffleMap = new TreeMap<>();
+			list.forEach(k->shuffleMap.put(k, prioritizedKeySequence.get(k)));
+			return shuffleMap;
 		} else {
 			throw new UnsupportedOperationException();
 		}

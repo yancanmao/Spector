@@ -300,7 +300,6 @@ class HeapSnapshotStrategy<K>
 					int totalStateCount = 0;
 
 					for (int keyGroupPos = 0; keyGroupPos < keyGroupRange.getNumberOfKeyGroups(); ++keyGroupPos) {
-						// TODO: hard code this part to test effectiveness
 						int alignedKeyGroupId = keyGroupRange.getKeyGroupId(keyGroupPos);
 						keyGroupRangeOffsets[keyGroupPos] = localStream.getPos();
 						int hashedKeyGroup = keyGroupRange.mapFromAlignedToHashed(alignedKeyGroupId);
