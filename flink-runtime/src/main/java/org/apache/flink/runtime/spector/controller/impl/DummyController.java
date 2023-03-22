@@ -4,9 +4,11 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.spector.controller.StateMigrationPlanner;
+import org.apache.flink.runtime.spector.controller.util.FastZipfGenerator;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.util.Preconditions;
+import org.apache.hadoop.util.hash.Hash;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,6 +21,7 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 
 	private static final Logger LOG = LoggerFactory.getLogger(DummyController.class);
 	private final String reconfigScenario;
+	private final Configuration configuration;
 
 	private StateMigrationPlanner stateMigrationPlanner;
 
@@ -44,6 +47,7 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 
 	public DummyController(Configuration configuration, String name, int start,
 						   StateMigrationPlanner stateMigrationPlanner, Map<String, List<String>> executorMapping) {
+		this.configuration = configuration;
 		this.name = name;
 		this.reconfigScenario = configuration.getString(RECONFIG_SCENARIO);
 		this.numAffectedKeys = configuration.getInteger(NUM_AFFECTED_KEYS);
@@ -114,6 +118,8 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 					stateShuffle(numAffectedTasks, numAffectedKeys);
 				} else if (reconfigScenario.equals("load_balance")) {
 					loadBalance();
+				} else if (reconfigScenario.equals("load_balance_zipf")) {
+					loadBalanceZipf();
 				} else {
 					throw new UnsupportedOperationException();
 				}
@@ -174,6 +180,60 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 			"trigger 1 repartition",
 			() -> stateMigrationPlanner.remap(newExecutorMapping),
 			newExecutorMapping);
+	}
+
+
+	private void loadBalanceZipf() {
+		double zipfSkew = configuration.getDouble(WORKLOAD_ZIPF_SKEW);
+
+		int maxParallelism = executorMapping.values().stream().mapToInt(List::size).sum();
+
+		FastZipfGenerator fastZipfGenerator = new FastZipfGenerator(maxParallelism, zipfSkew, 0, 12345678);
+
+		HashSet<Integer> nonMigratingKeys = findOptimalKeyDistribution(fastZipfGenerator);
+
+
+		// hard coded experiment, where migrating the affected keys 3&4 from task 1 to task 2.
+		Map<String, List<String>> newExecutorMapping = new HashMap<>();
+
+		newExecutorMapping.put("0", new ArrayList<>());
+		newExecutorMapping.put("1", new ArrayList<>());
+
+		for (int key = 0; key < maxParallelism; key++) {
+			if (nonMigratingKeys.contains(key)) {
+				newExecutorMapping.get("0").add(key + "");
+			} else {
+				newExecutorMapping.get("1").add(key + "");
+			}
+		}
+
+		LOG.info("++++++ Load Balance Zipf with new plan: " + newExecutorMapping);
+
+		executorMappingCheck(newExecutorMapping);
+
+		// run state migration
+		triggerNonblockingAction(
+			"trigger 1 repartition",
+			() -> stateMigrationPlanner.remap(newExecutorMapping),
+			newExecutorMapping);
+	}
+
+	private HashSet<Integer> findOptimalKeyDistribution(FastZipfGenerator fastZipfGenerator) {
+		Map<Double, Integer> map = fastZipfGenerator.getMap();
+		double prevKey = 0;
+		HashSet<Integer> nonMigratingKeys = new HashSet<>();
+		for (Double key : map.keySet()) {
+			if (key >= 0.5) {
+				if (0.5 - prevKey > key - 0.5) {
+					nonMigratingKeys.add(map.get(key));
+				}
+				break;
+			}
+			nonMigratingKeys.add(map.get(key));
+			prevKey = key;
+		}
+
+		return nonMigratingKeys;
 	}
 
 	private void executorMappingCheck(Map<String, List<String>> newExecutorMapping) {

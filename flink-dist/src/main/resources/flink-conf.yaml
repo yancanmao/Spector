@@ -310,6 +310,8 @@ cluster.evenly-spread-out-slots: true
 
 spector.reconfig.scenario: shuffle
 
+spector.reconfig.workload.zipf_skew: 1.5 # experiment settings for zipf skewness test
+
 #controller.target.operators: Splitter FlatMap,Count
 #spector.reconfig.start: 5000,10000
 

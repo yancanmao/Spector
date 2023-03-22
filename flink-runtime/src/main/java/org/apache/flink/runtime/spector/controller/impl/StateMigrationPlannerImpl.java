@@ -200,21 +200,23 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 		TreeMap<String, Tuple2<String, String>> prioritizedKeySequence;
 		prioritizedKeySequence = new TreeMap<>(Comparator.comparing(Integer::valueOf));
 		prioritizedKeySequence.putAll(affectedKeys);
-		if (orderFunction.equals("default")) {
-			// Option 1:
-			return prioritizedKeySequence;
-		} else if (orderFunction.equals("reverse")) {
-			// option 2:
-			return prioritizedKeySequence.descendingMap();
-		} else if (orderFunction.equals("random")) {
-			List<String> list = new ArrayList<>(prioritizedKeySequence.keySet());
-			Collections.shuffle(list);
+		switch (orderFunction) {
+			case "default":
+				// Option 1:
+				return prioritizedKeySequence;
+			case "reverse":
+				// option 2:
+				return prioritizedKeySequence.descendingMap();
+			case "random":
+				List<String> list = new ArrayList<>(prioritizedKeySequence.keySet());
+				Collections.shuffle(list);
 
-			Map<String, Tuple2<String, String>> shuffleMap = new TreeMap<>();
-			list.forEach(k->shuffleMap.put(k, prioritizedKeySequence.get(k)));
-			return shuffleMap;
-		} else {
-			throw new UnsupportedOperationException();
+				Map<String, Tuple2<String, String>> shuffleMap = new LinkedHashMap<>();
+				list.forEach(k -> shuffleMap.put(k, prioritizedKeySequence.get(k)));
+				System.out.println("++++++" + shuffleMap);
+				return shuffleMap;
+			default:
+				throw new UnsupportedOperationException();
 		}
 	}
 

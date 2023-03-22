@@ -11,6 +11,10 @@ public class SpectorOptions {
 		key("spector.reconfig.scenario")
 			.defaultValue("shuffle");
 
+	public final static ConfigOption<Double> WORKLOAD_ZIPF_SKEW =
+		key("spector.reconfig.workload.zipf_skew")
+			.defaultValue(1.0);
+
 
 	public final static ConfigOption<String> ORDER_FUNCTION =
 		key("spector.reconfig.order_function")
