@@ -45,6 +45,7 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 
 import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Operation.DISPATCH_STATE_TO_STANDBY_TASK;
 import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Operation.REPARTITION_STATE;
@@ -164,13 +165,17 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	}
 
 	public void setSlotsMap(CompletableFuture<Collection<TaskManagerSlot>> allSlots) {
-		allSlots.thenAccept(taskManagerSlots -> {
-			for (TaskManagerSlot taskManagerSlot : taskManagerSlots) {
-				InstanceID taskManagerId = taskManagerSlot.getInstanceId();
-				List<TaskManagerSlot> slots = slotsMap.computeIfAbsent(taskManagerId, k -> new ArrayList<>());
-				slots.add(taskManagerSlot);
-			}
-		});
+		try {
+			allSlots.thenAccept(taskManagerSlots -> {
+				for (TaskManagerSlot taskManagerSlot : taskManagerSlots) {
+					InstanceID taskManagerId = taskManagerSlot.getInstanceId();
+					List<TaskManagerSlot> slots = slotsMap.computeIfAbsent(taskManagerId, k -> new ArrayList<>());
+					slots.add(taskManagerSlot);
+				}
+			}).get();
+		} catch (InterruptedException | ExecutionException e) {
+			throw new RuntimeException(e);
+		}
 	}
 
 	//****************************Standby Task Creation****************************
