@@ -77,6 +77,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.apache.flink.runtime.checkpoint.CheckpointType.RECONFIGPOINT;
+import static org.apache.flink.runtime.spector.SpectorOptions.SNAPSHOT_CHANGELOG_ENABLED;
 
 /**
  * Base class for all streaming tasks. A task is the unit of local processing that is deployed
@@ -806,7 +807,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			checkpointMetaData,
 			checkpointOptions,
 			storage,
-			checkpointMetrics);
+			checkpointMetrics,
+			configuration.getConfiguration().getBoolean(SNAPSHOT_CHANGELOG_ENABLED));
 
 		checkpointingOperation.executeCheckpointing();
 	}
@@ -1410,6 +1412,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		private final CheckpointStreamFactory storageLocation;
 
 		private final StreamOperator<?>[] allOperators;
+		private final boolean isChangelogEnabled;
 
 		private long startSyncPartNano;
 		private long startAsyncPartNano;
@@ -1419,11 +1422,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		private final Map<OperatorID, OperatorSnapshotFutures> operatorSnapshotsInProgress;
 
 		public CheckpointingOperation(
-				StreamTask<?, ?> owner,
-				CheckpointMetaData checkpointMetaData,
-				CheckpointOptions checkpointOptions,
-				CheckpointStreamFactory checkpointStorageLocation,
-				CheckpointMetrics checkpointMetrics) {
+			StreamTask<?, ?> owner,
+			CheckpointMetaData checkpointMetaData,
+			CheckpointOptions checkpointOptions,
+			CheckpointStreamFactory checkpointStorageLocation,
+			CheckpointMetrics checkpointMetrics, boolean isChangelogEnabled) {
 
 			this.owner = Preconditions.checkNotNull(owner);
 			this.checkpointMetaData = Preconditions.checkNotNull(checkpointMetaData);
@@ -1432,6 +1435,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			this.storageLocation = Preconditions.checkNotNull(checkpointStorageLocation);
 			this.allOperators = owner.operatorChain.getAllOperators();
 			this.operatorSnapshotsInProgress = new HashMap<>(allOperators.length);
+			this.isChangelogEnabled = isChangelogEnabled;
 		}
 
 		public void executeCheckpointing() throws Exception {
@@ -1501,7 +1505,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 						checkpointMetaData.getCheckpointId(),
 						checkpointMetaData.getTimestamp(),
 						checkpointOptions,
-						storageLocation);
+						storageLocation,
+						isChangelogEnabled);
 				operatorSnapshotsInProgress.put(op.getOperatorID(), snapshotInProgress);
 			}
 		}

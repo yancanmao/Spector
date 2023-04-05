@@ -128,7 +128,8 @@ public interface StreamOperator<OUT> extends CheckpointListener, KeyContext, Dis
 		long checkpointId,
 		long timestamp,
 		CheckpointOptions checkpointOptions,
-		CheckpointStreamFactory storageLocation) throws Exception;
+		CheckpointStreamFactory storageLocation,
+		boolean isChangelogEnabled) throws Exception;
 
 	/**
 	 * snapshot

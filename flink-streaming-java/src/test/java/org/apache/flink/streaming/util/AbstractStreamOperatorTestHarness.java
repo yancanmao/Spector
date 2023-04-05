@@ -482,14 +482,14 @@ public class AbstractStreamOperatorTestHarness<OUT> implements AutoCloseable {
 	}
 
 	/**
-	 * Calls {@link StreamOperator#snapshotState(long, long, CheckpointOptions, org.apache.flink.runtime.state.CheckpointStreamFactory)}.
+	 * Calls {@link StreamOperator#snapshotState(long, long, CheckpointOptions, org.apache.flink.runtime.state.CheckpointStreamFactory, boolean)}.
 	 */
 	public OperatorSubtaskState snapshot(long checkpointId, long timestamp) throws Exception {
 		return snapshotWithLocalState(checkpointId, timestamp).getJobManagerOwnedState();
 	}
 
 	/**
-	 * Calls {@link StreamOperator#snapshotState(long, long, CheckpointOptions, org.apache.flink.runtime.state.CheckpointStreamFactory)}.
+	 * Calls {@link StreamOperator#snapshotState(long, long, CheckpointOptions, org.apache.flink.runtime.state.CheckpointStreamFactory, boolean)}.
 	 */
 	public OperatorSnapshotFinalizer snapshotWithLocalState(long checkpointId, long timestamp) throws Exception {
 
@@ -497,7 +497,7 @@ public class AbstractStreamOperatorTestHarness<OUT> implements AutoCloseable {
 			checkpointId,
 			timestamp,
 			CheckpointOptions.forCheckpointWithDefaultLocation(),
-			checkpointStorage.resolveCheckpointStorageLocation(checkpointId, CheckpointStorageLocationReference.getDefault()));
+			checkpointStorage.resolveCheckpointStorageLocation(checkpointId, CheckpointStorageLocationReference.getDefault()), true);
 
 		return new OperatorSnapshotFinalizer(operatorStateResult);
 	}

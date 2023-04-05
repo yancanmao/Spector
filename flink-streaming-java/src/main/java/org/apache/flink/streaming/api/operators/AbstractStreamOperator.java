@@ -416,7 +416,7 @@ public abstract class AbstractStreamOperator<OUT>
 
 	@Override
 	public final OperatorSnapshotFutures snapshotState(long checkpointId, long timestamp, CheckpointOptions checkpointOptions,
-			CheckpointStreamFactory factory) throws Exception {
+													   CheckpointStreamFactory factory, boolean isChangelogEnabled) throws Exception {
 
 		KeyGroupRange keyGroupRange = null != keyedStateBackend ?
 				keyedStateBackend.getKeyGroupRange() : KeyGroupRange.EMPTY_KEY_GROUP_RANGE;
@@ -437,12 +437,12 @@ public abstract class AbstractStreamOperator<OUT>
 
 			if (null != operatorStateBackend) {
 				snapshotInProgress.setOperatorStateManagedFuture(
-					operatorStateBackend.snapshot(checkpointId, timestamp, factory, checkpointOptions));
+					operatorStateBackend.snapshot(checkpointId, timestamp, factory, checkpointOptions, true));
 			}
 
 			if (null != keyedStateBackend) {
 				snapshotInProgress.setKeyedStateManagedFuture(
-					keyedStateBackend.snapshot(checkpointId, timestamp, factory, checkpointOptions));
+					keyedStateBackend.snapshot(checkpointId, timestamp, factory, checkpointOptions, isChangelogEnabled));
 			}
 		} catch (Exception snapshotException) {
 			try {
@@ -486,7 +486,7 @@ public abstract class AbstractStreamOperator<OUT>
 
 			if (null != operatorStateBackend) {
 				snapshotInProgress.setOperatorStateManagedFuture(
-					operatorStateBackend.snapshot(checkpointId, timestamp, factory, checkpointOptions));
+					operatorStateBackend.snapshot(checkpointId, timestamp, factory, checkpointOptions, true));
 			}
 
 			if (null != keyedStateBackend) {

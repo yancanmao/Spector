@@ -288,7 +288,7 @@ public class StreamTaskTerminationTest extends TestLogger {
 			@Nonnull Collection<OperatorStateHandle> stateHandles,
 			CloseableRegistry cancelStreamRegistry) throws Exception {
 			OperatorStateBackend operatorStateBackend = mock(OperatorStateBackend.class);
-			when(operatorStateBackend.snapshot(anyLong(), anyLong(), any(CheckpointStreamFactory.class), any(CheckpointOptions.class)))
+			when(operatorStateBackend.snapshot(anyLong(), anyLong(), any(CheckpointStreamFactory.class), any(CheckpointOptions.class), true))
 				.thenReturn(new FutureTask<>(new BlockingCallable()));
 
 			return operatorStateBackend;

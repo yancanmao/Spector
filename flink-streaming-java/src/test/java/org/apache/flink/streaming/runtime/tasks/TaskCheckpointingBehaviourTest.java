@@ -340,7 +340,8 @@ public class TaskCheckpointingBehaviourTest extends TestLogger {
 							long checkpointId,
 							long timestamp,
 							@Nonnull CheckpointStreamFactory streamFactory,
-							@Nonnull CheckpointOptions checkpointOptions) throws Exception {
+							@Nonnull CheckpointOptions checkpointOptions,
+							boolean isChangelogEndabled) throws Exception {
 
 							throw new Exception("Sync part snapshot exception.");
 						}
@@ -390,7 +391,8 @@ public class TaskCheckpointingBehaviourTest extends TestLogger {
 							long checkpointId,
 							long timestamp,
 							@Nonnull CheckpointStreamFactory streamFactory,
-							@Nonnull CheckpointOptions checkpointOptions) throws Exception {
+							@Nonnull CheckpointOptions checkpointOptions,
+							boolean isChangelogEndabled) throws Exception {
 
 							return new FutureTask<>(() -> {
 								throw new Exception("Async part snapshot exception.");

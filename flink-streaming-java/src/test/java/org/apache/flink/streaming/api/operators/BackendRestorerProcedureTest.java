@@ -89,7 +89,7 @@ public class BackendRestorerProcedureTest extends TestLogger {
 			listState.add(3);
 
 			RunnableFuture<SnapshotResult<OperatorStateHandle>> snapshot =
-				originalBackend.snapshot(0L, 0L, checkpointStreamFactory, CheckpointOptions.forCheckpointWithDefaultLocation());
+				originalBackend.snapshot(0L, 0L, checkpointStreamFactory, CheckpointOptions.forCheckpointWithDefaultLocation(), true);
 
 			snapshot.run();
 			snapshotResult = snapshot.get();
