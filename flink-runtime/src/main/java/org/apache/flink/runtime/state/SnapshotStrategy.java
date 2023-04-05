@@ -40,10 +40,11 @@ public interface SnapshotStrategy<S extends StateObject> {
 	 * the operation is performed synchronous or asynchronous. In the later case, the returned Runnable must be executed
 	 * first before obtaining the handle.
 	 *
-	 * @param checkpointId      The ID of the checkpoint.
-	 * @param timestamp         The timestamp of the checkpoint.
-	 * @param streamFactory     The factory that we can use for writing our state to streams.
-	 * @param checkpointOptions Options for how to perform this checkpoint.
+	 * @param checkpointId       The ID of the checkpoint.
+	 * @param timestamp          The timestamp of the checkpoint.
+	 * @param streamFactory      The factory that we can use for writing our state to streams.
+	 * @param checkpointOptions  Options for how to perform this checkpoint.
+	 * @param isChangelogEnabled
 	 * @return A runnable future that will yield a {@link StateObject}.
 	 */
 	@Nonnull
@@ -51,5 +52,6 @@ public interface SnapshotStrategy<S extends StateObject> {
 		long checkpointId,
 		long timestamp,
 		@Nonnull CheckpointStreamFactory streamFactory,
-		@Nonnull CheckpointOptions checkpointOptions) throws Exception;
+		@Nonnull CheckpointOptions checkpointOptions,
+		boolean isChangelogEnabled) throws Exception;
 }

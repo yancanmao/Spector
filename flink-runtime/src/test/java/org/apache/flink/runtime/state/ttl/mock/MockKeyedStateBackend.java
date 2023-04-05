@@ -176,10 +176,10 @@ public class MockKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 	@Nonnull
 	@Override
 	public RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshot(
-		long checkpointId,
-		long timestamp,
-		@Nonnull CheckpointStreamFactory streamFactory,
-		@Nonnull CheckpointOptions checkpointOptions) {
+            long checkpointId,
+            long timestamp,
+            @Nonnull CheckpointStreamFactory streamFactory,
+            @Nonnull CheckpointOptions checkpointOptions, boolean isChangelogEnabled) {
 		return new FutureTask<>(() ->
 			SnapshotResult.of(new MockKeyedStateHandle<>(copy(stateValues, stateSnapshotFilters))));
 	}

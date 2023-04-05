@@ -143,7 +143,7 @@ public class StateSnapshotCompressionTest extends TestLogger {
 			state.update("45");
 			CheckpointStreamFactory streamFactory = new MemCheckpointStreamFactory(4 * 1024 * 1024);
 			RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshot =
-				stateBackend.snapshot(0L, 0L, streamFactory, CheckpointOptions.forCheckpointWithDefaultLocation());
+				stateBackend.snapshot(0L, 0L, streamFactory, CheckpointOptions.forCheckpointWithDefaultLocation(), true);
 			snapshot.run();
 			SnapshotResult<KeyedStateHandle> snapshotResult = snapshot.get();
 			stateHandle = snapshotResult.getJobManagerOwnedSnapshot();

@@ -122,7 +122,7 @@ public class HeapKeyedStateBackendSnapshotMigrationTest extends HeapStateBackend
 					1L,
 					1L,
 					new MemCheckpointStreamFactory(4 * 1024 * 1024),
-					CheckpointOptions.forCheckpointWithDefaultLocation());
+					CheckpointOptions.forCheckpointWithDefaultLocation(), true);
 
 			snapshot.run();
 		}

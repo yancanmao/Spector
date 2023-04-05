@@ -400,24 +400,25 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 	}
 
 	/**
-	 * Triggers an asynchronous snapshot of the keyed state backend from RocksDB. This snapshot can be canceled and
-	 * is also stopped when the backend is closed through {@link #dispose()}. For each backend, this method must always
-	 * be called by the same thread.
-	 *
-	 * @param checkpointId  The Id of the checkpoint.
-	 * @param timestamp     The timestamp of the checkpoint.
-	 * @param streamFactory The factory that we can use for writing our state to streams.
-	 * @param checkpointOptions Options for how to perform this checkpoint.
-	 * @return Future to the state handle of the snapshot data.
-	 * @throws Exception indicating a problem in the synchronous part of the checkpoint.
-	 */
+     * Triggers an asynchronous snapshot of the keyed state backend from RocksDB. This snapshot can be canceled and
+     * is also stopped when the backend is closed through {@link #dispose()}. For each backend, this method must always
+     * be called by the same thread.
+     *
+     * @param checkpointId       The Id of the checkpoint.
+     * @param timestamp          The timestamp of the checkpoint.
+     * @param streamFactory      The factory that we can use for writing our state to streams.
+     * @param checkpointOptions  Options for how to perform this checkpoint.
+     * @param isChangelogEnabled
+     * @return Future to the state handle of the snapshot data.
+     * @throws Exception indicating a problem in the synchronous part of the checkpoint.
+     */
 	@Nonnull
 	@Override
 	public RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshot(
-		final long checkpointId,
-		final long timestamp,
-		@Nonnull final CheckpointStreamFactory streamFactory,
-		@Nonnull CheckpointOptions checkpointOptions) throws Exception {
+            final long checkpointId,
+            final long timestamp,
+            @Nonnull final CheckpointStreamFactory streamFactory,
+            @Nonnull CheckpointOptions checkpointOptions, boolean isChangelogEnabled) throws Exception {
 
 		long startTime = System.currentTimeMillis();
 
@@ -429,7 +430,7 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 				savepointSnapshotStrategy : checkpointSnapshotStrategy;
 
 		RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshotRunner =
-			chosenSnapshotStrategy.snapshot(checkpointId, timestamp, streamFactory, checkpointOptions);
+			chosenSnapshotStrategy.snapshot(checkpointId, timestamp, streamFactory, checkpointOptions, isChangelogEnabled);
 
 		chosenSnapshotStrategy.logSyncCompleted(streamFactory, startTime);
 

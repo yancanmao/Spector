@@ -111,10 +111,10 @@ public abstract class RocksDBSnapshotStrategyBase<K>
 	@Nonnull
 	@Override
 	public final RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshot(
-		long checkpointId,
-		long timestamp,
-		@Nonnull CheckpointStreamFactory streamFactory,
-		@Nonnull CheckpointOptions checkpointOptions) throws Exception {
+            long checkpointId,
+            long timestamp,
+            @Nonnull CheckpointStreamFactory streamFactory,
+            @Nonnull CheckpointOptions checkpointOptions, boolean isChangelogEnabled) throws Exception {
 
 		if (kvStateInformation.isEmpty()) {
 			if (LOG.isDebugEnabled()) {

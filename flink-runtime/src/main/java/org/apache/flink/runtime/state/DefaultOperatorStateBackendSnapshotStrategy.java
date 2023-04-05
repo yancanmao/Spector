@@ -61,10 +61,10 @@ class DefaultOperatorStateBackendSnapshotStrategy extends AbstractSnapshotStrate
 	@Nonnull
 	@Override
 	public RunnableFuture<SnapshotResult<OperatorStateHandle>> snapshot(
-		final long checkpointId,
-		final long timestamp,
-		@Nonnull final CheckpointStreamFactory streamFactory,
-		@Nonnull final CheckpointOptions checkpointOptions) throws IOException {
+            final long checkpointId,
+            final long timestamp,
+            @Nonnull final CheckpointStreamFactory streamFactory,
+            @Nonnull final CheckpointOptions checkpointOptions, boolean isChangelogEnabled) throws IOException {
 
 		if (registeredOperatorStates.isEmpty() && registeredBroadcastStates.isEmpty()) {
 			return DoneFuture.of(SnapshotResult.empty());

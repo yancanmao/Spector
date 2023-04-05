@@ -63,6 +63,11 @@ public class SpectorOptions {
 			.defaultValue(false);
 
 
+	public final static ConfigOption<Boolean> SNAPSHOT_CHANGELOG_ENABLED =
+			key("snapshot.changelog.enabled")
+			.defaultValue(true);
+
+
 	// Old configuration that related to control logic and metrics retriever
 
 	public final static ConfigOption<Long> WINDOW_SIZE =

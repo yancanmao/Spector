@@ -81,7 +81,8 @@ class HeapSnapshotStrategy<K>
 		long checkpointId,
 		long timestamp,
 		@Nonnull CheckpointStreamFactory primaryStreamFactory,
-		@Nonnull CheckpointOptions checkpointOptions) throws IOException {
+		@Nonnull CheckpointOptions checkpointOptions,
+		boolean isChangelogEnabled) throws IOException {
 
 		if (!hasRegisteredState()) {
 			return DoneFuture.of(SnapshotResult.empty());
@@ -159,6 +160,54 @@ class HeapSnapshotStrategy<K>
 					int changelogCount = 0;
 					int totalStateCount = 0;
 
+
+					if (isChangelogEnabled) {
+						changlogedSnapshotHandle(localStream, outView, keyGroupRangeOffsets, changelogs, changelogCount, totalStateCount);
+					} else {
+						nonChangelogedSnapshotHandle(localStream, outView, keyGroupRangeOffsets);
+					}
+
+					if (snapshotCloseableRegistry.unregisterCloseable(streamWithResultProvider)) {
+						KeyGroupRangeOffsets kgOffs = new KeyGroupRangeOffsets(keyGroupRange, keyGroupRangeOffsets, changelogs);
+						SnapshotResult<StreamStateHandle> result =
+							streamWithResultProvider.closeAndFinalizeCheckpointStreamResult();
+						return CheckpointStreamWithResultProvider.toKeyedStateHandleSnapshotResult(result, kgOffs);
+					} else {
+						throw new IOException("Stream already unregistered.");
+					}
+				}
+
+				private void nonChangelogedSnapshotHandle(CheckpointStreamFactory.CheckpointStateOutputStream localStream, DataOutputViewStreamWrapper outView, long[] keyGroupRangeOffsets) throws IOException {
+					for (int keyGroupPos = 0; keyGroupPos < keyGroupRange.getNumberOfKeyGroups(); ++keyGroupPos) {
+						int alignedKeyGroupId = keyGroupRange.getKeyGroupId(keyGroupPos);
+						keyGroupRangeOffsets[keyGroupPos] = localStream.getPos();
+
+						int hashedKeyGroup = keyGroupRange.mapFromAlignedToHashed(alignedKeyGroupId);
+						outView.writeInt(hashedKeyGroup);
+
+						LOG.info("+++++--- keyGroupRange: " + keyGroupRange +
+							", alignedKeyGroupIndex: " + alignedKeyGroupId +
+							", offset: " + keyGroupRangeOffsets[keyGroupPos] +
+							", hashedKeyGroup: " + hashedKeyGroup);
+
+						for (Map.Entry<StateUID, StateSnapshot> stateSnapshot :
+							cowStateStableSnapshots.entrySet()) {
+							StateSnapshot.StateKeyGroupWriter partitionedSnapshot =
+
+								stateSnapshot.getValue().getKeyGroupWriter();
+							try (
+								OutputStream kgCompressionOut =
+									keyGroupCompressionDecorator.decorateWithCompression(localStream)) {
+								DataOutputViewStreamWrapper kgCompressionView =
+									new DataOutputViewStreamWrapper(kgCompressionOut);
+								kgCompressionView.writeShort(stateNamesToId.get(stateSnapshot.getKey()));
+								partitionedSnapshot.writeStateInKeyGroup(kgCompressionView, alignedKeyGroupId);
+							} // this will just close the outer compression stream
+						}
+					}
+				}
+
+				private void changlogedSnapshotHandle(CheckpointStreamFactory.CheckpointStateOutputStream localStream, DataOutputViewStreamWrapper outView, long[] keyGroupRangeOffsets, boolean[] changelogs, int changelogCount, int totalStateCount) throws IOException {
 					for (int keyGroupPos = 0; keyGroupPos < keyGroupRange.getNumberOfKeyGroups(); ++keyGroupPos) {
 						int alignedKeyGroupId = keyGroupRange.getKeyGroupId(keyGroupPos);
 						keyGroupRangeOffsets[keyGroupPos] = localStream.getPos();
@@ -173,15 +222,6 @@ class HeapSnapshotStrategy<K>
 					}
 
 					LOG.info("++++++ Changeloged State: " + changelogCount + "/" + totalStateCount);
-
-					if (snapshotCloseableRegistry.unregisterCloseable(streamWithResultProvider)) {
-						KeyGroupRangeOffsets kgOffs = new KeyGroupRangeOffsets(keyGroupRange, keyGroupRangeOffsets, changelogs);
-						SnapshotResult<StreamStateHandle> result =
-							streamWithResultProvider.closeAndFinalizeCheckpointStreamResult();
-						return CheckpointStreamWithResultProvider.toKeyedStateHandleSnapshotResult(result, kgOffs);
-					} else {
-						throw new IOException("Stream already unregistered.");
-					}
 				}
 
 				@Override
@@ -389,8 +429,9 @@ class HeapSnapshotStrategy<K>
 
 			for (Map.Entry<StateUID, StateSnapshot> stateSnapshot :
 			cowStateStableSnapshots.entrySet()) {
-			StateSnapshot.StateKeyGroupWriter partitionedSnapshot =
-				stateSnapshot.getValue().getKeyGroupWriter();
+
+				StateSnapshot.StateKeyGroupWriter partitionedSnapshot =
+					stateSnapshot.getValue().getKeyGroupWriter();
 
 				try (
 					OutputStream kgCompressionOut =

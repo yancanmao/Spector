@@ -71,10 +71,10 @@ class StateSnapshotTransformerTest {
 			CheckpointOptions checkpointOptions = CheckpointOptions.forCheckpointWithDefaultLocation();
 
 			RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshot1 =
-				backend.snapshot(1L, 0L, streamFactory, checkpointOptions);
+				backend.snapshot(1L, 0L, streamFactory, checkpointOptions, true);
 
 			RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshot2 =
-				backend.snapshot(2L, 0L, streamFactory, checkpointOptions);
+				backend.snapshot(2L, 0L, streamFactory, checkpointOptions, true);
 
 			Thread runner1 = new Thread(snapshot1, "snapshot1");
 			runner1.start();
