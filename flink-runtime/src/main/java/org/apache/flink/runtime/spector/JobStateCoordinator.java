@@ -344,6 +344,8 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	public void onCompleteCheckpoint(CompletedCheckpoint checkpoint) throws Exception {
 		checkNotNull(checkpoint);
 
+		System.out.println("++++++Current state size: " + checkpoint.getStateSize());
+
 		if (checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT) {
 			reconfigurationProfiler.onSyncEnd();
 			LOG.info("++++++ redistribute operator states");
