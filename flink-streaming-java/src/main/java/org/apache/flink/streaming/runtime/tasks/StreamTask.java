@@ -808,7 +808,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			checkpointOptions,
 			storage,
 			checkpointMetrics,
-			configuration.getConfiguration().getBoolean(SNAPSHOT_CHANGELOG_ENABLED));
+			getEnvironment().getJobConfiguration().getBoolean(SNAPSHOT_CHANGELOG_ENABLED));
 
 		checkpointingOperation.executeCheckpointing();
 	}
@@ -1426,7 +1426,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			CheckpointMetaData checkpointMetaData,
 			CheckpointOptions checkpointOptions,
 			CheckpointStreamFactory checkpointStorageLocation,
-			CheckpointMetrics checkpointMetrics, boolean isChangelogEnabled) {
+			CheckpointMetrics checkpointMetrics,
+			boolean isChangelogEnabled) {
 
 			this.owner = Preconditions.checkNotNull(owner);
 			this.checkpointMetaData = Preconditions.checkNotNull(checkpointMetaData);

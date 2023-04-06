@@ -416,7 +416,7 @@ public class RocksDBAsyncSnapshotTest extends TestLogger {
 			RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshotFuture = keyedStateBackend.snapshot(
 				checkpointId, timestamp,
 				new TestCheckpointStreamFactory(() -> outputStream),
-				CheckpointOptions.forCheckpointWithDefaultLocation(), isChangelogEnabled);
+				CheckpointOptions.forCheckpointWithDefaultLocation(), true);
 
 			try {
 				FutureUtils.runIfNotDoneAndGet(snapshotFuture);
