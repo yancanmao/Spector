@@ -1050,8 +1050,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 //			this.assignedKeyGroupRange.update(keyGroupRange);
 //		}
 		this.assignedKeyGroupRange.update(keyGroupRange);
-
-		taskConfigManager.finish();
+//		taskConfigManager.finish();
 	}
 
 	// ------------------------------------------------------------------------

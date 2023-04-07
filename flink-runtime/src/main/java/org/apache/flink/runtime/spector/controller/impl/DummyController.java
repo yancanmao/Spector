@@ -236,12 +236,13 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 		Set<Integer> migratableKeys = new HashSet<>();
 
 		for (String taskIdStr : executorMapping.keySet()) {
+			int taskId = Integer.parseInt(taskIdStr);
 			for (String keygroupStr : executorMapping.get(taskIdStr)) {
 				int keygroup = Integer.parseInt(keygroupStr);
-				if (keygroup == 0) {
+				if (taskId == 0) {
 					x += probabilityMap.get(keygroup);
 					migratableKeys.add(keygroup);
-				} else if (keygroup == executorMapping.size() - 1) {
+				} else if (taskId == executorMapping.size() - 1) {
 					y += probabilityMap.get(keygroup);
 				}
 			}
