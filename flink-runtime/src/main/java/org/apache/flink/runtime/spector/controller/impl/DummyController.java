@@ -8,7 +8,6 @@ import org.apache.flink.runtime.spector.controller.util.FastZipfGenerator;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.util.Preconditions;
-import org.apache.hadoop.util.hash.Hash;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -190,21 +189,26 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 
 		FastZipfGenerator fastZipfGenerator = new FastZipfGenerator(maxParallelism, zipfSkew, 0, 12345678);
 
-		HashSet<Integer> nonMigratingKeys = findOptimalKeyDistribution(fastZipfGenerator);
+		Set<Integer> migratableKeys = findOptimalKeyDistribution(fastZipfGenerator, executorMapping);
 
 
-		// hard coded experiment, where migrating the affected keys 3&4 from task 1 to task 2.
-		Map<String, List<String>> newExecutorMapping = new HashMap<>();
+		Map<String, List<String>> newExecutorMapping = deepCopy(executorMapping);
+//		Map<String, List<String>> newExecutorMapping = new HashMap<>();
 
-		newExecutorMapping.put("0", new ArrayList<>());
-		newExecutorMapping.put("1", new ArrayList<>());
+//		newExecutorMapping.put("0", new ArrayList<>());
+//		newExecutorMapping.put("1", new ArrayList<>());
 
-		for (int key = 0; key < maxParallelism; key++) {
-			if (nonMigratingKeys.contains(key)) {
-				newExecutorMapping.get("0").add(key + "");
-			} else {
-				newExecutorMapping.get("1").add(key + "");
-			}
+//		for (int key = 0; key < maxParallelism; key++) {
+//			if (migratableKeys.contains(key)) {
+//				newExecutorMapping.get("0").add(key + "");
+//			} else {
+//				newExecutorMapping.get("1").add(key + "");
+//			}
+//		}
+
+		for (int keygroup : migratableKeys) {
+			newExecutorMapping.get("0").remove(String.valueOf(keygroup));
+			newExecutorMapping.get(String.valueOf(executorMapping.size() - 1)).add(String.valueOf(keygroup));
 		}
 
 		LOG.info("++++++ Load Balance Zipf with new plan: " + newExecutorMapping);
@@ -218,13 +222,44 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 			newExecutorMapping);
 	}
 
-	private HashSet<Integer> findOptimalKeyDistribution(FastZipfGenerator fastZipfGenerator) {
+	private Set<Integer> findOptimalKeyDistribution(FastZipfGenerator fastZipfGenerator, Map<String, List<String>> executorMapping) {
 		Map<Double, Integer> map = fastZipfGenerator.getMap();
+
+		HashMap<Integer, Double> probabilityMap = new HashMap<>();
+		double prevValue = 0;
+		for (Map.Entry<Double, Integer> kv : map.entrySet()) {
+			probabilityMap.put(kv.getValue(), kv.getKey() - prevValue);
+			prevValue = kv.getKey();
+		}
+		double x = 0;
+		double y = 0;
+		Set<Integer> migratableKeys = new HashSet<>();
+
+		for (String taskIdStr : executorMapping.keySet()) {
+			for (String keygroupStr : executorMapping.get(taskIdStr)) {
+				int keygroup = Integer.parseInt(keygroupStr);
+				if (keygroup == 0) {
+					x += probabilityMap.get(keygroup);
+					migratableKeys.add(keygroup);
+				} else if (keygroup == executorMapping.size() - 1) {
+					y += probabilityMap.get(keygroup);
+				}
+			}
+		}
+
+		double optimal = (x + y) / 2;
+		HashSet<Integer> nonMigratingKeys = balanceValue(map, optimal);
+		migratableKeys.removeAll(nonMigratingKeys);
+
+		return migratableKeys;
+	}
+
+	private static HashSet<Integer> balanceValue(Map<Double, Integer> map, double optimal) {
 		double prevKey = 0;
 		HashSet<Integer> nonMigratingKeys = new HashSet<>();
 		for (Double key : map.keySet()) {
-			if (key >= 0.5) {
-				if (0.5 - prevKey > key - 0.5) {
+			if (key >= optimal) {
+				if (optimal - prevKey > key - optimal) {
 					nonMigratingKeys.add(map.get(key));
 				}
 				break;
@@ -232,7 +267,6 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 			nonMigratingKeys.add(map.get(key));
 			prevKey = key;
 		}
-
 		return nonMigratingKeys;
 	}
 
