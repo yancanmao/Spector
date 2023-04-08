@@ -560,9 +560,12 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 			ExecutionVertex vertex = targetVertex.getTaskVertices()[subtaskIndex];
 			Execution execution = vertex.getCurrentExecutionAttempt();
 			if (!jobExecutionPlan.isAffectedTask(subtaskIndex)) {
+//				rescaleCandidatesFutures.add(
+//					execution.scheduleReconfig(reconfigId, ReconfigOptions.UPDATE_BOTH,
+//						jobExecutionPlan.getAlignedKeyGroupRange(subtaskIndex), null, null)); // cannot update keygrouprange and checkpoint simoutaneously.
 				rescaleCandidatesFutures.add(
 					execution.scheduleReconfig(reconfigId, ReconfigOptions.UPDATE_BOTH,
-						jobExecutionPlan.getAlignedKeyGroupRange(subtaskIndex), null, null));
+						null, null, null));
 			} else {
 				if (jobExecutionPlan.isSourceSubtask(subtaskIndex) || jobExecutionPlan.isDestinationSubtask(subtaskIndex)) {
 					List<Integer> srcKeygroups = jobExecutionPlan.isSourceSubtask(subtaskIndex) ?
@@ -655,13 +658,12 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 					jobExecutionPlan.getAlignedKeyGroupRange(i),
 					jobExecutionPlan.getIdInModel(i));
 				rescaledFuture.add(scheduledRescale);
+			} else {
+				scheduledRescale = executionAttempt.scheduleReconfig(reconfigId,
+					ReconfigOptions.UPDATE_KEYGROUP_RANGE_ONLY,
+					jobExecutionPlan.getAlignedKeyGroupRange(i), null, null);
 			}
-//			else {
-//				scheduledRescale = executionAttempt.scheduleReconfig(reconfigId,
-//					ReconfigOptions.UPDATE_KEYGROUP_RANGE_ONLY,
-//					jobExecutionPlan.getAlignedKeyGroupRange(i), null, null);
-//			}
-//			rescaledFuture.add(scheduledRescale);
+			rescaledFuture.add(scheduledRescale);
 		}
 		LOG.info("++++++ Assign new state futures created");
 

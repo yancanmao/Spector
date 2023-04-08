@@ -748,10 +748,10 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 						task.createNewResultPartitions();
 					}
 
-//					if (reconfigOptions.isUpdatingKeyGroupRange()) {
-//						log.info("++++++ update task keyGroupRange for subtask: " + tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId());
-//						task.updateKeyGroupRange(tdd.getKeyGroupRange());
-//					}
+					if (reconfigOptions.isUpdatingKeyGroupRange()) {
+						log.info("++++++ update task keyGroupRange for subtask: " + tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId());
+						task.updateKeyGroupRange(tdd.getKeyGroupRange());
+					}
 				}
 
 				return CompletableFuture.completedFuture(Acknowledge.get());

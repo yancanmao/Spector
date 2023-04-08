@@ -46,11 +46,11 @@ public class JobExecutionPlan {
 		this.numOpenedSubtask = numOpenedSubtask;
 		this.jobExecutionPlan = checkNotNull(jobExecutionPlan);
 
-		checkState(checkPartitionAssignmentValidity(strExecutorMapping),
-			"executorMapping has null or empty partition");
+//		checkState(checkPartitionAssignmentValidity(strExecutorMapping),
+//			"executorMapping has null or empty partition");
 
-		checkState(checkPartitionAssignmentValidity(strOldExecutorMapping),
-			"oldExecutorMapping has null or empty partition");
+//		checkState(checkPartitionAssignmentValidity(strOldExecutorMapping),
+//			"oldExecutorMapping has null or empty partition");
 
 		this.partitionAssignment = new HashMap<>();
 		this.subtaskIndexMapping = new HashMap<>();
@@ -91,8 +91,8 @@ public class JobExecutionPlan {
 		this.numOpenedSubtask = numOpenedSubtask;
 		this.jobExecutionPlan = null;
 
-		checkState(checkPartitionAssignmentValidity(strExecutorMapping),
-			"executorMapping has null or empty partition");
+//		checkState(checkPartitionAssignmentValidity(strExecutorMapping),
+//			"executorMapping has null or empty partition");
 
 		this.partitionAssignment = generateIntegerMap(strExecutorMapping);
 		this.subtaskIndexMapping = initSubtaskIndexMap(numOpenedSubtask);

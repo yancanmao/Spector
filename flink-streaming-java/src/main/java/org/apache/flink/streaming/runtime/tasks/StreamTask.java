@@ -818,8 +818,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		CheckpointOptions checkpointOptions,
 		CheckpointMetrics checkpointMetrics) throws Exception {
 
-		// TODO: find affected keygroups and construct affected keygroup list
-
 		CheckpointStreamFactory storage = checkpointStorage.resolveCheckpointStorageLocation(
 			checkpointMetaData.getCheckpointId(),
 			checkpointOptions.getTargetLocation());
@@ -955,15 +953,16 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				taskConfigManager.unregisterPartitions((ResultPartition[]) oldWriterCopies);
 			}
 
-			if (taskConfigManager.isUpdatingKeyGroupRange()) {
-				LOG.info("++++++ update task keyGroupRange for subtask");
-				this.updateKeyGroupRange(taskConfigManager.getKeyGroupRange());
-			}
+//			if (taskConfigManager.isUpdatingKeyGroupRange()) {
+//				LOG.info("++++++ update task keyGroupRange for subtask");
+//				this.updateKeyGroupRange(taskConfigManager.getKeyGroupRange());
+//			}
 
 			reconnect();
 		} catch (Exception e) {
 			LOG.info("++++++ error", e);
 		} finally {
+			// only unaffected tasks will finish their connection update, affected tasks will finish until its state has been updated.
 			if (!taskConfigManager.isSourceOrDestination()) {
 				taskConfigManager.finish();
 			}
@@ -1050,7 +1049,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 //			this.assignedKeyGroupRange.update(keyGroupRange);
 //		}
 		this.assignedKeyGroupRange.update(keyGroupRange);
-//		taskConfigManager.finish();
+		taskConfigManager.finish();
 	}
 
 	// ------------------------------------------------------------------------
@@ -1165,6 +1164,13 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 			boolean hasAckState = acknowledgedTaskStateSnapshot.hasState();
 			boolean hasLocalState = localTaskStateSnapshot.hasState();
+
+			if (owner.idInModel != 0 || owner.idInModel != 3) {
+				System.out.println("= =");
+			}
+
+			LOG.info("++++++ {} - reported the following states in snapshot for checkpoint {}: {}, {}.",
+				owner.getName(), checkpointMetaData.getCheckpointId(), acknowledgedTaskStateSnapshot, checkpointMetrics);
 
 			Preconditions.checkState(hasAckState || !hasLocalState,
 				"Found cached state but no corresponding primary state is reported to the job " +
