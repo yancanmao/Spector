@@ -51,9 +51,9 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 
 	private volatile boolean waitForMigrationDeployed;
 
-	private final int syncKeys;
+	private int syncKeys;
 
-	private final String orderFunction;
+	private String orderFunction;
 
 	private final ExecutionGraph executionGraph;
 
@@ -85,6 +85,14 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 		this.reconfigExecutor = reconfigExecutor;
 
 		this.executionGraph = executionGraph;
+	}
+
+	public void changePlan(int syncKeys, int replicationFilter, String orderFunction) {
+		this.syncKeys = syncKeys;
+		this.orderFunction = orderFunction;
+
+		while (reconfigExecutor.checkReplicationProgress());
+		reconfigExecutor.updateBackupKeyGroups(replicationFilter);
 	}
 
 	@Override

@@ -115,6 +115,8 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 
 	private final ReconfigurationProfiler reconfigurationProfiler;
 
+	private final Configuration configuration;
+
 
 	public enum AckStatus {
 		DONE,
@@ -135,17 +137,39 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		this.controlPlane = new ControlPlane(this, executionGraph);
 		this.jobGraphUpdater = JobGraphUpdater.instantiate(jobGraph, userCodeLoader);
 
+		this.configuration = executionGraph.getJobConfiguration();
+
 		this.standbyExecutionVertexes = new HashMap<>();
 		this.backupKeyGroups = new HashSet<>();
-		initBackupKeyGroups(executionGraph.getJobConfiguration());
+		initBackupKeyGroups();
 		this.slotsMap = new HashMap<>();
 		this.pendingAckTasks = new HashMap<>();
 
 		this.reconfigurationProfiler = new ReconfigurationProfiler(executionGraph.getJobConfiguration());
 	}
 
-	public void initBackupKeyGroups(Configuration configuration) {
+	public void initBackupKeyGroups() {
 		int filer = configuration.getInteger(REPLICATE_KEYS_FILTER);
+		String targetOperatorsStr = configuration.getString(TARGET_OPERATORS);
+		String[] targetOperatorsList = targetOperatorsStr.split(",");
+
+		for (String targetOperator : targetOperatorsList) {
+			if (filer == 0) return;
+			executionGraph.getAllVertices().forEach((key, value) -> {
+				if (value.getName().contains(targetOperator)) {
+					int maxParallelism = value.getMaxParallelism();
+					for (int i = 0; i < maxParallelism; i++) {
+						if (i % filer == 0) {
+							backupKeyGroups.add(i);
+						}
+					}
+				}
+			});
+		}
+	}
+
+	@Override
+	public void updateBackupKeyGroups(int filer) {
 		String targetOperatorsStr = configuration.getString(TARGET_OPERATORS);
 		String[] targetOperatorsList = targetOperatorsStr.split(",");
 

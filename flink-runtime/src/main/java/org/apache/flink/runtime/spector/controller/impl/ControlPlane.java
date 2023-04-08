@@ -180,6 +180,11 @@ public class ControlPlane {
 			return jobReconfigActor.checkReplicationProgress();
 		}
 
+		@Override
+		public void updateBackupKeyGroups(int filter) {
+			jobReconfigActor.updateBackupKeyGroups(filter);
+		}
+
 		private void handleTreatment(Map<String, List<String>> executorMapping) {
 			int newParallelism = executorMapping.keySet().size();
 

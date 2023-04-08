@@ -10,4 +10,6 @@ public interface ReconfigExecutor {
 	void scale(int parallelism, Map<String, List<String>> executorMapping);
 
 	boolean checkReplicationProgress();
+
+	void updateBackupKeyGroups(int filter);
 }

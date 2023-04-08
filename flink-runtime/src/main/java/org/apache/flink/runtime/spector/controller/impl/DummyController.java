@@ -119,7 +119,9 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 					loadBalance();
 				} else if (reconfigScenario.equals("load_balance_zipf")) {
 					loadBalanceZipf();
-				} else {
+				} else if (reconfigScenario.equals("multi_config")) {
+					multiConfig();
+				}else {
 					throw new UnsupportedOperationException();
 				}
 				Thread.sleep(interval);
@@ -129,6 +131,41 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 		} catch (Exception e) {
 			LOG.info("------ exception", e);
 		}
+	}
+
+	private void multiConfig() throws InterruptedException {
+		Map<String, List<String>> executorMapping1 = deepCopy(executorMapping);
+		Map<String, List<String>> executorMapping2 = deepCopy(executorMapping);
+		Map<String, List<String>> selectedTasks = selectAffectedTasks(numAffectedTasks, executorMapping1);
+		equiShuffle(numAffectedKeys, selectedTasks);
+
+		executorMappingCheck(executorMapping1);
+
+		long start = System.currentTimeMillis();
+		// Phase 1: Set batching all.
+		// run state migration
+		triggerNonblockingAction(
+			"trigger 1 repartition",
+			() -> stateMigrationPlanner.remap(executorMapping1),
+			executorMapping1);
+
+		// Phase 2: Set replicate 50%
+		// change replication scheduling strategy and wait the next state migration
+		((StateMigrationPlannerImpl) stateMigrationPlanner).changePlan(8, 2, "random");
+		Thread.sleep(30000 - (System.currentTimeMillis() - start));
+		start = System.currentTimeMillis();
+
+		// run state migration
+		triggerNonblockingAction(
+			"trigger 1 repartition",
+			() -> stateMigrationPlanner.remap(executorMapping2),
+			executorMapping2);
+
+		// Phase 3: Set hotkey first.
+		// change replication scheduling strategy and workload feature
+		((StateMigrationPlannerImpl) stateMigrationPlanner).changePlan(8, 2, "default");
+		Thread.sleep(30000 - (System.currentTimeMillis() - start));
+		loadBalanceZipf();
 	}
 
 	/**

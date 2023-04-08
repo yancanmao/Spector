@@ -15,6 +15,8 @@ public interface JobReconfigActor {
 
 	boolean checkReplicationProgress();
 
+	void updateBackupKeyGroups(int filter);
+
 	void repartition(JobVertexID vertexID, JobExecutionPlan jobExecutionPlan) throws InterruptedException;
 
 //	void scaleOut(JobVertexID vertexID, int newParallelism, JobExecutionPlan jobExecutionPlan);
