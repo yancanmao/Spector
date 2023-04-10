@@ -1,5 +1,6 @@
 package org.apache.flink.runtime.spector.controller.impl;
 
+import org.apache.commons.math3.random.RandomGenerator;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
@@ -380,7 +381,8 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 		numAffectedTasks = Math.min(numAffectedTasks, newExecutorMapping.size());
 		Map<String, List<String>> selectedTasks = new HashMap<>(numAffectedTasks);
 		List<String> allTaskID = new ArrayList<>(newExecutorMapping.keySet());
-		Collections.shuffle(allTaskID);
+		Random random = new Random(12345678);
+		Collections.shuffle(allTaskID, random);
 		for (int i = 0; i < numAffectedTasks; i++) {
 			selectedTasks.put(allTaskID.get(i), newExecutorMapping.get(allTaskID.get(i)));
 		}

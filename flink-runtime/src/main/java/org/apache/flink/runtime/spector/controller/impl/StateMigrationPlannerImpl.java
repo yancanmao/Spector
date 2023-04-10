@@ -217,7 +217,8 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 				return prioritizedKeySequence.descendingMap();
 			case "random":
 				List<String> list = new ArrayList<>(prioritizedKeySequence.keySet());
-				Collections.shuffle(list);
+				Random random = new Random(12345678);
+				Collections.shuffle(list, random);
 
 				Map<String, Tuple2<String, String>> shuffleMap = new LinkedHashMap<>();
 				list.forEach(k -> shuffleMap.put(k, prioritizedKeySequence.get(k)));
