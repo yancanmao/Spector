@@ -115,6 +115,7 @@ import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Sets;
+import org.apache.flink.util.NetUtils;
 import org.apache.flink.util.Preconditions;
 
 import javax.annotation.Nonnull;
@@ -288,18 +289,15 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		nettyStateTransmissionEnabled = taskManagerConfiguration.getConfiguration().getBoolean(NETTY_STATE_TRANSMISSION_ENABLED);
 		this.stateTransferDelay = taskManagerConfiguration.getConfiguration().getInteger(STATE_TRANSFER_DELAY);
 
-		try {
-			boolean taskDeploymentEnabled =
-				taskManagerConfiguration.getConfiguration().getBoolean(NETTY_OPTIMIZED_DEPLOYMENT_ENABLED);
-			this.taskExecutorNettyServer = nettyStateTransmissionEnabled ?
-				new TaskExecutorNettyServer(
-					() -> this.getSelfGateway(TaskExecutorGateway.class),
+		boolean taskDeploymentEnabled =
+			taskManagerConfiguration.getConfiguration().getBoolean(NETTY_OPTIMIZED_DEPLOYMENT_ENABLED);
+		this.taskExecutorNettyServer = nettyStateTransmissionEnabled ?
+			new TaskExecutorNettyServer(
+				() -> this.getSelfGateway(TaskExecutorGateway.class),
 //					NetUtils.getLocalHostLANAddress().getHostAddress(),
-					InetAddress.getLocalHost().getHostAddress(),
-					taskDeploymentEnabled) : null;
-		} catch (UnknownHostException e) {
-			throw new RuntimeException(e);
-		}
+//					InetAddress.getLocalHost().getHostAddress(),
+				rpcService.getAddress(),
+				taskDeploymentEnabled) : null;
 	}
 
 	@Override
