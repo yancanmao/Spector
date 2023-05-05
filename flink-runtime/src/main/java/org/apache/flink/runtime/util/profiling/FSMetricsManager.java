@@ -208,6 +208,10 @@ public class FSMetricsManager implements Serializable, MetricsManager {
 
 			System.out.println(ratesLine);
 
+			int mb = 1024 * 1024;
+			long memoryConsumption = (java.lang.Runtime.getRuntime().totalMemory() - java.lang.Runtime.getRuntime().freeMemory()) / mb;
+			System.out.println("++++++ Current memory consumption: " + memoryConsumption);
+
 			// clear counters
 			recordsIn = 0;
 			recordsOut = 0;

@@ -52,8 +52,7 @@ import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Opera
 import static org.apache.flink.runtime.clusterframework.types.TaskManagerSlot.State.FREE;
 import static org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus.DONE;
 import static org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus.FAILED;
-import static org.apache.flink.runtime.spector.SpectorOptions.REPLICATE_KEYS_FILTER;
-import static org.apache.flink.runtime.spector.SpectorOptions.TARGET_OPERATORS;
+import static org.apache.flink.runtime.spector.SpectorOptions.*;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -366,9 +365,13 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 
 	@Override
 	public void onCompleteCheckpoint(CompletedCheckpoint checkpoint) throws Exception {
+		if (configuration.getString(RECONFIG_SCENARIO).equals("profiling_baseline")) {
+			// skip checkpoint operations in coordinator if is profiling_baseline
+			return;
+		}
 		checkNotNull(checkpoint);
 
-		System.out.println("++++++Current state size: " + checkpoint.getStateSize());
+//		System.out.println("++++++Current state size: " + checkpoint.getStateSize());
 
 		if (checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT) {
 			reconfigurationProfiler.onSyncEnd();

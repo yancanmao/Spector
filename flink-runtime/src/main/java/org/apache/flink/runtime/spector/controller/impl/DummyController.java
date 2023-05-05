@@ -59,7 +59,6 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 		this.syncKeys = configuration.getInteger(SYNC_KEYS) == 0 ?
 			numAffectedKeys : configuration.getInteger(SYNC_KEYS);
 
-
 		this.stateMigrationPlanner = stateMigrationPlanner;
 
 		this.executorMapping = executorMapping;
@@ -100,39 +99,45 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 		try {
 			LOG.info("------ dummy streamSwitch start to run");
 
-			// cooldown time, wait for fully deployment
-			Thread.sleep(start);
+			if (reconfigScenario.equals("profiling") || reconfigScenario.equals("profiling_baseline")) {
+				profiling();
+			} else {
+				// cooldown time, wait for fully deployment
+				Thread.sleep(start);
 
-//			testRepartition();
-//			testScaleOut();
-//			testScaleIn();
-//			testCaseOneToOneChange();
-//			testJoin();
-//			testCaseScaleIn();
-//			testRandomScalePartitionAssignment();
+				isStopped = false;
 
-			isStopped = false;
-
-			while(!isStopped) {
-				if (reconfigScenario.equals("shuffle")) {
-					stateShuffle(numAffectedTasks, numAffectedKeys);
-				} else if (reconfigScenario.equals("load_balance")) {
-					loadBalance();
-				} else if (reconfigScenario.equals("load_balance_zipf")) {
-					loadBalanceZipf();
-				} else if (reconfigScenario.equals("dynamic")) {
-					dynamicExp();
-				} else if (reconfigScenario.equals("static")) {
-					staticExp();
-				} else {
-					throw new UnsupportedOperationException();
+				while (!isStopped) {
+					if (reconfigScenario.equals("shuffle")) {
+						stateShuffle(numAffectedTasks, numAffectedKeys);
+					} else if (reconfigScenario.equals("load_balance")) {
+						loadBalance();
+					} else if (reconfigScenario.equals("load_balance_zipf")) {
+						loadBalanceZipf();
+					} else if (reconfigScenario.equals("dynamic")) {
+						dynamicExp();
+					} else if (reconfigScenario.equals("static")) {
+						staticExp();
+					} else {
+						throw new UnsupportedOperationException();
+					}
+					Thread.sleep(interval);
 				}
-				Thread.sleep(interval);
 			}
 
 			LOG.info("------ dummy streamSwitch finished");
 		} catch (Exception e) {
 			LOG.info("------ exception", e);
+		}
+	}
+
+	private void profiling() throws InterruptedException {
+		int mb = 1024 * 1024;
+		isStopped = false;
+		while (!isStopped) {
+			long memoryConsumption = (java.lang.Runtime.getRuntime().totalMemory() - java.lang.Runtime.getRuntime().freeMemory()) / mb;
+			System.out.println("++++++ Current memory consumption: " + memoryConsumption);
+			Thread.sleep(configuration.getLong("policy.windowSize", 10_000_000_000L)/1000_000);
 		}
 	}
 

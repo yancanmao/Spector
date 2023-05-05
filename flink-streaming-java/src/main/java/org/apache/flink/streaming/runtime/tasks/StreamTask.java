@@ -1165,10 +1165,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			boolean hasAckState = acknowledgedTaskStateSnapshot.hasState();
 			boolean hasLocalState = localTaskStateSnapshot.hasState();
 
-			if (owner.idInModel != 0 || owner.idInModel != 3) {
-				System.out.println("= =");
-			}
-
 			LOG.info("++++++ {} - reported the following states in snapshot for checkpoint {}: {}, {}.",
 				owner.getName(), checkpointMetaData.getCheckpointId(), acknowledgedTaskStateSnapshot, checkpointMetrics);
 
