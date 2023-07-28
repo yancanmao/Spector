@@ -161,4 +161,14 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 			return taskExecutorGateway.dispatchStateToTask(executionAttemptID, jobvertexId, taskRestore, keyGroupRange, idInModel, timeout);
 //		}
 	}
+
+	@Override
+	public CompletableFuture<Acknowledge> testRPC(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId,
+												  String requestId, Time timeout) {
+		if (nettyStateTransmissionEnable && taskExecutorNettyClient != null) {
+			return taskExecutorNettyClient.testRPC(executionAttemptID, jobvertexId, requestId, timeout);
+		} else {
+			return taskExecutorGateway.testRPC(executionAttemptID, jobvertexId, requestId, timeout);
+		}
+	}
 }

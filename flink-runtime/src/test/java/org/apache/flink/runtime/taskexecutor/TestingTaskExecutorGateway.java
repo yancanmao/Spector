@@ -203,6 +203,11 @@ public class TestingTaskExecutorGateway implements TaskExecutorGateway {
 	}
 
 	@Override
+	public CompletableFuture<Acknowledge> testRPC(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, String requestId, Time timeout) {
+		return null;
+	}
+
+	@Override
 	public String getAddress() {
 		return address;
 	}

@@ -11,6 +11,7 @@ import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.spector.migration.ReconfigOptions;
 import org.apache.flink.runtime.spector.netty.codec.TaskBackupStateDecoder;
 import org.apache.flink.runtime.spector.netty.codec.TaskBackupStateEncoder;
+import org.apache.flink.runtime.spector.netty.data.TaskRPC;
 import org.apache.flink.runtime.spector.netty.data.TaskState;
 import org.apache.flink.runtime.spector.netty.data.TaskDeployment;
 import org.apache.flink.runtime.spector.netty.data.TaskExecutorSocketAddress;
@@ -99,7 +100,7 @@ public class TaskExecutorNettyClient implements Closeable {
 		while (true) {
 			if (channel.isWritable()) {
 				TaskDeployment taskDeployment = new TaskDeployment(executionAttemptID, tdd, jobMasterId, reconfigOptions, timeout);
-				if (!taskDeploymentEnabled) {
+				if (taskDeploymentEnabled) {
 					try {
 						chunkedWriteAndFlush(submitFuture, channel, taskDeployment, executionAttemptID);
 					} catch (Exception e) {
@@ -107,6 +108,44 @@ public class TaskExecutorNettyClient implements Closeable {
 					}
 				} else {
 					channel.writeAndFlush(taskDeployment)
+						.addListener((ChannelFutureListener) channelFuture -> {
+							if (channelFuture.isSuccess()) {
+								submitFuture.complete(Acknowledge.get());
+							} else {
+								submitFuture.completeExceptionally(channelFuture.cause());
+							}
+						});
+				}
+				break;
+			}
+			try {
+				Thread.sleep(10);
+			} catch (InterruptedException ignored) { }
+		}
+		return submitFuture;
+	}
+
+	public CompletableFuture<Acknowledge> testRPC(
+		ExecutionAttemptID executionAttemptID,
+		JobVertexID jobvertexId,
+		String requestId, Time timeout) {
+		CompletableFuture<Acknowledge> submitFuture = new CompletableFuture<>();
+		Channel channel = clientList.get(RandomUtils.nextInt(0, clientList.size())).getChannel();
+		while (true) {
+			if (channel.isWritable()) {
+				TaskRPC taskRPC = new TaskRPC(
+					executionAttemptID,
+					jobvertexId,
+					requestId,
+					timeout);
+				if (taskDeploymentEnabled) {
+					try {
+						chunkedWriteAndFlush(submitFuture, channel, taskRPC, executionAttemptID);
+					} catch (Exception e) {
+						throw new RuntimeException(e);
+					}
+				} else {
+					channel.writeAndFlush(taskRPC)
 						.addListener((ChannelFutureListener) channelFuture -> {
 							if (channelFuture.isSuccess()) {
 								submitFuture.complete(Acknowledge.get());
@@ -140,7 +179,7 @@ public class TaskExecutorNettyClient implements Closeable {
 					keyGroupRange,
 					idInModel,
 					timeout);
-				if (!taskDeploymentEnabled) {
+				if (taskDeploymentEnabled) {
 					try {
 						chunkedWriteAndFlush(submitFuture, channel, taskState, executionAttemptID);
 					} catch (Exception e) {
@@ -164,7 +203,6 @@ public class TaskExecutorNettyClient implements Closeable {
 		}
 		return submitFuture;
 	}
-
 
 	@Override
 	public void close() {

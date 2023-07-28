@@ -869,6 +869,18 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		}
 	}
 
+	@Override
+	public CompletableFuture<Acknowledge> testRPC(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, String requestId, Time timeout) {
+		log.info("++++++ Receiving request ID:{} to StreamTask {} in TaskExecutor {}",
+			requestId, jobvertexId, this.getAddress());
+		try {
+			Thread.sleep(10000);
+		} catch (InterruptedException e) {
+			throw new RuntimeException(e);
+		}
+		return CompletableFuture.completedFuture(Acknowledge.get());
+	}
+
 	// ----------------------------------------------------------------------
 	// Partition lifecycle RPCs
 	// ----------------------------------------------------------------------

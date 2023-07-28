@@ -141,4 +141,9 @@ public class SimpleAckingTaskManagerGateway implements TaskManagerGateway {
 	public CompletableFuture<Acknowledge> dispatchStateToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, JobManagerTaskRestore taskRestore, KeyGroupRange keyGroupRange, int idInModel, Time timeout) {
 		return null;
 	}
+
+	@Override
+	public CompletableFuture<Acknowledge> testRPC(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, String requestId, Time timeout) {
+		return null;
+	}
 }

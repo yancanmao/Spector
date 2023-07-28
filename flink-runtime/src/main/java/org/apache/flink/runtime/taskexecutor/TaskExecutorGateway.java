@@ -235,4 +235,9 @@ public interface TaskExecutorGateway extends RpcGateway {
 	public CompletableFuture<Acknowledge> dispatchStateToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId,
 															  JobManagerTaskRestore taskRestore, KeyGroupRange keyGroupRange,
 															  int idInModel, Time timeout);
+
+	/**
+	 * Dispatch a checkpointed state snapshot of a running task to its standby task.
+	 */
+	public CompletableFuture<Acknowledge> testRPC(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, String requestId, Time timeout);
 }

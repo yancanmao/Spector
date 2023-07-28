@@ -96,7 +96,7 @@ public class CheckpointCoordinatorNettyClient implements Closeable {
 					checkpointId,
 					checkpointMetrics,
 					subtaskState);
-				if (!taskAcknowledgementEnabled) {
+				if (taskAcknowledgementEnabled) {
 					try {
 						chunkedWriteAndFlush(submitFuture, channel, taskAcknowledgement, executionAttemptID);
 					} catch (Exception e) {

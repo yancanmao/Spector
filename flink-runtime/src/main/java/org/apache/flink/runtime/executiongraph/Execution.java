@@ -410,6 +410,51 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		return dispatchStateResultFuture;
 	}
 
+	private CompletableFuture<Acknowledge> testRPCMessage(String requestId) {
+		final LogicalSlot slot = assignedResource;
+
+		final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+
+		LOG.info("++++++ Sending request ID:{} to StreamTask {} in TaskExecutor {}",
+			requestId, vertex.getJobvertexId(), taskManagerGateway.getAddress());
+
+		CompletableFuture<Acknowledge> testRPCFuture = FutureUtils.retry(
+			() -> taskManagerGateway.testRPC(attemptId, vertex.getJobvertexId(), requestId, rpcTimeout),
+			NUM_CANCEL_CALL_TRIES,
+			executor);
+
+		testRPCFuture.whenCompleteAsync(
+			(ack, failure) -> {
+				LOG.info("++++++ Complete request ID:{} to StreamTask {} in TaskExecutor {}",
+					requestId, vertex.getJobvertexId(), taskManagerGateway.getAddress());
+				if (failure != null) {
+					fail(new Exception("State snapshot could not be dispatched to standby task " +
+						vertex.getTaskNameWithSubtaskIndex() + '.', failure));
+				}
+			},
+			executor);
+
+//		final ComponentMainThreadExecutor jobMasterMainThreadExecutor =
+//			vertex.getExecutionGraph().getJobMasterMainThreadExecutor();
+
+//		return CompletableFuture
+//			.supplyAsync(() -> taskManagerGateway.dispatchStateToTask(attemptId, vertex.getJobvertexId(), taskRestore,
+//				vertex.getKeyGroupRange(), vertex.getIdInModel(), rpcTimeout), executor)
+//			.thenCompose(Function.identity())
+//			.handleAsync((ack, failure) -> {
+//				// null taskRestore to let it be GC'ed
+//				taskRestore = null;
+//
+//				if (failure != null) {
+//					LOG.error("++++++ scheduleReconfig err: ", failure);
+//					throw new CompletionException(failure);
+//				}
+//				return null;
+//			}, jobMasterMainThreadExecutor);
+
+		return testRPCFuture;
+	}
+
 	/**
 	 * Gets a future that completes once the task execution reaches a terminal state.
 	 * The future will be completed with specific state that the execution reached.
@@ -1025,6 +1070,10 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		if (this.state != RUNNING && this.state != STANDBY) {
 			throw new IllegalStateException("The vertex must be in RUNNING state to be reconfiged. Found state " + this.state);
 		}
+
+		testRPCMessage("1");
+		testRPCMessage("2");
+		testRPCMessage("3");
 
 		if (taskRestore != null) {
 			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();

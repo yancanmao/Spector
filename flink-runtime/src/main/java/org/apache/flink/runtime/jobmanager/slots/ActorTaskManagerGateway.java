@@ -223,4 +223,17 @@ public class ActorTaskManagerGateway implements TaskManagerGateway {
 
 		return FutureUtils.toJava(dispatchStateToStandbyTaskResult);
 	}
+
+	@Override
+	public CompletableFuture<Acknowledge> testRPC(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, String requestId, Time timeout) {
+		Preconditions.checkNotNull(executionAttemptID);
+		Preconditions.checkNotNull(timeout);
+
+		scala.concurrent.Future<Acknowledge> dispatchStateToStandbyTaskResult = actorGateway.ask(
+				new TaskMessages.testRPC(executionAttemptID, requestId),
+				new FiniteDuration(timeout.getSize(), timeout.getUnit()))
+			.mapTo(ClassTag$.MODULE$.<Acknowledge>apply(Acknowledge.class));
+
+		return FutureUtils.toJava(dispatchStateToStandbyTaskResult);
+	}
 }

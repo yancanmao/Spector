@@ -183,4 +183,8 @@ public interface TaskManagerGateway {
 		ExecutionAttemptID executionAttemptID,
 		JobVertexID jobvertexId, JobManagerTaskRestore taskRestore,
 		KeyGroupRange keyGroupRange, int idInModel, Time timeout);
+
+	CompletableFuture<Acknowledge> testRPC(
+		ExecutionAttemptID executionAttemptID,
+		JobVertexID jobvertexId, String requestId, Time timeout);
 }

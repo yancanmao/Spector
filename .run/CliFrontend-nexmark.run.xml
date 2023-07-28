@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="CliFrontend" type="Application" factoryName="Application" nameIsGenerated="true">
+  <configuration default="false" name="CliFrontend-nexmark" type="Application" factoryName="Application">
     <envs>
       <env name="FLINK_CONF_DIR" value="$PROJECT_DIR$/build-target/conf" />
     </envs>

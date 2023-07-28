@@ -181,4 +181,7 @@ object TaskMessages {
                                          attemptID: ExecutionAttemptID,
                                          taskRestore: JobManagerTaskRestore)
     extends TaskMessage with RequiresLeaderSessionID
+
+  case class testRPC(attemptID: ExecutionAttemptID, requestId: String)
+    extends TaskMessage with RequiresLeaderSessionID
 }
