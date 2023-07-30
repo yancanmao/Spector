@@ -28,12 +28,12 @@ import org.slf4j.LoggerFactory;
 /**
  * Server handler in task executor netty server.
  */
-public class CheckpointCoordinatorServerHandlerNoChunk extends ChannelInboundHandlerAdapter {
-	private static final Logger LOG = LoggerFactory.getLogger(CheckpointCoordinatorServerHandlerNoChunk.class);
+public class CheckpointCoordinatorServerHandlerNonChunked extends ChannelInboundHandlerAdapter {
+	private static final Logger LOG = LoggerFactory.getLogger(CheckpointCoordinatorServerHandlerNonChunked.class);
 
 	private final CheckpointCoordinatorGateway checkpointCoordinatorGateway;
 
-	public CheckpointCoordinatorServerHandlerNoChunk(CheckpointCoordinatorGateway checkpointCoordinatorGateway) {
+	public CheckpointCoordinatorServerHandlerNonChunked(CheckpointCoordinatorGateway checkpointCoordinatorGateway) {
 		this.checkpointCoordinatorGateway = checkpointCoordinatorGateway;
 	}
 

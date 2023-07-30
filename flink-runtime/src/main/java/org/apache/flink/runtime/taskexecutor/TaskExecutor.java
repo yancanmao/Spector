@@ -115,7 +115,6 @@ import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 
 import org.apache.flink.shaded.guava18.com.google.common.collect.Sets;
-import org.apache.flink.util.NetUtils;
 import org.apache.flink.util.Preconditions;
 
 import javax.annotation.Nonnull;
@@ -124,9 +123,7 @@ import javax.annotation.Nullable;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -289,15 +286,18 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		nettyStateTransmissionEnabled = taskManagerConfiguration.getConfiguration().getBoolean(NETTY_STATE_TRANSMISSION_ENABLED);
 		this.stateTransferDelay = taskManagerConfiguration.getConfiguration().getInteger(STATE_TRANSFER_DELAY);
 
-		boolean taskDeploymentEnabled =
+		boolean deploymentOptEnabled =
 			taskManagerConfiguration.getConfiguration().getBoolean(NETTY_OPTIMIZED_DEPLOYMENT_ENABLED);
+		boolean deploymentChunkEnabled =
+			taskManagerConfiguration.getConfiguration().getBoolean(NETTY_CHUNKED_DEPLOYMENT_ENABLED);
 		this.taskExecutorNettyServer = nettyStateTransmissionEnabled ?
 			new TaskExecutorNettyServer(
 				() -> this.getSelfGateway(TaskExecutorGateway.class),
 //					NetUtils.getLocalHostLANAddress().getHostAddress(),
 //					InetAddress.getLocalHost().getHostAddress(),
 				rpcService.getAddress(),
-				taskDeploymentEnabled) : null;
+				deploymentOptEnabled,
+				deploymentChunkEnabled) : null;
 	}
 
 	@Override
@@ -1519,15 +1519,18 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			int connectTimeoutMills = 10000;
 			int lowWaterMark = 10 * 1024 * 1024;
 			int highWaterMark = 50 * 1024 * 1024;
-			boolean taskAcknowledgementEnabled =
+			boolean ackOptEnabled =
 				taskManagerConfiguration.getConfiguration().getBoolean(NETTY_OPTIMIZED_ACK_ENABLED);
+			boolean ackChunkEnabled =
+				taskManagerConfiguration.getConfiguration().getBoolean(NETTY_CHUNKED_ACK_ENABLED);
 			checkpointCoordinatorNettyClient = new CheckpointCoordinatorNettyClient(
 				checkpointCoordinatorSocketAddress,
 				channelCount,
 				connectTimeoutMills,
 				lowWaterMark,
 				highWaterMark,
-				taskAcknowledgementEnabled);
+				ackOptEnabled,
+				ackChunkEnabled);
 			try {
 				checkpointCoordinatorNettyClient.start();
 			} catch (Exception e) {

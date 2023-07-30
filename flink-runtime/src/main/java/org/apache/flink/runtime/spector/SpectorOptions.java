@@ -50,18 +50,24 @@ public class SpectorOptions {
 
 	// Netty optimization part configurations
 
+	public final static ConfigOption<Boolean> NETTY_STATE_TRANSMISSION_ENABLED =
+		key("netty.state.transmission.enabled")
+			.defaultValue(true);
 	public final static ConfigOption<Boolean> NETTY_OPTIMIZED_DEPLOYMENT_ENABLED =
 			key("netty.optimized.deployment.enabled")
 			.defaultValue(false);
-
-	public final static ConfigOption<Boolean> NETTY_STATE_TRANSMISSION_ENABLED =
-			key("netty.state.transmission.enabled")
-			.defaultValue(true);
 
 	public final static ConfigOption<Boolean> NETTY_OPTIMIZED_ACK_ENABLED =
 			key("netty.optimized.acknowledgement.enabled")
 			.defaultValue(false);
 
+	public final static ConfigOption<Boolean> NETTY_CHUNKED_DEPLOYMENT_ENABLED =
+		key("netty.chunked.deployment.enabled")
+			.defaultValue(true);
+
+	public final static ConfigOption<Boolean> NETTY_CHUNKED_ACK_ENABLED =
+		key("netty.chunked.acknowledgement.enabled")
+			.defaultValue(true);
 
 	public final static ConfigOption<Boolean> SNAPSHOT_CHANGELOG_ENABLED =
 			key("snapshot.changelog.enabled")

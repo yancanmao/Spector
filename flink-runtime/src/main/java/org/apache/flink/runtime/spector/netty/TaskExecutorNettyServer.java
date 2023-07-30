@@ -8,6 +8,7 @@ import org.apache.flink.shaded.netty4.io.netty.channel.ChannelPipeline;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ClassResolvers;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ObjectDecoder;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ObjectEncoder;
+import org.apache.flink.util.Preconditions;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -20,18 +21,28 @@ public class TaskExecutorNettyServer implements Closeable {
 	public TaskExecutorNettyServer(
 		Supplier<TaskExecutorGateway> gatewaySupplier,
 		String address,
-		boolean taskDeploymentEnabled) {
+		boolean deploymentOptEnabled,
+		boolean deploymentChunkEnabled) {
 		Consumer<ChannelPipeline> channelPipelineConsumer;
-		if (taskDeploymentEnabled) {
-			channelPipelineConsumer = channelPipeline -> channelPipeline.addLast(
-				new TaskBackupStateEncoder(),
-				new TaskBackupStateDecoder(),
-				new TaskExecutorServerHandlerNoChunk(gatewaySupplier.get()));
-		} else {
+		if (deploymentChunkEnabled) {
+			Preconditions.checkState(!deploymentOptEnabled,
+				"++++++ Netty Serde optimization and Chunk cannot set true simultaneously");
 			channelPipelineConsumer = channelPipeline -> channelPipeline.addLast(
 				new ObjectEncoder(),
 				new ObjectDecoder(Integer.MAX_VALUE, ClassResolvers.cacheDisabled(null)),
-				new TaskExecutorServerHandler(gatewaySupplier.get()));
+				new TaskExecutorServerHandlerChunked(gatewaySupplier.get()));
+		} else {
+			if (deploymentOptEnabled) {
+				channelPipelineConsumer = channelPipeline -> channelPipeline.addLast(
+					new TaskBackupStateEncoder(),
+					new TaskBackupStateDecoder(),
+					new TaskExecutorServerHandlerNonChunked(gatewaySupplier.get()));
+			} else {
+				channelPipelineConsumer = channelPipeline -> channelPipeline.addLast(
+					new ObjectEncoder(),
+					new ObjectDecoder(Integer.MAX_VALUE, ClassResolvers.cacheDisabled(null)),
+					new TaskExecutorServerHandlerNonChunked(gatewaySupplier.get()));
+			}
 		}
 
 		this.nettySocketServer = new NettySocketServer(

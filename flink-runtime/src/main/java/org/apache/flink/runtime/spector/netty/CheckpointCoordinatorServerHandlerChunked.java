@@ -20,10 +20,8 @@ package org.apache.flink.runtime.spector.netty;
 
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
-import org.apache.flink.queryablestate.network.messages.MessageType;
 import org.apache.flink.runtime.checkpoint.CheckpointCoordinatorGateway;
 import org.apache.flink.runtime.spector.netty.data.TaskAcknowledgement;
-import org.apache.flink.runtime.spector.netty.utils.NettySocketUtils;
 import org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.NettyMessageType;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelInboundHandlerAdapter;
@@ -35,21 +33,20 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.NettyMessageType.TASK_ACKNOWLEDGEMENT;
-import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.NettyMessageType.TASK_DEPLOYMENT;
 import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.chunkedChannelRead;
 
 /**
  * Server handler in task executor netty server.
  */
-public class CheckpointCoordinatorServerHandler extends ChannelInboundHandlerAdapter {
-	private static final Logger LOG = LoggerFactory.getLogger(CheckpointCoordinatorServerHandler.class);
+public class CheckpointCoordinatorServerHandlerChunked extends ChannelInboundHandlerAdapter {
+	private static final Logger LOG = LoggerFactory.getLogger(CheckpointCoordinatorServerHandlerChunked.class);
 
 	private final CheckpointCoordinatorGateway checkpointCoordinatorGateway;
 
 	private final Map<String, byte[]> recv = new ConcurrentHashMap<>();
 	private final Map<String, Tuple2<String, Integer>> metadata = new ConcurrentHashMap<>();
 
-	public CheckpointCoordinatorServerHandler(CheckpointCoordinatorGateway checkpointCoordinatorGateway) {
+	public CheckpointCoordinatorServerHandlerChunked(CheckpointCoordinatorGateway checkpointCoordinatorGateway) {
 		this.checkpointCoordinatorGateway = checkpointCoordinatorGateway;
 	}
 

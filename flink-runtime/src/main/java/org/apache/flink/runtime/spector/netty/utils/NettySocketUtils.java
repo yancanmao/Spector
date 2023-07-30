@@ -5,10 +5,7 @@ import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.messages.Acknowledge;
-import org.apache.flink.runtime.spector.netty.data.NettyMessage;
-import org.apache.flink.runtime.spector.netty.data.TaskAcknowledgement;
-import org.apache.flink.runtime.spector.netty.data.TaskState;
-import org.apache.flink.runtime.spector.netty.data.TaskDeployment;
+import org.apache.flink.runtime.spector.netty.data.*;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.Unpooled;
 import org.apache.flink.shaded.netty4.io.netty.channel.Channel;
@@ -32,7 +29,8 @@ public class NettySocketUtils {
 	public enum NettyMessageType {
 		TASK_STATE_RESTORE,
 		TASK_ACKNOWLEDGEMENT,
-		TASK_DEPLOYMENT
+		TASK_DEPLOYMENT,
+		TASK_RPC
 	}
 
 	public static byte[] getBytes(NettyMessage nettyMessage) throws Exception {
@@ -62,7 +60,9 @@ public class NettySocketUtils {
 			eventType = TASK_DEPLOYMENT;
 		} else if (nettyMessage instanceof TaskAcknowledgement) {
 			eventType = TASK_ACKNOWLEDGEMENT;
-		} else {
+		} else if (nettyMessage instanceof TaskRPC) {
+			eventType = TASK_RPC;
+		}else {
 			throw new UnsupportedOperationException();
 		}
 

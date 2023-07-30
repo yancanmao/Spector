@@ -281,14 +281,17 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 
 		try {
-			boolean taskAckEnabled =
+			boolean ackOptEnabled =
 				jobMasterConfiguration.getConfiguration().getBoolean(NETTY_OPTIMIZED_ACK_ENABLED);
+			boolean ackChunkEnabled =
+				jobMasterConfiguration.getConfiguration().getBoolean(NETTY_CHUNKED_ACK_ENABLED);
 			this.checkpointCoordinatorNettyServer = nettyStateTransmissionEnabled ?
 				new CheckpointCoordinatorNettyServer(
 					() -> this.getSelfGateway(CheckpointCoordinatorGateway.class),
 //					NetUtils.getLocalHostLANAddress().getHostAddress(),
 					InetAddress.getLocalHost().getHostAddress(),
-					taskAckEnabled) : null;
+					ackOptEnabled,
+					ackChunkEnabled) : null;
 		} catch (UnknownHostException e) {
 			throw new RuntimeException(e);
 		}
@@ -842,15 +845,18 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 			int connectTimeoutMills = 10000;
 			int lowWaterMark = 10 * 1024 * 1024;
 			int highWaterMark = 50 * 1024 * 1024;
-			boolean taskDeploymentEnabled =
+			boolean deploymentOptEnabled =
 				jobMasterConfiguration.getConfiguration().getBoolean(NETTY_OPTIMIZED_DEPLOYMENT_ENABLED);
+			boolean deploymentChunkEnabled =
+				jobMasterConfiguration.getConfiguration().getBoolean(NETTY_CHUNKED_DEPLOYMENT_ENABLED);
 			taskExecutorNettyClient = new TaskExecutorNettyClient(
 				taskExecutorSocketAddress,
 				channelCount,
 				connectTimeoutMills,
 				lowWaterMark,
 				highWaterMark,
-				taskDeploymentEnabled);
+				deploymentOptEnabled,
+				deploymentChunkEnabled);
 			try {
 				taskExecutorNettyClient.start();
 			} catch (Exception e) {

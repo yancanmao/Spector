@@ -40,6 +40,10 @@ public class TaskRPC implements NettyMessage, Serializable {
 		return jobvertexId;
 	}
 
+	public String getRequestId() {
+		return requestId;
+	}
+
 	public Time getTimeout() {
 		return timeout;
 	}

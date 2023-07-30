@@ -21,9 +21,9 @@ package org.apache.flink.runtime.spector.netty;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.runtime.messages.Acknowledge;
-import org.apache.flink.runtime.spector.netty.data.TaskState;
 import org.apache.flink.runtime.spector.netty.data.TaskDeployment;
-import org.apache.flink.runtime.spector.netty.utils.NettySocketUtils;
+import org.apache.flink.runtime.spector.netty.data.TaskRPC;
+import org.apache.flink.runtime.spector.netty.data.TaskState;
 import org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.NettyMessageType;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelHandlerContext;
@@ -35,14 +35,13 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
-import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.NettyMessageType.TASK_DEPLOYMENT;
-import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.NettyMessageType.TASK_STATE_RESTORE;
+import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.NettyMessageType.*;
 import static org.apache.flink.runtime.spector.netty.utils.NettySocketUtils.chunkedChannelRead;
 
 /**
  * Server handler in task executor netty server.
  */
-public class TaskExecutorServerHandler extends ChannelInboundHandlerAdapter {
+public class TaskExecutorServerHandlerChunked extends ChannelInboundHandlerAdapter {
 	private final TaskExecutorGateway taskExecutorGateway;
 
 	// ExecutionAttemptID -> State Byte Array
@@ -50,7 +49,7 @@ public class TaskExecutorServerHandler extends ChannelInboundHandlerAdapter {
 	// ExecutionAttemptID -> Latest Position of Byte Array
 	private final Map<String, Tuple2<String, Integer>> metadata = new ConcurrentHashMap<>();
 
-	public TaskExecutorServerHandler(TaskExecutorGateway taskExecutorGateway) {
+	public TaskExecutorServerHandlerChunked(TaskExecutorGateway taskExecutorGateway) {
 		this.taskExecutorGateway = taskExecutorGateway;
 	}
 
@@ -77,22 +76,35 @@ public class TaskExecutorServerHandler extends ChannelInboundHandlerAdapter {
 					}
 				});
 			} else if (NettyMessageType.valueOf(eventType) == TASK_DEPLOYMENT) {
-////				TaskDeployment taskDeployment = new TaskDeployment();
-////				taskDeployment.read(new DataInputViewStreamWrapper(new ByteArrayInputStream(bytes)));
-//				ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bytes));
-//				TaskDeployment taskDeployment = (TaskDeployment) ois.readObject();
-//				CompletableFuture<Acknowledge> future = taskExecutorGateway.reconfigTask(
-//					taskDeployment.getExecutionAttemptID(),
-//					taskDeployment.getTaskDeploymentDescriptor(),
-//					taskDeployment.getJobMasterId(),
-//					taskDeployment.getReconfigOptions(),
-//					taskDeployment.getTimeout());
+//				TaskDeployment taskDeployment = new TaskDeployment();
+//				taskDeployment.read(new DataInputViewStreamWrapper(new ByteArrayInputStream(bytes)));
+				ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bytes));
+				TaskDeployment taskDeployment = (TaskDeployment) ois.readObject();
+				CompletableFuture<Acknowledge> future = taskExecutorGateway.reconfigTask(
+					taskDeployment.getExecutionAttemptID(),
+					taskDeployment.getTaskDeploymentDescriptor(),
+					taskDeployment.getJobMasterId(),
+					taskDeployment.getReconfigOptions(),
+					taskDeployment.getTimeout());
+				future.whenCompleteAsync((ack, failure) -> {
+					if (failure != null) {
+						throw new RuntimeException();
+					}
+				});
+//				throw new UnsupportedOperationException();
+			} else if (NettyMessageType.valueOf(eventType) == TASK_RPC) {
+				TaskRPC taskRPC = new TaskRPC();
+				taskRPC.read(new DataInputViewStreamWrapper(new ByteArrayInputStream(bytes)));
+				CompletableFuture<Acknowledge> future = taskExecutorGateway.testRPC(
+					taskRPC.getExecutionAttemptID(),
+					taskRPC.getJobvertexId(),
+					taskRPC.getRequestId(),
+					taskRPC.getTimeout());
 //				future.whenCompleteAsync((ack, failure) -> {
 //					if (failure != null) {
 //						throw new RuntimeException();
 //					}
 //				});
-				throw new UnsupportedOperationException();
 			} else {
 				throw new UnsupportedOperationException();
 			}

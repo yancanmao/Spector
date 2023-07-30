@@ -37,7 +37,8 @@ public class CheckpointCoordinatorNettyClient implements Closeable {
 	private final int lowWaterMark;
 	private final int highWaterMark;
 	private final List<NettySocketClient> clientList;
-	private final boolean taskAcknowledgementEnabled;
+	private final boolean ackOptEnabled;
+	private final boolean ackChunkEnabled;
 
 	public CheckpointCoordinatorNettyClient(
 		CheckpointCoordinatorSocketAddress socketAddress,
@@ -45,19 +46,21 @@ public class CheckpointCoordinatorNettyClient implements Closeable {
 		int connectTimeoutMills,
 		int lowWaterMark,
 		int highWaterMark,
-		boolean taskAcknowledgementEnabled) {
+		boolean ackOptEnabled,
+		boolean ackChunkEnabled) {
 		this.socketAddress = socketAddress;
 		this.channelCount = channelCount;
 		this.connectTimeoutMills = connectTimeoutMills;
 		this.lowWaterMark = lowWaterMark;
 		this.highWaterMark = highWaterMark;
 		this.clientList = new ArrayList<>(channelCount);
-		this.taskAcknowledgementEnabled = taskAcknowledgementEnabled;
+		this.ackOptEnabled = ackOptEnabled;
+		this.ackChunkEnabled = ackChunkEnabled;
 	}
 
 	public void start() throws Exception {
 		Consumer<ChannelPipeline> channelPipelineConsumer;
-		if (taskAcknowledgementEnabled) {
+		if (ackOptEnabled) {
 			channelPipelineConsumer = channelPipeline -> channelPipeline
 				.addLast(new TaskAcknowledgementEncoder())
 				.addLast(new TaskAcknowledgementDecoder());
@@ -96,7 +99,7 @@ public class CheckpointCoordinatorNettyClient implements Closeable {
 					checkpointId,
 					checkpointMetrics,
 					subtaskState);
-				if (taskAcknowledgementEnabled) {
+				if (ackChunkEnabled) {
 					try {
 						chunkedWriteAndFlush(submitFuture, channel, taskAcknowledgement, executionAttemptID);
 					} catch (Exception e) {

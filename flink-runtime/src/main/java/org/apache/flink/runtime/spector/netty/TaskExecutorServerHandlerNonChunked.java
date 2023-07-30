@@ -28,11 +28,11 @@ import org.apache.flink.shaded.netty4.io.netty.channel.ChannelInboundHandlerAdap
 /**
  * Server handler in task executor netty server.
  */
-public class TaskExecutorServerHandlerNoChunk extends ChannelInboundHandlerAdapter {
+public class TaskExecutorServerHandlerNonChunked extends ChannelInboundHandlerAdapter {
 	private static final Time DEFAULT_RPC_TIMEOUT = Time.seconds(10);
 	private final TaskExecutorGateway taskExecutorGateway;
 
-	public TaskExecutorServerHandlerNoChunk(TaskExecutorGateway taskExecutorGateway) {
+	public TaskExecutorServerHandlerNonChunked(TaskExecutorGateway taskExecutorGateway) {
 		this.taskExecutorGateway = taskExecutorGateway;
 	}
 

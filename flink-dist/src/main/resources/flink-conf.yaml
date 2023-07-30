@@ -26,7 +26,7 @@
 # is only used in Standalone mode and may be overwritten on the JobManager side
 # by specifying the --host <hostname> parameter of the bin/jobmanager.sh executable.
 # In high availability mode, if you use the bin/start-cluster.sh script and setup
-# the conf/masters file, this will be taken care of automatically. Yarn/Mesos
+# the conf-local/masters file, this will be taken care of automatically. Yarn/Mesos
 # automatically configure the host name based on the hostname of the node where the
 # JobManager runs.
 
@@ -44,7 +44,7 @@ jobmanager.heap.size: 8192m
 
 # The heap size for the TaskManager JVM
 
-taskmanager.heap.size: 8192m
+taskmanager.heap.size: 4096m
 
 
 # The number of task slots that each TaskManager offers. Each slot runs one parallel pipeline.
@@ -202,7 +202,7 @@ state.checkpoints.dir: file:///home/myc/workspace/flink-related/spector/build-ta
 
 # Kerberos authentication for various components - Hadoop, ZooKeeper, and connectors -
 # may be enabled in four steps:
-# 1. configure the local krb5.conf file
+# 1. configure the local krb5.conf-local file
 # 2. provide Kerberos credentials (either a keytab or a ticket cache w/ kinit)
 # 3. make the credentials available to various JAAS login contexts
 # 4. configure the connector to use JAAS/SASL
@@ -257,7 +257,7 @@ state.checkpoints.dir: file:///home/myc/workspace/flink-related/spector/build-ta
 #==============================================================================
 #
 # window size configuration
-policy.windowSize: 100000000
+policy.windowSize: 1000000000
 
 # kafka broker list
 policy.metrics.servers: localhost:9092
@@ -302,6 +302,9 @@ akka.ask.timeout: 100s
 
 cluster.evenly-spread-out-slots: true
 
+#akka.server-socket-worker-pool.pool-size-factor: 5
+#akka.server-socket-worker-pool.pool-size-min: 5
+#akka.server-socket-worker-pool.pool-size-max: 5
 
 #==============================================================================
 # Spector Configuration
@@ -310,7 +313,7 @@ cluster.evenly-spread-out-slots: true
 
 spector.reconfig.scenario: shuffle
 
-spector.reconfig.workload.zipf_skew: 1.5 # experiment settings for zipf skewness test
+spector.reconfig.workload.zipf_skew: 1
 
 #controller.target.operators: Splitter FlatMap,Count
 #spector.reconfig.start: 5000,10000
@@ -319,16 +322,18 @@ controller.target.operators: Splitter FlatMap
 spector.reconfig.start: 10000
 
 spector.exp.dir: /data/spector
-spector.reconfig.affected_keys: 128
+spector.reconfig.affected_keys: 8
 spector.reconfig.affected_tasks: 2
 spector.reconfig.interval: 1000000
-spector.reconfig.sync_keys: 32
-spector.replicate_keys_filter: 1
-spector.reconfig.order_function: default
+spector.reconfig.sync_keys: 0
+spector.replicate_keys_filter: 0
+spector.reconfig.order_function:
 
 netty.state.transmission.enabled: true
-netty.optimized.acknowledgement.enabled: false # do not make it true, not supported
-netty.optimized.deployment.enabled: false # do not make it true, not supported
+netty.optimized.acknowledgement.enabled: true # to enable deep serde optimization, do not make it true, not supported
+netty.optimized.deployment.enabled: true # to enable deep serde optimization, do not make it true, not supported
+netty.chunked.acknowledgement.enabled: false # chunked write objects
+netty.chunked.deployment.enabled: false # chunked write objects
 
 state.backend.async: false
-snapshot.changelog.enabled: false
+snapshot.changelog.enabled: true

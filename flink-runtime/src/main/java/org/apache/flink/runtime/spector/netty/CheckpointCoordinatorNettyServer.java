@@ -8,6 +8,7 @@ import org.apache.flink.shaded.netty4.io.netty.channel.ChannelPipeline;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ClassResolvers;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ObjectDecoder;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.serialization.ObjectEncoder;
+import org.apache.flink.util.Preconditions;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -20,18 +21,29 @@ public class CheckpointCoordinatorNettyServer implements Closeable {
 	public CheckpointCoordinatorNettyServer(
 		Supplier<CheckpointCoordinatorGateway> gatewaySupplier,
 		String address,
-		boolean taskAckEnabled) {
+		boolean ackOptEnabled,
+		boolean ackChunkEnabled) {
 		Consumer<ChannelPipeline> channelPipelineConsumer;
-		if (taskAckEnabled) {
-			channelPipelineConsumer = channelPipeline -> channelPipeline.addLast(
-				new TaskAcknowledgementEncoder(),
-				new TaskAcknowledgementDecoder(),
-				new CheckpointCoordinatorServerHandlerNoChunk(gatewaySupplier.get()));
-		} else {
+		if (ackChunkEnabled) {
+			Preconditions.checkState(!ackOptEnabled,
+				"++++++ Netty Serde optimization and Chunk cannot set true simultaneously");
 			channelPipelineConsumer = channelPipeline -> channelPipeline.addLast(
 				new ObjectEncoder(),
 				new ObjectDecoder(Integer.MAX_VALUE, ClassResolvers.cacheDisabled(null)),
-				new CheckpointCoordinatorServerHandler(gatewaySupplier.get()));
+				new CheckpointCoordinatorServerHandlerChunked(gatewaySupplier.get()));
+		} else {
+			if (ackOptEnabled) {
+				channelPipelineConsumer = channelPipeline -> channelPipeline.addLast(
+					new TaskAcknowledgementEncoder(),
+					new TaskAcknowledgementDecoder(),
+					new CheckpointCoordinatorServerHandlerNonChunked(gatewaySupplier.get()));
+
+			} else {
+				channelPipelineConsumer = channelPipeline -> channelPipeline.addLast(
+					new ObjectEncoder(),
+					new ObjectDecoder(Integer.MAX_VALUE, ClassResolvers.cacheDisabled(null)),
+					new CheckpointCoordinatorServerHandlerNonChunked(gatewaySupplier.get()));
+			}
 		}
 
 		this.nettySocketServer = new NettySocketServer(

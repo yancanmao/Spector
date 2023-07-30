@@ -43,7 +43,8 @@ public class TaskExecutorNettyClient implements Closeable {
 	private final int lowWaterMark;
 	private final int highWaterMark;
 	private final List<NettySocketClient> clientList;
-	private final boolean taskDeploymentEnabled;
+	private final boolean deploymentOptEnabled;
+	private final boolean deploymentChunkEnabled;
 
 	private final Object lock = new Object();
 
@@ -53,19 +54,21 @@ public class TaskExecutorNettyClient implements Closeable {
 		int connectTimeoutMills,
 		int lowWaterMark,
 		int highWaterMark,
-		boolean taskDeploymentEnabled) {
+		boolean deploymentOptEnabled,
+		boolean deploymentChunkEnabled) {
 		this.socketAddress = socketAddress;
 		this.channelCount = channelCount;
 		this.connectTimeoutMills = connectTimeoutMills;
 		this.lowWaterMark = lowWaterMark;
 		this.highWaterMark = highWaterMark;
 		this.clientList = new ArrayList<>(channelCount);
-		this.taskDeploymentEnabled = taskDeploymentEnabled;
+		this.deploymentOptEnabled = deploymentOptEnabled;
+		this.deploymentChunkEnabled = deploymentChunkEnabled;
 	}
 
 	public void start() throws Exception {
 		Consumer<ChannelPipeline> channelPipelineConsumer;
-		if (taskDeploymentEnabled) {
+		if (deploymentOptEnabled) {
 			channelPipelineConsumer = channelPipeline -> channelPipeline
 				.addLast(new TaskBackupStateEncoder())
 				.addLast(new TaskBackupStateDecoder());
@@ -100,7 +103,7 @@ public class TaskExecutorNettyClient implements Closeable {
 		while (true) {
 			if (channel.isWritable()) {
 				TaskDeployment taskDeployment = new TaskDeployment(executionAttemptID, tdd, jobMasterId, reconfigOptions, timeout);
-				if (taskDeploymentEnabled) {
+				if (deploymentOptEnabled) {
 					try {
 						chunkedWriteAndFlush(submitFuture, channel, taskDeployment, executionAttemptID);
 					} catch (Exception e) {
@@ -138,7 +141,7 @@ public class TaskExecutorNettyClient implements Closeable {
 					jobvertexId,
 					requestId,
 					timeout);
-				if (taskDeploymentEnabled) {
+				if (deploymentChunkEnabled) {
 					try {
 						chunkedWriteAndFlush(submitFuture, channel, taskRPC, executionAttemptID);
 					} catch (Exception e) {
@@ -179,7 +182,7 @@ public class TaskExecutorNettyClient implements Closeable {
 					keyGroupRange,
 					idInModel,
 					timeout);
-				if (taskDeploymentEnabled) {
+				if (deploymentChunkEnabled) {
 					try {
 						chunkedWriteAndFlush(submitFuture, channel, taskState, executionAttemptID);
 					} catch (Exception e) {
