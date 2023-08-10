@@ -47,6 +47,7 @@ import java.util.function.Consumer;
  * Netty socket client which is used to connect to {@link NettySocketServer}.
  */
 public class NettySocketClient implements AutoCloseableAsync {
+	private Bootstrap bootstrap;
 	private static final Logger LOG = LoggerFactory.getLogger(NettySocketClient.class);
 
 	private final String address;
@@ -57,7 +58,6 @@ public class NettySocketClient implements AutoCloseableAsync {
 	private final Consumer<ChannelPipeline> channelPipelineConsumer;
 	private final AtomicBoolean running;
 
-	private Bootstrap bootstrap;
 	private Channel channel;
 
 	public NettySocketClient(

@@ -1071,9 +1071,9 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			throw new IllegalStateException("The vertex must be in RUNNING state to be reconfiged. Found state " + this.state);
 		}
 
-		testRPCMessage("1");
-		testRPCMessage("2");
-		testRPCMessage("3");
+//		testRPCMessage("1");
+//		testRPCMessage("2");
+//		testRPCMessage("3");
 
 		if (taskRestore != null) {
 			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();

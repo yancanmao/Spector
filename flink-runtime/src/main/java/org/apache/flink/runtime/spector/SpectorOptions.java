@@ -103,4 +103,25 @@ public class SpectorOptions {
 	public final static ConfigOption<Integer> STATE_TRANSFER_DELAY =
 		key("model.state.transfer.delay")
 			.defaultValue(200);
+
+
+	// Netty server/client related configurations
+
+	public final static ConfigOption<Integer> NETTY_CHANNEL_COUNT =
+		key("spector.netty.channel.count")
+			.defaultValue(1);
+
+	public final static ConfigOption<Integer> NETTY_CONNECTION_TIMEOUT =
+		key("spector.netty.connection.timeout")
+			.defaultValue(10000);
+
+	public final static ConfigOption<Integer> NETTY_LOW_WATERMARK =
+		key("spector.netty.low_watermark")
+//			.defaultValue(10 * 1024 * 1024);
+			.defaultValue(32 * 1024);
+
+	public final static ConfigOption<Integer> NETTY_HIGH_WATERMARK =
+		key("spector.netty.high_watermark")
+//			.defaultValue(50 * 1024 * 1024);
+			.defaultValue(64 * 1024);
 }

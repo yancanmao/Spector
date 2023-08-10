@@ -327,13 +327,13 @@ spector.reconfig.affected_tasks: 2
 spector.reconfig.interval: 1000000
 spector.reconfig.sync_keys: 0
 spector.replicate_keys_filter: 0
-spector.reconfig.order_function:
+spector.reconfig.order_function: default
 
 netty.state.transmission.enabled: true
-netty.optimized.acknowledgement.enabled: true # to enable deep serde optimization, do not make it true, not supported
-netty.optimized.deployment.enabled: true # to enable deep serde optimization, do not make it true, not supported
-netty.chunked.acknowledgement.enabled: false # chunked write objects
-netty.chunked.deployment.enabled: false # chunked write objects
+netty.optimized.acknowledgement.enabled: false # do not make it true, not supported
+netty.optimized.deployment.enabled: false # do not make it true, not supported
+netty.chunked.acknowledgement.enabled: false
+netty.chunked.deployment.enabled: false
 
 state.backend.async: false
 snapshot.changelog.enabled: true

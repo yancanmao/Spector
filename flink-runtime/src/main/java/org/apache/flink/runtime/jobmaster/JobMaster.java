@@ -841,10 +841,10 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 
 		TaskExecutorNettyClient taskExecutorNettyClient = null;
 		if (nettyStateTransmissionEnabled) {
-			int channelCount = 32;
-			int connectTimeoutMills = 10000;
-			int lowWaterMark = 10 * 1024 * 1024;
-			int highWaterMark = 50 * 1024 * 1024;
+			int channelCount = jobMasterConfiguration.getConfiguration().getInteger(NETTY_CHANNEL_COUNT);
+			int connectTimeoutMills = jobMasterConfiguration.getConfiguration().getInteger(NETTY_CONNECTION_TIMEOUT);
+			int lowWaterMark = jobMasterConfiguration.getConfiguration().getInteger(NETTY_LOW_WATERMARK);
+			int highWaterMark = jobMasterConfiguration.getConfiguration().getInteger(NETTY_HIGH_WATERMARK);
 			boolean deploymentOptEnabled =
 				jobMasterConfiguration.getConfiguration().getBoolean(NETTY_OPTIMIZED_DEPLOYMENT_ENABLED);
 			boolean deploymentChunkEnabled =

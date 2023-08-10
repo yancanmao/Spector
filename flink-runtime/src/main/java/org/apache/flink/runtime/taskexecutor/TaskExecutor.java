@@ -1515,10 +1515,10 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 		CheckpointCoordinatorNettyClient checkpointCoordinatorNettyClient = null;
 		if (nettyStateTransmissionEnabled) {
-			int channelCount = 10;
-			int connectTimeoutMills = 10000;
-			int lowWaterMark = 10 * 1024 * 1024;
-			int highWaterMark = 50 * 1024 * 1024;
+			int channelCount = taskManagerConfiguration.getConfiguration().getInteger(NETTY_CHANNEL_COUNT);
+			int connectTimeoutMills = taskManagerConfiguration.getConfiguration().getInteger(NETTY_CONNECTION_TIMEOUT);
+			int lowWaterMark = taskManagerConfiguration.getConfiguration().getInteger(NETTY_LOW_WATERMARK);
+			int highWaterMark = taskManagerConfiguration.getConfiguration().getInteger(NETTY_HIGH_WATERMARK);
 			boolean ackOptEnabled =
 				taskManagerConfiguration.getConfiguration().getBoolean(NETTY_OPTIMIZED_ACK_ENABLED);
 			boolean ackChunkEnabled =

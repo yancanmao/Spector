@@ -986,7 +986,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 	@Override
 	public void reinitializeState(KeyGroupRange keyGroupRange, int idInModel) {
-		LOG.info("++++++ let's reinitialize state: " + this.toString() + "  " + keyGroupRange + "  idInModel: " + idInModel);
+		LOG.info("++++++ let's reinitialize state: " + this + "  " + keyGroupRange + "  idInModel: " + idInModel);
 		try {
 			synchronized (lock) {
 				// TODO: optimize this part by transfer in rather than sel-compute. find out migrate in keygroup
