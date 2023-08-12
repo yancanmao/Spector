@@ -815,7 +815,7 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 		}
 
 		int parallelism = oldExecutorMapping.size();
-		int numAffectedKeys = 2;
+		int numAffectedKeys = 100;
 
 		System.out.println(oldExecutorMapping);
 

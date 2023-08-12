@@ -29,6 +29,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.apache.flink.runtime.spector.SpectorOptions.*;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -118,10 +119,11 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 		// find out the affected keys.
 		// order the migrating keys
 		// return the state migration finalPlan to reconfig executor
-		Map<String, Tuple2<String, String>> affectedKeys = getAffectedKeys(executorMapping);
+		Map<String, Map<String, Tuple2<String, String>>> affectedKeys = getAffectedKeys(executorMapping);
 
-		Map<String, Tuple2<String, String>> prioritizedKeySequence = prioritizeKeys(affectedKeys);
-		List<Map<String, Tuple2<String, String>>> finalPlan = batching(prioritizedKeySequence);
+		Map<String, Map<String, Tuple2<String, String>>> prioritizedKeySequences = prioritizeKeys(affectedKeys);
+		Map<String, List<Map<String, Tuple2<String, String>>>> taskPlans = batching(prioritizedKeySequences);
+		List<Map<String, Tuple2<String, String>>> finalPlan = merging(taskPlans);
 
 		if (numOpenedSubtask >= newParallelism) {
 			// repartition
@@ -151,6 +153,31 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 		}
 	}
 
+	private List<Map<String, Tuple2<String, String>>> merging(Map<String, List<Map<String, Tuple2<String, String>>>> taskPlans) {
+		List<Map<String, Tuple2<String, String>>> plan = new ArrayList<>();
+
+		AtomicInteger maxLength = new AtomicInteger();
+		taskPlans.values().forEach(taskPlan -> {
+			if (taskPlan.size() > maxLength.get()) {
+				maxLength.set(taskPlan.size());
+			}
+		});
+
+		for (int i = 0; i < maxLength.get(); i++) {
+			Map<String, Tuple2<String, String>> curBatch = new HashMap<>();
+			int finalI = i;
+			taskPlans.values().forEach(taskPlan -> {
+				if (finalI < taskPlan.size()) {
+					Map<String, Tuple2<String, String>> batch = taskPlan.get(finalI);
+					curBatch.putAll(batch);
+				}
+			});
+			plan.add(curBatch);
+		}
+
+		return plan;
+	}
+
 	private Map<String, List<String>> deepCopy(Map<String, List<String>> executorMapping) {
 		Map<String, List<String>> fluidExecutorMapping = new HashMap<>();
 		for (String taskId : executorMapping.keySet()) {
@@ -159,9 +186,10 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 		return fluidExecutorMapping;
 	}
 
-	private Map<String, Tuple2<String, String>> getAffectedKeys(Map<String, List<String>> executorMapping) {
+	private Map<String, Map<String, Tuple2<String, String>>> getAffectedKeys(Map<String, List<String>> executorMapping) {
 		// Key -> <SrcTaskId, DstTaskId>, can be used to set new ExecutorMapping
-		Map<String, Tuple2<String, String>> affectedKeys = new HashMap<>();
+//		Map<String, Tuple2<String, String>> affectedKeys = new HashMap<>();
+		Map<String, Map<String, Tuple2<String, String>>> affectedKeys = new HashMap<>();
 
 		// Key -> Task
 		Map<String, String> oldKeysToExecutorMapping = new HashMap<>();
@@ -173,57 +201,70 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 
 		executorMapping.keySet().forEach(newTaskId -> {
 			for (String key : executorMapping.get(newTaskId)) {
+				affectedKeys.putIfAbsent(oldKeysToExecutorMapping.get(key), new HashMap<>());
 				// check whether the keys is migrated from old task to new task
 				if (!oldKeysToExecutorMapping.get(key).equals(newTaskId)) {
-					affectedKeys.put(key, Tuple2.of(oldKeysToExecutorMapping.get(key), newTaskId));
+					affectedKeys.get(oldKeysToExecutorMapping.get(key)).put(key, Tuple2.of(oldKeysToExecutorMapping.get(key), newTaskId));
 				}
 			}
 		});
 		return affectedKeys;
 	}
 
-	private List<Map<String, Tuple2<String, String>>> batching(Map<String, Tuple2<String, String>> prioritizedKeySequence) {
-		List<Map<String, Tuple2<String, String>>> plan = new ArrayList<>();
+	private Map<String, List<Map<String, Tuple2<String, String>>>> batching(Map<String, Map<String, Tuple2<String, String>>> prioritizedKeySequences) {
+		Map<String, List<Map<String, Tuple2<String, String>>>> plans = new HashMap<>();
+		prioritizedKeySequences.keySet().forEach(taskId -> plans.putIfAbsent(taskId, new ArrayList<>()));
 
-		int count = 0;
-		Map<String, Tuple2<String, String>> batchedAffectedKeys = new HashMap<>();
+		prioritizedKeySequences.keySet().forEach(taskId -> {
+			int count = 0;
+			Map<String, Tuple2<String, String>> batchedAffectedKeys = new HashMap<>();
 
-		for (String affectedKey : prioritizedKeySequence.keySet()) {
-			batchedAffectedKeys.put(affectedKey, prioritizedKeySequence.get(affectedKey));
-			count++;
-			if (count % syncKeys == 0) {
-				plan.add(batchedAffectedKeys);
-				batchedAffectedKeys = new HashMap<>();
+			for (String affectedKey : prioritizedKeySequences.get(taskId).keySet()) {
+				batchedAffectedKeys.put(affectedKey, prioritizedKeySequences.get(taskId).get(affectedKey));
+				count++;
+				if (count % syncKeys == 0) {
+					plans.get(taskId).add(batchedAffectedKeys);
+					batchedAffectedKeys= new HashMap<>();
+				}
 			}
-		}
 
-		if (!batchedAffectedKeys.isEmpty()) {
-			plan.add(batchedAffectedKeys);
-		}
+			if (!batchedAffectedKeys.isEmpty()) {
+				plans.get(taskId).add(batchedAffectedKeys);
+			}
+		});
 
-		return plan;
+
+		return plans;
 	}
 
-	public Map<String, Tuple2<String, String>> prioritizeKeys(Map<String, Tuple2<String, String>> affectedKeys) {
-		TreeMap<String, Tuple2<String, String>> prioritizedKeySequence;
-		prioritizedKeySequence = new TreeMap<>(Comparator.comparing(Integer::valueOf));
-		prioritizedKeySequence.putAll(affectedKeys);
+	public Map<String, Map<String, Tuple2<String, String>>> prioritizeKeys(Map<String, Map<String, Tuple2<String, String>>> affectedKeys) {
+		Map<String, Map<String, Tuple2<String, String>>> prioritizedKeySequences = new HashMap<>();
+		affectedKeys.keySet().forEach(taskId -> {
+			prioritizedKeySequences.putIfAbsent(taskId, new TreeMap<>(Comparator.comparing(Integer::valueOf)));
+			prioritizedKeySequences.get(taskId).putAll(affectedKeys.get(taskId));
+		});
+
 		switch (orderFunction) {
 			case "default":
 				// Option 1:
-				return prioritizedKeySequence;
+				return prioritizedKeySequences;
 			case "reverse":
 				// option 2:
-				return prioritizedKeySequence.descendingMap();
+				prioritizedKeySequences.keySet().forEach(taskId -> {
+					NavigableMap batch = ((TreeMap<?, ?>) prioritizedKeySequences.get(taskId)).descendingMap();
+					prioritizedKeySequences.put(taskId, batch);
+				});
+				return prioritizedKeySequences;
 			case "random":
-				List<String> list = new ArrayList<>(prioritizedKeySequence.keySet());
 				Random random = new Random(12345678);
-				Collections.shuffle(list, random);
-
-				Map<String, Tuple2<String, String>> shuffleMap = new LinkedHashMap<>();
-				list.forEach(k -> shuffleMap.put(k, prioritizedKeySequence.get(k)));
-				System.out.println("++++++" + shuffleMap);
-				return shuffleMap;
+				prioritizedKeySequences.keySet().forEach(taskId -> {
+					List<String> list = new ArrayList<>(prioritizedKeySequences.get(taskId).keySet());
+					Collections.shuffle(list, random);
+					Map<String, Tuple2<String, String>> shuffleMap = new LinkedHashMap<>();
+					list.forEach(k -> shuffleMap.put(k, prioritizedKeySequences.get(taskId).get(k)));
+					prioritizedKeySequences.put(taskId, shuffleMap);
+				});
+				return prioritizedKeySequences;
 			default:
 				throw new UnsupportedOperationException();
 		}
