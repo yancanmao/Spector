@@ -155,6 +155,10 @@ public class TaskConfigManager {
 		return reconfigMeta.getReconfigOptions().isUpdatingGates();
 	}
 
+	public boolean isUpdateWriters() {
+		return reconfigMeta.getReconfigOptions().isUpdatingWriters();
+	}
+
 
 	public boolean isUpdatingKeyGroupRange() {
 		return reconfigMeta.getReconfigOptions().isUpdatingKeyGroupRange();

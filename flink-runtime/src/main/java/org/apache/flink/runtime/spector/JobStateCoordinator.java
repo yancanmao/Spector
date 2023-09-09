@@ -565,32 +565,33 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 			for (ExecutionVertex vertex : tasks.get(jobId).getTaskVertices()) {
 				Execution execution = vertex.getCurrentExecutionAttempt();
 				rescaleCandidatesFutures.add(execution.scheduleReconfig(
-					reconfigId, ReconfigOptions.UPDATE_PARTITIONS_ONLY, null, null, null));
+//					reconfigId, ReconfigOptions.UPDATE_PARTITIONS_ONLY, null, null, null));
+					reconfigId, ReconfigOptions.UPDATE_WRITERS_ONLY, null, null, null));
 			}
 		}
 
-		for (JobVertexID jobId : updatedDownstream) {
-			tasks.get(jobId).cleanBeforeRescale();
-
-			for (ExecutionVertex vertex : tasks.get(jobId).getTaskVertices()) {
-				Execution execution = vertex.getCurrentExecutionAttempt();
-				notYetAcknowledgedTasks.add(execution.getAttemptId());
-				rescaleCandidatesFutures.add(execution.scheduleReconfig(
-					reconfigId, ReconfigOptions.UPDATE_GATES_ONLY, null, null, null));
-			}
-		}
+//		for (JobVertexID jobId : updatedDownstream) {
+//			tasks.get(jobId).cleanBeforeRescale();
+//
+//			for (ExecutionVertex vertex : tasks.get(jobId).getTaskVertices()) {
+//				Execution execution = vertex.getCurrentExecutionAttempt();
+//				notYetAcknowledgedTasks.add(execution.getAttemptId());
+//				rescaleCandidatesFutures.add(execution.scheduleReconfig(
+//					reconfigId, ReconfigOptions.UPDATE_GATES_ONLY, null, null, null));
+//			}
+//		}
 
 		for (int subtaskIndex = 0; subtaskIndex < targetVertex.getTaskVertices().length; subtaskIndex++) {
 			ExecutionVertex vertex = targetVertex.getTaskVertices()[subtaskIndex];
 			Execution execution = vertex.getCurrentExecutionAttempt();
-			if (!jobExecutionPlan.isAffectedTask(subtaskIndex)) {
+//			if (!jobExecutionPlan.isAffectedTask(subtaskIndex)) {
+////				rescaleCandidatesFutures.add(
+////					execution.scheduleReconfig(reconfigId, ReconfigOptions.UPDATE_BOTH,
+////						jobExecutionPlan.getAlignedKeyGroupRange(subtaskIndex), null, null)); // cannot update keygrouprange and checkpoint simoutaneously.
 //				rescaleCandidatesFutures.add(
 //					execution.scheduleReconfig(reconfigId, ReconfigOptions.UPDATE_BOTH,
-//						jobExecutionPlan.getAlignedKeyGroupRange(subtaskIndex), null, null)); // cannot update keygrouprange and checkpoint simoutaneously.
-				rescaleCandidatesFutures.add(
-					execution.scheduleReconfig(reconfigId, ReconfigOptions.UPDATE_BOTH,
-						null, null, null));
-			} else {
+//						null, null, null));
+//			} else {
 				if (jobExecutionPlan.isSourceSubtask(subtaskIndex) || jobExecutionPlan.isDestinationSubtask(subtaskIndex)) {
 					List<Integer> srcKeygroups = jobExecutionPlan.isSourceSubtask(subtaskIndex) ?
 						jobExecutionPlan.getAffectedKeygroupsForSource(subtaskIndex) : null;
@@ -607,7 +608,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 							srcKeygroups,
 							dstKeygroups));
 				}
-			}
+//			}
 		}
 
 		FutureUtils

@@ -953,6 +953,20 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				taskConfigManager.unregisterPartitions((ResultPartition[]) oldWriterCopies);
 			}
 
+			if (taskConfigManager.isUpdateWriters()) {
+				//  close old output and flush its buffers
+				recordWriters = createRecordWriters(configuration, getEnvironment());
+
+				RecordWriterOutput[] oldStreamOutputCopies =
+					operatorChain.substituteRecordWriter(this, recordWriters);
+
+				//  close old output and unregister partitions
+				for (RecordWriterOutput<?> streamOutput : oldStreamOutputCopies) {
+					streamOutput.flush();
+					streamOutput.close();
+				}
+			}
+
 //			if (taskConfigManager.isUpdatingKeyGroupRange()) {
 //				LOG.info("++++++ update task keyGroupRange for subtask");
 //				this.updateKeyGroupRange(taskConfigManager.getKeyGroupRange());

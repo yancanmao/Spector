@@ -31,16 +31,21 @@ public class ReconfigOptions implements Serializable {
 
 	private final boolean setAffectedKeys;
 
+	// writers are small components in partitions
+	private final boolean updateWriters;
+
+
 	public ReconfigOptions(boolean updatePartitions, boolean updateGates, boolean updateState, boolean updateKeyGroupRange) {
-		this(updatePartitions, updateGates, updateState, updateKeyGroupRange, false);
+		this(updatePartitions, updateGates, updateState, updateKeyGroupRange, false, false);
 	}
 
-	public ReconfigOptions(boolean updatePartitions, boolean updateGates, boolean updateState, boolean updateKeyGroupRange, boolean setAffectedKeys) {
+	public ReconfigOptions(boolean updatePartitions, boolean updateGates, boolean updateState, boolean updateKeyGroupRange, boolean setAffectedKeys, boolean updateWriters) {
 		this.updatePartitions = updatePartitions;
 		this.updateGates = updateGates;
 		this.updateState = updateState;
 		this.updateKeyGroupRange = updateKeyGroupRange;
 		this.setAffectedKeys = setAffectedKeys;
+		this.updateWriters = updateWriters;
 	}
 
 	public boolean isUpdatingPartitions() {
@@ -63,7 +68,12 @@ public class ReconfigOptions implements Serializable {
 		return setAffectedKeys;
 	}
 
+	public boolean isUpdatingWriters() {
+		return updateWriters;
+	}
+
 	public final static ReconfigOptions UPDATE_PARTITIONS_ONLY = new ReconfigOptions(true, false, false, false);
+
 
 	public final static ReconfigOptions UPDATE_GATES_ONLY = new ReconfigOptions(false, true, false, false);
 
@@ -73,7 +83,9 @@ public class ReconfigOptions implements Serializable {
 
 	public final static ReconfigOptions UPDATE_KEYGROUP_RANGE_ONLY = new ReconfigOptions(false, false, false, true);
 
-	public final static ReconfigOptions PREPARE_AFFECTED_KEYGROUPS = new ReconfigOptions(true, true, false, false, true);
+	public final static ReconfigOptions PREPARE_AFFECTED_KEYGROUPS = new ReconfigOptions(false, false, false, false, true, false);
+
+	public final static ReconfigOptions UPDATE_WRITERS_ONLY = new ReconfigOptions(false, false, false, false, false, true);
 
 	@Override
 	public int hashCode() {
