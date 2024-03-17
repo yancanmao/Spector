@@ -42,6 +42,7 @@ import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.types.SerializableOptional;
 import org.apache.flink.util.Preconditions;
 
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
@@ -199,6 +200,11 @@ public class TestingTaskExecutorGateway implements TaskExecutorGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> dispatchStateToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, JobManagerTaskRestore taskRestore, KeyGroupRange keyGroupRange, int idInModel, Time timeout) {
+		return null;
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> updateBackupKeyGroupsToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, Set<Integer> backupKeyGroups, Time timeout) {
 		return null;
 	}
 

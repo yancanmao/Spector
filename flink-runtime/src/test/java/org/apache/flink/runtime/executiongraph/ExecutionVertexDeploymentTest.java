@@ -39,6 +39,7 @@ import org.apache.flink.util.TestLogger;
 import org.junit.Test;
 
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.concurrent.CompletableFuture;
 
 import static org.apache.flink.runtime.executiongraph.ExecutionGraphTestUtils.ERROR_MESSAGE;
@@ -304,7 +305,7 @@ public class ExecutionVertexDeploymentTest extends TestLogger {
 		for (ScheduleMode mode : ScheduleMode.values()) {
 			vertex.getExecutionGraph().setScheduleMode(mode);
 
-			TaskDeploymentDescriptor tdd = vertex.createDeploymentDescriptor(new ExecutionAttemptID(), slot, null, 1, false, null, null);
+			TaskDeploymentDescriptor tdd = vertex.createDeploymentDescriptor(new ExecutionAttemptID(), slot, null, 1, false, null, null, new HashSet<>());
 
 			Collection<ResultPartitionDeploymentDescriptor> producedPartitions = tdd.getProducedPartitions();
 

@@ -41,6 +41,7 @@ import javax.annotation.Nonnegative;
 import javax.annotation.Nonnull;
 
 import java.util.LinkedHashMap;
+import java.util.Set;
 import java.util.concurrent.RunnableFuture;
 
 /**
@@ -114,7 +115,7 @@ public abstract class RocksDBSnapshotStrategyBase<K>
             long checkpointId,
             long timestamp,
             @Nonnull CheckpointStreamFactory streamFactory,
-            @Nonnull CheckpointOptions checkpointOptions, boolean isChangelogEnabled) throws Exception {
+            @Nonnull CheckpointOptions checkpointOptions, boolean isChangelogEnabled, Set<Integer> backupKeyGroups) throws Exception {
 
 		if (kvStateInformation.isEmpty()) {
 			if (LOG.isDebugEnabled()) {

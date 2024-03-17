@@ -59,17 +59,13 @@ import org.slf4j.Logger;
 import javax.annotation.Nonnull;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import static org.apache.flink.runtime.spector.SpectorOptions.REPLICATE_KEYS_FILTER;
+import static org.apache.flink.runtime.spector.SpectorOptions.TARGET_OPERATORS;
 
 /**
  * An {@code ExecutionJobVertex} is part of the {@link ExecutionGraph}, and the peer
@@ -225,6 +221,28 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 				jobConfiguration.getInteger(JobManagerOptions.MAX_ATTEMPTS_HISTORY_SIZE) :
 				JobManagerOptions.MAX_ATTEMPTS_HISTORY_SIZE.defaultValue();
 
+
+
+
+		// Initialize backupKeygroups
+		Set<Integer> backupKeyGroups = new HashSet<>();
+		int filer = jobConfiguration.getInteger(REPLICATE_KEYS_FILTER);
+		String targetOperatorsStr = jobConfiguration.getString(TARGET_OPERATORS);
+		String[] targetOperatorsList = targetOperatorsStr.split(",");
+		if (filer !=0 ) {
+			for (String targetOperator : targetOperatorsList) {
+				if (getName().contains(targetOperator)) {
+					int maxParallelism = getMaxParallelism();
+					for (int i = 0; i < maxParallelism; i++) {
+						if (i % filer == 0) {
+							backupKeyGroups.add(i);
+						}
+					}
+				}
+			}
+		}
+
+
 		// create all task vertices
 		for (int i = 0; i < numTaskVertices; i++) {
 			ExecutionVertex vertex = new ExecutionVertex(
@@ -234,7 +252,8 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 					timeout,
 					initialGlobalModVersion,
 					createTimestamp,
-					maxPriorAttemptsHistoryLength);
+					maxPriorAttemptsHistoryLength,
+					backupKeyGroups);
 
 			this.taskVertices[i] = vertex;
 		}
@@ -273,7 +292,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 			throw new JobException("Creating the input splits caused an error: " + t.getMessage(), t);
 		}
 
-		standbyExecutionVertexs = new ArrayList<>();
+		this.standbyExecutionVertexs = new ArrayList<>();
 	}
 
 	/**
@@ -507,7 +526,8 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 					timeout,
 					initialGlobalModVersion,
 					createTimestamp,
-					maxPriorAttemptsHistoryLength);
+					maxPriorAttemptsHistoryLength,
+					new HashSet<>());
 
 				for (int num = 0; num < inputs.size(); num++) {
 					JobEdge edge = jobVertex.getInputs().get(num);
@@ -913,7 +933,8 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 				initialGlobalModVersion,
 				createTimestamp,
 				maxPriorAttemptsHistoryLength,
-				true);
+				true,
+				new HashSet<>());
 
 //			for (int num = 0; num < inputs.size(); num++) {
 //				JobEdge edge = jobVertex.getInputs().get(num);

@@ -139,7 +139,20 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			timeout,
 			1L,
 			System.currentTimeMillis(),
-			JobManagerOptions.MAX_ATTEMPTS_HISTORY_SIZE.defaultValue());
+			JobManagerOptions.MAX_ATTEMPTS_HISTORY_SIZE.defaultValue(), new HashSet<>());
+	}
+
+	public ExecutionVertex(
+		ExecutionJobVertex jobVertex,
+		int subTaskIndex,
+		IntermediateResult[] producedDataSets,
+		Time timeout,
+		long initialGlobalModVersion,
+		long createTimestamp,
+		int maxPriorExecutionHistoryLength,
+		Set<Integer> backupKeyGroups) {
+		this(jobVertex, subTaskIndex, producedDataSets, timeout, initialGlobalModVersion,
+			createTimestamp, maxPriorExecutionHistoryLength, false, backupKeyGroups);
 	}
 
 	public ExecutionVertex(
@@ -151,7 +164,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		long createTimestamp,
 		int maxPriorExecutionHistoryLength) {
 		this(jobVertex, subTaskIndex, producedDataSets, timeout, initialGlobalModVersion,
-			createTimestamp, maxPriorExecutionHistoryLength, false);
+			createTimestamp, maxPriorExecutionHistoryLength, false, new HashSet<>());
 	}
 
 	/**
@@ -174,7 +187,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			long initialGlobalModVersion,
 			long createTimestamp,
 			int maxPriorExecutionHistoryLength,
-			boolean isStandby) {
+			boolean isStandby,
+			Set<Integer> backupKeyGroups) {
 		this.isStandby = isStandby;
 
 		this.jobVertex = jobVertex;
@@ -231,7 +245,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			initialGlobalModVersion,
 			createTimestamp,
 			timeout,
-			isStandby);
+			isStandby,
+			backupKeyGroups);
 
 		// create a co-location scheduling hint, if necessary
 		CoLocationGroup clg = jobVertex.getCoLocationGroup();
@@ -889,7 +904,8 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		int attemptNumber,
 		boolean isStandby,
 		@Nullable List<Integer> srcAffectedKeygroups,
-		List<Integer> dstAffectedKeygroups) throws ExecutionGraphException {
+		List<Integer> dstAffectedKeygroups,
+		Set<Integer> backupKeyGroups) throws ExecutionGraphException {
 
 		// Produced intermediate results
 		List<ResultPartitionDeploymentDescriptor> producedPartitions = new ArrayList<>(resultPartitions.size());
@@ -976,6 +992,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			executionId,
 			targetSlot.getAllocationId(),
 			reconfigId,
+			backupKeyGroups,
 			subTaskIndex,
 			attemptNumber,
 			targetSlot.getPhysicalSlotNumber(),

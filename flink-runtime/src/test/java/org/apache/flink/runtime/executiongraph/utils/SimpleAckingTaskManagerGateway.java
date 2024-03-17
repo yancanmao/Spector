@@ -34,6 +34,7 @@ import org.apache.flink.runtime.messages.StackTraceSampleResponse;
 import org.apache.flink.runtime.spector.migration.ReconfigOptions;
 import org.apache.flink.runtime.state.KeyGroupRange;
 
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
@@ -120,11 +121,11 @@ public class SimpleAckingTaskManagerGateway implements TaskManagerGateway {
 
 	@Override
 	public void triggerCheckpoint(
-			ExecutionAttemptID executionAttemptID,
-			JobID jobId,
-			long checkpointId,
-			long timestamp,
-			CheckpointOptions checkpointOptions) {}
+            ExecutionAttemptID executionAttemptID,
+            JobID jobId,
+            long checkpointId,
+            long timestamp,
+            CheckpointOptions checkpointOptions) {}
 
 	@Override
 	public CompletableFuture<Acknowledge> freeSlot(AllocationID allocationId, Throwable cause, Time timeout) {
@@ -139,6 +140,11 @@ public class SimpleAckingTaskManagerGateway implements TaskManagerGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> dispatchStateToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, JobManagerTaskRestore taskRestore, KeyGroupRange keyGroupRange, int idInModel, Time timeout) {
+		return null;
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> updateBackupKeyGroupsToTask(ExecutionAttemptID attemptId, JobVertexID jobvertexId, Set<Integer> backupKeyGroups, Time rpcTimeout) {
 		return null;
 	}
 

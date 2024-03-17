@@ -207,6 +207,12 @@ public interface CheckpointStreamWithResultProvider extends Closeable {
 
 			if (taskLocalSnapshot != null) {
 
+				// TODO: Optimization: in HeapSnapshotStrategy, we have to snapshot affected keygroups that will be replicated remotely.
+				// TODO: Step 1: Separate the Combined StateHandle into per KeyGroup KeyedStateHandle, i.e., Map<Integer, KeyedStateHandle>
+				// TODO: Step 2: Store the KeyedStateHandles i.e., Map<Integer, KeyedStateHandle>, into the TaskExecutor's TaskStateManager.LocalSnapshotCache.
+				// TODO: Step 3: Reporting an empty taskLocalSnapshot to JobManager.
+				// TODO: Step 4: Create a new Communication Stack between TaskExecutors to make TaskExecutors sends Map<Integer, KeyedStateHandle> to remote replicaStateManagers.
+
 				KeyedStateHandle localKeyedState = new KeyGroupsStateHandle(keyGroupRangeOffsets, taskLocalSnapshot);
 				return SnapshotResult.withLocalState(jmKeyedState, localKeyedState);
 			} else {

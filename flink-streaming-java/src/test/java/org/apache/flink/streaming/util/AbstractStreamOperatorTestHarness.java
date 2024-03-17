@@ -65,14 +65,7 @@ import org.apache.flink.util.OutputTag;
 import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
@@ -482,14 +475,14 @@ public class AbstractStreamOperatorTestHarness<OUT> implements AutoCloseable {
 	}
 
 	/**
-	 * Calls {@link StreamOperator#snapshotState(long, long, CheckpointOptions, org.apache.flink.runtime.state.CheckpointStreamFactory, boolean)}.
+	 * Calls {@link StreamOperator#snapshotState(long, long, CheckpointOptions, org.apache.flink.runtime.state.CheckpointStreamFactory, boolean, java.util.Set)}.
 	 */
 	public OperatorSubtaskState snapshot(long checkpointId, long timestamp) throws Exception {
 		return snapshotWithLocalState(checkpointId, timestamp).getJobManagerOwnedState();
 	}
 
 	/**
-	 * Calls {@link StreamOperator#snapshotState(long, long, CheckpointOptions, org.apache.flink.runtime.state.CheckpointStreamFactory, boolean)}.
+	 * Calls {@link StreamOperator#snapshotState(long, long, CheckpointOptions, org.apache.flink.runtime.state.CheckpointStreamFactory, boolean, java.util.Set)}.
 	 */
 	public OperatorSnapshotFinalizer snapshotWithLocalState(long checkpointId, long timestamp) throws Exception {
 
@@ -497,7 +490,7 @@ public class AbstractStreamOperatorTestHarness<OUT> implements AutoCloseable {
 			checkpointId,
 			timestamp,
 			CheckpointOptions.forCheckpointWithDefaultLocation(),
-			checkpointStorage.resolveCheckpointStorageLocation(checkpointId, CheckpointStorageLocationReference.getDefault()), true);
+			checkpointStorage.resolveCheckpointStorageLocation(checkpointId, CheckpointStorageLocationReference.getDefault()), true, new HashSet<>());
 
 		return new OperatorSnapshotFinalizer(operatorStateResult);
 	}

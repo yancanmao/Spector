@@ -39,6 +39,7 @@ import org.junit.Test;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.concurrent.RunnableFuture;
 
 import static org.mockito.Mockito.mock;
@@ -143,7 +144,7 @@ public class StateSnapshotCompressionTest extends TestLogger {
 			state.update("45");
 			CheckpointStreamFactory streamFactory = new MemCheckpointStreamFactory(4 * 1024 * 1024);
 			RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshot =
-				stateBackend.snapshot(0L, 0L, streamFactory, CheckpointOptions.forCheckpointWithDefaultLocation(), true);
+				stateBackend.snapshot(0L, 0L, streamFactory, CheckpointOptions.forCheckpointWithDefaultLocation(), true, new HashSet<>());
 			snapshot.run();
 			SnapshotResult<KeyedStateHandle> snapshotResult = snapshot.get();
 			stateHandle = snapshotResult.getJobManagerOwnedSnapshot();

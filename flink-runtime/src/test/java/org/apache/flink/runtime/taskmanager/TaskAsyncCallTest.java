@@ -66,6 +66,7 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.Executor;
 
@@ -255,6 +256,7 @@ public class TaskAsyncCallTest extends TestLogger {
 			new ExecutionAttemptID(),
 			new AllocationID(),
 			ReconfigID.DEFAULT,
+			new HashSet<>(),
 			null,
 			0,
 			0,

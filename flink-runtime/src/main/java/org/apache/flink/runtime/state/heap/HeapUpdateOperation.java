@@ -76,6 +76,28 @@ public class HeapUpdateOperation<K> {
 		keySerializerRestored = false;
 	}
 
+	public void updateHeapState() throws Exception {
+		// TODO: how to remove old state?
+		// TODO: once the snapshot has been persisted, remove the key state from the source task.
+
+//		final Map<Integer, StateMetaInfoSnapshot> kvStatesById = new HashMap<>();
+//		registeredKVStates.clear();
+//		registeredPQStates.clear();
+
+//		boolean keySerializerRestored = false;
+
+		init();
+
+		for (KeyedStateHandle keyedStateHandle : stateHandles) {
+			List<Integer> hashedKeygroups = updateHeapStatePerKey(keyedStateHandle);
+			if (hashedKeygroups != null) {
+				for (int keygroup : hashedKeygroups) {
+					abstractInvokable.resume(keygroup);
+				}
+			}
+		}
+	}
+
 	public List<Integer> updateHeapStatePerKey(KeyedStateHandle keyedStateHandle) throws Exception {
 		if (keyedStateHandle == null) {
 			return null;
@@ -132,27 +154,7 @@ public class HeapUpdateOperation<K> {
 
 
 
-	public void updateHeapState() throws Exception {
-		// TODO: how to remove old state?
-		// TODO: once the snapshot has been persisted, remove the key state from the source task.
 
-//		final Map<Integer, StateMetaInfoSnapshot> kvStatesById = new HashMap<>();
-//		registeredKVStates.clear();
-//		registeredPQStates.clear();
-
-//		boolean keySerializerRestored = false;
-
-		init();
-
-		for (KeyedStateHandle keyedStateHandle : stateHandles) {
-			List<Integer> hashedKeygroups = updateHeapStatePerKey(keyedStateHandle);
-			if (hashedKeygroups != null) {
-				for (int keygroup : hashedKeygroups) {
-					abstractInvokable.resume(keygroup);
-				}
-			}
-		}
-	}
 
 	private void createOrCheckStateForMetaInfo(
 		List<StateMetaInfoSnapshot> restoredMetaInfo,
@@ -215,7 +217,6 @@ public class HeapUpdateOperation<K> {
 			fsDataInputStream.seek(offset);
 
 			int hashedKeyGroup = inView.readInt();
-
 			if (!migrateInKeygroup.contains(hashedKeyGroup)) {
 				continue;
 			}
@@ -229,6 +230,8 @@ public class HeapUpdateOperation<K> {
 
 			hashedKeyGroups.add(hashedKeyGroup);
 
+			final long start = System.currentTimeMillis();
+
 			try (InputStream kgCompressionInStream =
 					 streamCompressionDecorator.decorateWithCompression(fsDataInputStream)) {
 
@@ -239,6 +242,8 @@ public class HeapUpdateOperation<K> {
 					numStates,
 					readVersion);
 			}
+
+			LOG.info("++++++-- Elapsed " + (System.currentTimeMillis() - start) + " ms");
 		}
 
 		return hashedKeyGroups;

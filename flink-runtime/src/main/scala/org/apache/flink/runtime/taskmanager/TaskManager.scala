@@ -1228,6 +1228,7 @@ class TaskManager(
         tdd.getExecutionAttemptId,
         tdd.getAllocationId,
         tdd.getReconfigId,
+        tdd.getBackupKeygroups,
         tdd.getKeyGroupRange,
         tdd.getSubtaskIndex,
         tdd.getAttemptNumber,

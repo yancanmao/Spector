@@ -41,6 +41,7 @@ import org.apache.flink.runtime.spector.migration.ReconfigOptions;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.util.Preconditions;
 
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import scala.concurrent.duration.FiniteDuration;
@@ -180,11 +181,11 @@ public class ActorTaskManagerGateway implements TaskManagerGateway {
 
 	@Override
 	public void triggerCheckpoint(
-			ExecutionAttemptID executionAttemptID,
-			JobID jobId,
-			long checkpointId,
-			long timestamp,
-			CheckpointOptions checkpointOptions) {
+            ExecutionAttemptID executionAttemptID,
+            JobID jobId,
+            long checkpointId,
+            long timestamp,
+            CheckpointOptions checkpointOptions) {
 
 		Preconditions.checkNotNull(executionAttemptID);
 		Preconditions.checkNotNull(jobId);
@@ -218,6 +219,19 @@ public class ActorTaskManagerGateway implements TaskManagerGateway {
 
 		scala.concurrent.Future<Acknowledge> dispatchStateToStandbyTaskResult = actorGateway.ask(
 				new TaskMessages.dispatchStateToStandbyTask(executionAttemptID, taskRestore),
+				new FiniteDuration(timeout.getSize(), timeout.getUnit()))
+			.mapTo(ClassTag$.MODULE$.<Acknowledge>apply(Acknowledge.class));
+
+		return FutureUtils.toJava(dispatchStateToStandbyTaskResult);
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> updateBackupKeyGroupsToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, Set<Integer> backupKeyGroups, Time timeout) {
+		Preconditions.checkNotNull(executionAttemptID);
+		Preconditions.checkNotNull(timeout);
+
+		scala.concurrent.Future<Acknowledge> dispatchStateToStandbyTaskResult = actorGateway.ask(
+				new TaskMessages.updateBackupKeyGroupsToTask(executionAttemptID, backupKeyGroups),
 				new FiniteDuration(timeout.getSize(), timeout.getUnit()))
 			.mapTo(ClassTag$.MODULE$.<Acknowledge>apply(Acknowledge.class));
 

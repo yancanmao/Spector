@@ -39,6 +39,7 @@ import java.io.BufferedInputStream;
 import java.io.FileInputStream;
 import java.net.URL;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.RunnableFuture;
@@ -122,7 +123,7 @@ public class HeapKeyedStateBackendSnapshotMigrationTest extends HeapStateBackend
 					1L,
 					1L,
 					new MemCheckpointStreamFactory(4 * 1024 * 1024),
-					CheckpointOptions.forCheckpointWithDefaultLocation(), true);
+					CheckpointOptions.forCheckpointWithDefaultLocation(), true, new HashSet<>());
 
 			snapshot.run();
 		}

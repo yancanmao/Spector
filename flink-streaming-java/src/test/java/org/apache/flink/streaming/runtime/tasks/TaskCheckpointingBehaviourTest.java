@@ -91,9 +91,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
+import java.util.*;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.RunnableFuture;
 
@@ -240,6 +238,7 @@ public class TaskCheckpointingBehaviourTest extends TestLogger {
 				new ExecutionAttemptID(),
 				new AllocationID(),
 				ReconfigID.DEFAULT,
+				new HashSet<>(),
 				null,
 				0,
 				0,
@@ -337,11 +336,11 @@ public class TaskCheckpointingBehaviourTest extends TestLogger {
 						@Nonnull
 						@Override
 						public RunnableFuture<SnapshotResult<OperatorStateHandle>> snapshot(
-							long checkpointId,
-							long timestamp,
-							@Nonnull CheckpointStreamFactory streamFactory,
-							@Nonnull CheckpointOptions checkpointOptions,
-							boolean isChangelogEndabled) throws Exception {
+                                long checkpointId,
+                                long timestamp,
+                                @Nonnull CheckpointStreamFactory streamFactory,
+                                @Nonnull CheckpointOptions checkpointOptions,
+                                boolean isChangelogEndabled, Set<Integer> backupKeyGroups) throws Exception {
 
 							throw new Exception("Sync part snapshot exception.");
 						}
@@ -388,11 +387,11 @@ public class TaskCheckpointingBehaviourTest extends TestLogger {
 						@Nonnull
 						@Override
 						public RunnableFuture<SnapshotResult<OperatorStateHandle>> snapshot(
-							long checkpointId,
-							long timestamp,
-							@Nonnull CheckpointStreamFactory streamFactory,
-							@Nonnull CheckpointOptions checkpointOptions,
-							boolean isChangelogEndabled) throws Exception {
+                                long checkpointId,
+                                long timestamp,
+                                @Nonnull CheckpointStreamFactory streamFactory,
+                                @Nonnull CheckpointOptions checkpointOptions,
+                                boolean isChangelogEndabled, Set<Integer> backupKeyGroups) throws Exception {
 
 							return new FutureTask<>(() -> {
 								throw new Exception("Async part snapshot exception.");

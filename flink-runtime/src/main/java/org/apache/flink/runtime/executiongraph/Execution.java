@@ -61,12 +61,7 @@ import org.slf4j.Logger;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.function.Function;
@@ -171,6 +166,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 	private boolean isStandby;
 
+	private volatile Set<Integer> backupKeyGroups;
+
 	// --------------------------------------------------------------------------------------------
 
 	public Execution(
@@ -180,33 +177,29 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		long globalModVersion,
 		long startTimestamp,
 		Time rpcTimeout) {
-		this(executor, vertex, attemptNumber, globalModVersion, startTimestamp, rpcTimeout, false);
+		this(executor, vertex, attemptNumber, globalModVersion, startTimestamp, rpcTimeout, false, new HashSet<>());
 	}
 
 	/**
 	 * Creates a new Execution attempt.
 	 *
-	 * @param executor
-	 *             The executor used to dispatch callbacks from futures and asynchronous RPC calls.
-	 * @param vertex
-	 *             The execution vertex to which this Execution belongs
-	 * @param attemptNumber
-	 *             The execution attempt number.
-	 * @param globalModVersion
-	 *             The global modification version of the execution graph when this execution was created
-	 * @param startTimestamp
-	 *             The timestamp that marks the creation of this Execution
-	 * @param rpcTimeout
-	 *             The rpcTimeout for RPC calls like deploy/cancel/stop.
+	 * @param executor         The executor used to dispatch callbacks from futures and asynchronous RPC calls.
+	 * @param vertex           The execution vertex to which this Execution belongs
+	 * @param attemptNumber    The execution attempt number.
+	 * @param globalModVersion The global modification version of the execution graph when this execution was created
+	 * @param startTimestamp   The timestamp that marks the creation of this Execution
+	 * @param rpcTimeout       The rpcTimeout for RPC calls like deploy/cancel/stop.
+	 * @param backupKeyGroups
 	 */
 	public Execution(
-			Executor executor,
-			ExecutionVertex vertex,
-			int attemptNumber,
-			long globalModVersion,
-			long startTimestamp,
-			Time rpcTimeout,
-			boolean isStandby) {
+		Executor executor,
+		ExecutionVertex vertex,
+		int attemptNumber,
+		long globalModVersion,
+		long startTimestamp,
+		Time rpcTimeout,
+		boolean isStandby,
+		Set<Integer> backupKeyGroups) {
 
 		this.executor = checkNotNull(executor);
 		this.vertex = checkNotNull(vertex);
@@ -227,6 +220,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		this.assignedResource = null;
 
 		this.isStandby = isStandby;
+		this.backupKeyGroups = backupKeyGroups;
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -382,6 +376,19 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		}
 	}
 
+	public void setBackupKeyGroups(Set<Integer> backupKeyGroups) {
+		this.backupKeyGroups = backupKeyGroups;
+
+		CompletableFuture<Acknowledge> ack = updateBackupKeyGroupsByTaskRPCCall(backupKeyGroups);
+
+		try {
+			ack.get();
+		} catch (InterruptedException | ExecutionException e) {
+			e.printStackTrace();
+		}
+		LOG.info("++++++ Update backup keygroups for task {}.", vertex.getTaskNameWithSubtaskIndex());
+	}
+
 	/**
 	 * This method sends a dispatchStateToStandbyTask message to the instance of the assigned slot.
 	 *
@@ -408,6 +415,28 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			executor);
 
 		return dispatchStateResultFuture;
+	}
+
+	private CompletableFuture<Acknowledge> updateBackupKeyGroupsByTaskRPCCall(Set<Integer> backupKeyGroups) {
+		final LogicalSlot slot = assignedResource;
+
+		final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+
+		CompletableFuture<Acknowledge> updateResultFuture = FutureUtils.retry(
+			() -> taskManagerGateway.updateBackupKeyGroupsToTask(attemptId, vertex.getJobvertexId(), backupKeyGroups, rpcTimeout),
+			NUM_CANCEL_CALL_TRIES,
+			executor);
+
+		updateResultFuture.whenCompleteAsync(
+			(ack, failure) -> {
+				if (failure != null) {
+					fail(new Exception("Backup KeyGroups could not be updated to running task " +
+						vertex.getTaskNameWithSubtaskIndex() + '.', failure));
+				}
+			},
+			executor);
+
+		return updateResultFuture;
 	}
 
 	private CompletableFuture<Acknowledge> testRPCMessage(String requestId) {
@@ -773,7 +802,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				attemptNumber,
 				isStandby,
 				null,
-				null);
+				null,
+				backupKeyGroups);
 
 			// null taskRestore to let it be GC'ed
 			taskRestore = null;
@@ -1052,6 +1082,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		processFail(t, false);
 	}
 
+
 	public CompletableFuture<Void> scheduleReconfig(
 		ReconfigID reconfigId,
 		ReconfigOptions reconfigOptions,
@@ -1106,7 +1137,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				attemptNumber,
 				isStandby,
 				srcAffectedKeygroups,
-				dstAffectedKeygroups);
+				dstAffectedKeygroups,
+				backupKeyGroups);
 
 			// null taskRestore to let it be GC'ed
 			taskRestore = null;

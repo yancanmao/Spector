@@ -82,7 +82,8 @@ class HeapSnapshotStrategy<K>
 		long timestamp,
 		@Nonnull CheckpointStreamFactory primaryStreamFactory,
 		@Nonnull CheckpointOptions checkpointOptions,
-		boolean isChangelogEnabled) throws IOException {
+		boolean isChangelogEnabled,
+		Set<Integer> backupKeyGroups) throws IOException {
 
 		if (!hasRegisteredState()) {
 			return DoneFuture.of(SnapshotResult.empty());
@@ -162,7 +163,7 @@ class HeapSnapshotStrategy<K>
 
 
 					if (isChangelogEnabled) {
-						changlogedSnapshotHandle(localStream, outView, keyGroupRangeOffsets, changelogs, changelogCount, totalStateCount);
+						changlogedSnapshotHandle(localStream, outView, keyGroupRangeOffsets, changelogs, changelogCount, totalStateCount, backupKeyGroups);
 					} else {
 						nonChangelogedSnapshotHandle(localStream, outView, keyGroupRangeOffsets);
 					}
@@ -207,7 +208,12 @@ class HeapSnapshotStrategy<K>
 					}
 				}
 
-				private void changlogedSnapshotHandle(CheckpointStreamFactory.CheckpointStateOutputStream localStream, DataOutputViewStreamWrapper outView, long[] keyGroupRangeOffsets, boolean[] changelogs, int changelogCount, int totalStateCount) throws IOException {
+				private void changlogedSnapshotHandle(CheckpointStreamFactory.CheckpointStateOutputStream localStream,
+													  DataOutputViewStreamWrapper outView,
+													  long[] keyGroupRangeOffsets,
+													  boolean[] changelogs,
+													  int changelogCount,
+													  int totalStateCount, Set<Integer> backupKeyGroups) throws IOException {
 					for (int keyGroupPos = 0; keyGroupPos < keyGroupRange.getNumberOfKeyGroups(); ++keyGroupPos) {
 						int alignedKeyGroupId = keyGroupRange.getKeyGroupId(keyGroupPos);
 						keyGroupRangeOffsets[keyGroupPos] = localStream.getPos();
@@ -216,8 +222,10 @@ class HeapSnapshotStrategy<K>
 
 						totalStateCount++;
 
-						if (checkAndSerializeKeyState(localStream, outView, keyGroupRangeOffsets, changelogs, keyGroupPos, alignedKeyGroupId, hashedKeyGroup, cowStateStableSnapshots, stateNamesToId)) {
-							changelogCount++;
+						if (backupKeyGroups.contains(hashedKeyGroup)) {
+							if (checkAndSerializeKeyState(localStream, outView, keyGroupRangeOffsets, changelogs, keyGroupPos, alignedKeyGroupId, hashedKeyGroup, cowStateStableSnapshots, stateNamesToId)) {
+								changelogCount++;
+							}
 						}
 					}
 

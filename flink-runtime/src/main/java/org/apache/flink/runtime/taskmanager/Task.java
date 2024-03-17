@@ -94,6 +94,7 @@ import java.net.URL;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -104,6 +105,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
+import static org.apache.flink.runtime.spector.SpectorOptions.REPLICATE_KEYS_FILTER;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -298,6 +300,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		ExecutionAttemptID executionAttemptID,
 		AllocationID slotAllocationId,
 		ReconfigID reconfigId,
+		Set<Integer> backupKeyGroups,
 		@Nullable KeyGroupRange keyGroupRange,
 		int subtaskIndex,
 		int attemptNumber,
@@ -321,8 +324,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		ResultPartitionConsumableNotifier resultPartitionConsumableNotifier,
 		PartitionProducerStateChecker partitionProducerStateChecker,
 		Executor executor) {
-		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId, reconfigId, keyGroupRange,
-			subtaskIndex, attemptNumber, resultPartitionDeploymentDescriptors,
+		this(jobInformation, taskInformation, executionAttemptID, slotAllocationId, reconfigId, backupKeyGroups,
+			keyGroupRange, subtaskIndex, attemptNumber, resultPartitionDeploymentDescriptors,
 			inputGateDeploymentDescriptors, targetSlotNumber, memManager,
 			ioManager, networkEnvironment, bcVarManager, taskStateManager,
 			taskManagerActions, inputSplitProvider, checkpointResponder, aggregateManager,
@@ -341,6 +344,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		ExecutionAttemptID executionAttemptID,
 		AllocationID slotAllocationId,
 		ReconfigID reconfigId,
+		Set<Integer> backupKeyGroups,
 		@Nullable KeyGroupRange keyGroupRange,
 		int subtaskIndex,
 		int attemptNumber,
@@ -481,6 +485,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 
 		invokableHasBeenCanceled = new AtomicBoolean(false);
 
+
 		taskConfigManager = new TaskConfigManager(
 			jobId,
 			executionId,
@@ -489,7 +494,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			network,
 			ioManager,
 			metrics,
-			resultPartitionConsumableNotifier);
+			resultPartitionConsumableNotifier,
+			backupKeyGroups);
 
 		// finally, create the executing thread, but do not start it
 		executingThread = new Thread(TASK_THREADS_GROUP, this, taskNameWithSubtask);
@@ -1384,6 +1390,10 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			srcAffectedKeygroups,
 			dstAffectedKeygroups,
 			keyGroupRange);
+	}
+
+	public void updateBackupKeyGroups(Set<Integer> backupKeyGroups) {
+		taskConfigManager.setBackupKeyGroups(backupKeyGroups);
 	}
 
 	public void assignNewState(KeyGroupRange keyGroupRange, int idInModel, JobManagerTaskRestore taskRestore) {

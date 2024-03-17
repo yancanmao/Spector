@@ -34,10 +34,7 @@ import org.apache.flink.util.StringUtils;
 import javax.annotation.Nullable;
 
 import java.io.Serializable;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.RunnableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -71,10 +68,10 @@ class StateSnapshotTransformerTest {
 			CheckpointOptions checkpointOptions = CheckpointOptions.forCheckpointWithDefaultLocation();
 
 			RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshot1 =
-				backend.snapshot(1L, 0L, streamFactory, checkpointOptions, true);
+				backend.snapshot(1L, 0L, streamFactory, checkpointOptions, true, new HashSet<>());
 
 			RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshot2 =
-				backend.snapshot(2L, 0L, streamFactory, checkpointOptions, true);
+				backend.snapshot(2L, 0L, streamFactory, checkpointOptions, true, new HashSet<>());
 
 			Thread runner1 = new Thread(snapshot1, "snapshot1");
 			runner1.start();

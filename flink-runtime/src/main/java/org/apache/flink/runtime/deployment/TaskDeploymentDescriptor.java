@@ -39,6 +39,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * A task deployment descriptor contains all the information necessary to deploy a task on a task manager.
@@ -47,7 +49,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 	private static final long serialVersionUID = -3233562176034358530L;
 
-    /**
+	/**
 	 * Wrapper class for serialized values which may be offloaded to the {@link
 	 * org.apache.flink.runtime.blob.BlobServer} or not.
 	 *
@@ -133,6 +135,8 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	/** The ID referencing the rescale id of the task*/
 	private ReconfigID reconfigId;
 
+	private final Set<Integer> backupKeyGroups;
+
 	/** The task's index in the subtask group. */
 	private final int subtaskIndex;
 
@@ -180,7 +184,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors) {
 
 		this(jobId, serializedJobInformation, serializedTaskInformation,
-			executionAttemptId, allocationId, reconfigId, subtaskIndex, attemptNumber,
+			executionAttemptId, allocationId, reconfigId, new HashSet<>(), subtaskIndex, attemptNumber,
 			targetSlotNumber, taskRestore, keyGroupRange, idInModel, resultPartitionDeploymentDescriptors,
 			inputGateDeploymentDescriptors, null, null, false);
 	}
@@ -192,6 +196,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		ExecutionAttemptID executionAttemptId,
 		AllocationID allocationId,
 		ReconfigID reconfigId,
+		Set<Integer> backupKeyGroups,
 		int subtaskIndex,
 		int attemptNumber,
 		int targetSlotNumber,
@@ -212,6 +217,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		this.executionId = Preconditions.checkNotNull(executionAttemptId);
 		this.allocationId = Preconditions.checkNotNull(allocationId);
 		this.reconfigId = Preconditions.checkNotNull(reconfigId);
+		this.backupKeyGroups = Preconditions.checkNotNull(backupKeyGroups);
 
 		Preconditions.checkArgument(0 <= subtaskIndex, "The subtask index must be positive.");
 		this.subtaskIndex = subtaskIndex;
@@ -424,5 +430,9 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 	public Collection<Integer> getDstAffectedKeygroups() {
 		return dstAffectedKeygroups;
+	}
+
+	public Set<Integer> getBackupKeygroups() {
+		return backupKeyGroups;
 	}
 }

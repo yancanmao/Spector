@@ -250,16 +250,16 @@ public class DefaultOperatorStateBackend implements OperatorStateBackend {
 	@Nonnull
 	@Override
 	public RunnableFuture<SnapshotResult<OperatorStateHandle>> snapshot(
-		long checkpointId,
-		long timestamp,
-		@Nonnull CheckpointStreamFactory streamFactory,
-		@Nonnull CheckpointOptions checkpointOptions,
-		boolean isChangelogEnabled) throws Exception {
+            long checkpointId,
+            long timestamp,
+            @Nonnull CheckpointStreamFactory streamFactory,
+            @Nonnull CheckpointOptions checkpointOptions,
+            boolean isChangelogEnabled, Set<Integer> backupKeyGroups) throws Exception {
 
 		long syncStartTime = System.currentTimeMillis();
 
 		RunnableFuture<SnapshotResult<OperatorStateHandle>> snapshotRunner =
-			snapshotStrategy.snapshot(checkpointId, timestamp, streamFactory, checkpointOptions, isChangelogEnabled);
+			snapshotStrategy.snapshot(checkpointId, timestamp, streamFactory, checkpointOptions, isChangelogEnabled, backupKeyGroups);
 
 		snapshotStrategy.logSyncCompleted(streamFactory, syncStartTime);
 		return snapshotRunner;

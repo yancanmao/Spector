@@ -72,7 +72,7 @@ import org.apache.flink.runtime.query.KvStateClientProxy;
 import org.apache.flink.runtime.query.KvStateRegistry;
 import org.apache.flink.runtime.query.KvStateServer;
 import org.apache.flink.runtime.registration.RegistrationConnectionListener;
-import org.apache.flink.runtime.spector.replication.BackupStateManager;
+import org.apache.flink.runtime.spector.replication.ReplicaStateManager;
 import org.apache.flink.runtime.spector.migration.ReconfigOptions;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
@@ -233,7 +233,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	/**
 	 * The component to manage replicated state that stored in standby tasks.
 	 */
-	private final BackupStateManager backupStateManager;
+	private final ReplicaStateManager replicaStateManager;
 
 	private final boolean nettyStateTransmissionEnabled;
 
@@ -281,7 +281,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 		this.stackTraceSampleService = new StackTraceSampleService(rpcService.getScheduledExecutor());
 
-		this.backupStateManager = new BackupStateManager();
+		this.replicaStateManager = new ReplicaStateManager();
 
 		nettyStateTransmissionEnabled = taskManagerConfiguration.getConfiguration().getBoolean(NETTY_STATE_TRANSMISSION_ENABLED);
 		this.stateTransferDelay = taskManagerConfiguration.getConfiguration().getInteger(STATE_TRANSFER_DELAY);
@@ -576,9 +576,9 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 					taskRestore,
 					checkpointResponder);
 
-				Preconditions.checkState(!backupStateManager.replicas.containsKey(taskInformation.getJobVertexId()),
+				Preconditions.checkState(!replicaStateManager.replicas.containsKey(taskInformation.getJobVertexId()),
 					"++++++ backupStateManager should only maintain a replica for each jobVertex");
-				backupStateManager.put(taskInformation.getJobVertexId(), taskStateManager);
+				replicaStateManager.put(taskInformation.getJobVertexId(), taskStateManager);
 
 				jobManagerConnection.getTaskManagerActions().updateTaskExecutionState(
 					new TaskExecutionState(jobId, tdd.getExecutionAttemptId(), ExecutionState.STANDBY));
@@ -630,6 +630,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				tdd.getExecutionAttemptId(),
 				tdd.getAllocationId(),
 				tdd.getReconfigId(),
+				tdd.getBackupKeygroups(),
 				tdd.getKeyGroupRange(),
 				tdd.getSubtaskIndex(),
 				tdd.getAttemptNumber(),
@@ -712,7 +713,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				if (reconfigOptions.isUpdatingState()) {
 					log.info("++++++ update task state: " + tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId());
 
-					JobManagerTaskRestore backupTaskRestore = backupStateManager.getTaskRestoreFromReplica(task.getJobVertexId());
+					JobManagerTaskRestore backupTaskRestore = replicaStateManager.getTaskRestoreFromReplica(task.getJobVertexId());
 					JobManagerTaskRestore taskRestore = tdd.getTaskRestore();
 
 					if (taskRestore != null) {
@@ -815,13 +816,13 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		Task task = taskSlotTable.getTask(executionAttemptID);
 		if (task == null) {
 			log.info("++++++ " + jobvertexId + " Receive backup state");
-			TaskStateManager taskStateManager = backupStateManager.replicas.get(jobvertexId);
+			TaskStateManager taskStateManager = replicaStateManager.replicas.get(jobvertexId);
 
 			if (taskStateManager != null) {
 				JobID jobID = taskStateManager.getJobID();
 				JobManagerConnection jobManagerConnection = jobManagerTable.get(jobID);
 
-				backupStateManager.mergeState(jobvertexId, taskRestore);
+				replicaStateManager.mergeState(jobvertexId, taskRestore);
 //			taskStateManager.setTaskRestore(taskRestore);
 
 				log.debug("++++++ " + jobvertexId + " Replicate completed, Acking to the jobmaster");
@@ -846,7 +847,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			JobID jobID = task.getJobID();
 			JobManagerConnection jobManagerConnection = jobManagerTable.get(jobID);
 
-			JobManagerTaskRestore backupTaskRestore = backupStateManager.getTaskRestoreFromReplica(task.getJobVertexId());
+			JobManagerTaskRestore backupTaskRestore = replicaStateManager.getTaskRestoreFromReplica(task.getJobVertexId());
 
 			if (taskRestore != null) {
 				taskRestore.merge(backupTaskRestore);
@@ -867,6 +868,22 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 			return CompletableFuture.completedFuture(Acknowledge.get());
 		}
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> updateBackupKeyGroupsToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, Set<Integer> backupKeyGroups, Time timeout) {
+		log.info("++++++ Receiving BackupKeyGroups:{} to StreamTask {} in TaskExecutor {}",
+			backupKeyGroups, jobvertexId, this.getAddress());
+		final Task task = taskSlotTable.getTask(executionAttemptID);
+		if (task != null) {
+			task.updateBackupKeyGroups(backupKeyGroups);
+		} else {
+			final String message = "Cannot find task to update its configuration " + executionAttemptID + '.';
+
+			log.debug(message);
+			return FutureUtils.completedExceptionally(new TaskException(message));
+		}
+		return CompletableFuture.completedFuture(Acknowledge.get());
 	}
 
 	@Override

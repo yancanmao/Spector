@@ -83,11 +83,7 @@ import org.junit.Test;
 
 import java.io.EOFException;
 import java.io.IOException;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.Executor;
 
 import static org.junit.Assert.assertEquals;
@@ -269,6 +265,7 @@ public class InterruptSensitiveRestoreTest {
 			new ExecutionAttemptID(),
 			new AllocationID(),
 			ReconfigID.DEFAULT,
+			new HashSet<>(),
 			null,
 			0,
 			0,

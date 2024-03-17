@@ -37,6 +37,7 @@ import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.util.Preconditions;
 
 import javax.annotation.Nullable;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -160,6 +161,16 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 //		} else {
 			return taskExecutorGateway.dispatchStateToTask(executionAttemptID, jobvertexId, taskRestore, keyGroupRange, idInModel, timeout);
 //		}
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> updateBackupKeyGroupsToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId,
+																	  Set<Integer> backupKeyGroups, Time timeout) {
+		if (nettyStateTransmissionEnable && taskExecutorNettyClient != null) {
+			return taskExecutorNettyClient.updateBackupKeyGroupsToTask(executionAttemptID, jobvertexId, backupKeyGroups, timeout);
+		} else {
+			return taskExecutorGateway.updateBackupKeyGroupsToTask(executionAttemptID, jobvertexId, backupKeyGroups, timeout);
+		}
 	}
 
 	@Override

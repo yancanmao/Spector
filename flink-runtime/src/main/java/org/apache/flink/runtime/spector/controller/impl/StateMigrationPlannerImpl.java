@@ -56,6 +56,8 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 
 	private String orderFunction;
 
+	private int replicationFilter;
+
 	private final ExecutionGraph executionGraph;
 
 
@@ -74,6 +76,8 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 
 		this.orderFunction = configuration.getString(ORDER_FUNCTION);
 
+		this.replicationFilter = configuration.getInteger(REPLICATE_KEYS_FILTER);
+
 		this.jobVertexID = jobVertexID;
 		this.numOpenedSubtask = parallelism;
 
@@ -89,11 +93,26 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 	}
 
 	public void changePlan(int syncKeys, int replicationFilter, String orderFunction) {
+		// Wait until the reconfiguration is completed
+		while (reconfigExecutor.checkReplicationProgress());
 		this.syncKeys = syncKeys;
 		this.orderFunction = orderFunction;
+		if (this.replicationFilter != replicationFilter) {
+			this.replicationFilter = replicationFilter;
 
-		while (reconfigExecutor.checkReplicationProgress());
-		reconfigExecutor.updateBackupKeyGroups(replicationFilter);
+			// Stop checkpoint coordinator then start the reconfiguration
+			LOG.info("++++++ Stop Checkpoint Coordinator and start to make finalPlan");
+			CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
+			checkNotNull(checkpointCoordinator);
+			checkpointCoordinator.stopCheckpointScheduler();
+
+			reconfigExecutor.updateBackupKeyGroups(replicationFilter);
+
+			LOG.info("++++++ Resume Checkpoint Coordinator.");
+			if (checkpointCoordinator.isPeriodicCheckpointingConfigured()) {
+				checkpointCoordinator.startCheckpointScheduler();
+			}
+		}
 	}
 
 	@Override
@@ -147,7 +166,6 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 		}
 
 		LOG.info("++++++ Resume Checkpoint Coordinator.");
-		checkNotNull(checkpointCoordinator);
 		if (checkpointCoordinator.isPeriodicCheckpointingConfigured()) {
 			checkpointCoordinator.startCheckpointScheduler();
 		}

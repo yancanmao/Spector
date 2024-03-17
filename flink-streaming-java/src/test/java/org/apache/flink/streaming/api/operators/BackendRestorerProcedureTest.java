@@ -39,11 +39,7 @@ import org.apache.flink.util.function.FunctionWithException;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.RunnableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -89,7 +85,7 @@ public class BackendRestorerProcedureTest extends TestLogger {
 			listState.add(3);
 
 			RunnableFuture<SnapshotResult<OperatorStateHandle>> snapshot =
-				originalBackend.snapshot(0L, 0L, checkpointStreamFactory, CheckpointOptions.forCheckpointWithDefaultLocation(), true);
+				originalBackend.snapshot(0L, 0L, checkpointStreamFactory, CheckpointOptions.forCheckpointWithDefaultLocation(), true, new HashSet<>());
 
 			snapshot.run();
 			snapshotResult = snapshot.get();

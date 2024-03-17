@@ -81,10 +81,7 @@ import javax.annotation.Nonnull;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -1050,6 +1047,7 @@ public class TaskTest extends TestLogger {
 				executionAttemptId,
 				new AllocationID(),
 				ReconfigID.DEFAULT,
+				new HashSet<>(),
 				null,
 				0,
 				0,

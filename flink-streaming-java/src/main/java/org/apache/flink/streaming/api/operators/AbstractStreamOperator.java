@@ -61,9 +61,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
 import java.io.Serializable;
-import java.util.Collection;
-import java.util.List;
-import java.util.Locale;
+import java.util.*;
 
 /**
  * Base class for all stream operators. Operators that contain a user function should extend the class
@@ -416,7 +414,7 @@ public abstract class AbstractStreamOperator<OUT>
 
 	@Override
 	public final OperatorSnapshotFutures snapshotState(long checkpointId, long timestamp, CheckpointOptions checkpointOptions,
-													   CheckpointStreamFactory factory, boolean isChangelogEnabled) throws Exception {
+													   CheckpointStreamFactory factory, boolean isChangelogEnabled, Set<Integer> backupKeyGroups) throws Exception {
 
 		KeyGroupRange keyGroupRange = null != keyedStateBackend ?
 				keyedStateBackend.getKeyGroupRange() : KeyGroupRange.EMPTY_KEY_GROUP_RANGE;
@@ -437,12 +435,12 @@ public abstract class AbstractStreamOperator<OUT>
 
 			if (null != operatorStateBackend) {
 				snapshotInProgress.setOperatorStateManagedFuture(
-					operatorStateBackend.snapshot(checkpointId, timestamp, factory, checkpointOptions, true));
+					operatorStateBackend.snapshot(checkpointId, timestamp, factory, checkpointOptions, isChangelogEnabled, backupKeyGroups));
 			}
 
 			if (null != keyedStateBackend) {
 				snapshotInProgress.setKeyedStateManagedFuture(
-					keyedStateBackend.snapshot(checkpointId, timestamp, factory, checkpointOptions, isChangelogEnabled));
+					keyedStateBackend.snapshot(checkpointId, timestamp, factory, checkpointOptions, isChangelogEnabled, backupKeyGroups));
 			}
 		} catch (Exception snapshotException) {
 			try {
@@ -486,7 +484,7 @@ public abstract class AbstractStreamOperator<OUT>
 
 			if (null != operatorStateBackend) {
 				snapshotInProgress.setOperatorStateManagedFuture(
-					operatorStateBackend.snapshot(checkpointId, timestamp, factory, checkpointOptions, true));
+					operatorStateBackend.snapshot(checkpointId, timestamp, factory, checkpointOptions, true, new HashSet<>()));
 			}
 
 			if (null != keyedStateBackend) {

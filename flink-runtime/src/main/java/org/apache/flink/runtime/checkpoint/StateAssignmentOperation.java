@@ -854,6 +854,7 @@ public class StateAssignmentOperation {
 							int start = keyGroupRangeFromOldState.getStartKeyGroup();
 							int end = keyGroupRangeFromOldState.getEndKeyGroup();
 
+							// for byte stream state handle usage, to reduce the state size to be migrated over Akka rpc
 							long startOffset = keyGroupsStateHandle.getOffsetForKeyGroup(start);
 
 							try (FSDataInputStream fsDataInputStream = keyGroupsStateHandle.openInputStream()) {
@@ -878,20 +879,20 @@ public class StateAssignmentOperation {
 									fsDataInputStream.seek(offset);
 									int hashedKeyGroup = inView.readInt();
 
-//									hashedKeyGroupToHandle.put(
-//										hashedKeyGroup,
-//										Tuple3.of(offset, keyGroupsStateHandle.getDelegateStateHandle(), isModified));
-
-									StreamStateHandle curStateHandle = keyGroupsStateHandle.getDelegateStateHandle();
-//									// TODO: byte array can at most store 2gb state...
-									Preconditions.checkState(curStateHandle instanceof ByteStreamStateHandle,
-										"++++++ State handle operations are only supported for byted state handle");
-									StreamStateHandle newStateHandlePerKeyGroup =
-										((ByteStreamStateHandle) curStateHandle).copyOfRange(startOffset, offset, nextOffset);
-
 									hashedKeyGroupToHandle.put(
 										hashedKeyGroup,
-										Tuple3.of(startOffset, newStateHandlePerKeyGroup, isModified));
+										Tuple3.of(offset, keyGroupsStateHandle.getDelegateStateHandle(), isModified));
+
+//									StreamStateHandle curStateHandle = keyGroupsStateHandle.getDelegateStateHandle();
+////									// TODO: byte array can at most store 2gb state...
+//									Preconditions.checkState(curStateHandle instanceof ByteStreamStateHandle,
+//										"++++++ State handle operations are only supported for byted state handle");
+//									StreamStateHandle newStateHandlePerKeyGroup =
+//										((ByteStreamStateHandle) curStateHandle).copyOfRange(startOffset, offset, nextOffset);
+//
+//									hashedKeyGroupToHandle.put(
+//										hashedKeyGroup,
+//										Tuple3.of(startOffset, newStateHandlePerKeyGroup, isModified));
 								}
 							} catch (IOException err) {
 								throw new RuntimeException(err);

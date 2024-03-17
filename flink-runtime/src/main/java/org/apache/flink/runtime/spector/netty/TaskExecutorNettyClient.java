@@ -29,6 +29,7 @@ import org.slf4j.LoggerFactory;
 import java.io.Closeable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
@@ -164,6 +165,46 @@ public class TaskExecutorNettyClient implements Closeable {
 			} catch (InterruptedException ignored) { }
 		}
 		return submitFuture;
+	}
+
+	public CompletableFuture<Acknowledge> updateBackupKeyGroupsToTask(
+		ExecutionAttemptID executionAttemptID,
+		JobVertexID jobvertexId,
+		Set<Integer> backupKeyGroups,
+		Time timeout) {
+//		CompletableFuture<Acknowledge> submitFuture = new CompletableFuture<>();
+//		Channel channel = clientList.get(RandomUtils.nextInt(0, clientList.size())).getChannel();
+//		while (true) {
+//			if (channel.isWritable()) {
+//				TaskRPC taskRPC = new TaskRPC(
+//					executionAttemptID,
+//					jobvertexId,
+//					backupKeyGroups,
+//					timeout);
+//				if (deploymentChunkEnabled) {
+//					try {
+//						chunkedWriteAndFlush(submitFuture, channel, taskRPC, executionAttemptID);
+//					} catch (Exception e) {
+//						throw new RuntimeException(e);
+//					}
+//				} else {
+//					channel.writeAndFlush(taskRPC)
+//						.addListener((ChannelFutureListener) channelFuture -> {
+//							if (channelFuture.isSuccess()) {
+//								submitFuture.complete(Acknowledge.get());
+//							} else {
+//								submitFuture.completeExceptionally(channelFuture.cause());
+//							}
+//						});
+//				}
+//				break;
+//			}
+//			try {
+//				Thread.sleep(10);
+//			} catch (InterruptedException ignored) { }
+//		}
+//		return submitFuture;
+		throw new UnsupportedOperationException();
 	}
 
 	public CompletableFuture<Acknowledge> dispatchStateToTask(

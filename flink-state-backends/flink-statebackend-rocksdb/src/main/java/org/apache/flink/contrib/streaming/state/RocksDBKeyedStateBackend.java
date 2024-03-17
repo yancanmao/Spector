@@ -77,12 +77,7 @@ import javax.annotation.Nonnull;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Spliterator;
-import java.util.Spliterators;
+import java.util.*;
 import java.util.concurrent.RunnableFuture;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -409,6 +404,7 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
      * @param streamFactory      The factory that we can use for writing our state to streams.
      * @param checkpointOptions  Options for how to perform this checkpoint.
      * @param isChangelogEnabled
+     * @param backupKeyGroups
      * @return Future to the state handle of the snapshot data.
      * @throws Exception indicating a problem in the synchronous part of the checkpoint.
      */
@@ -418,7 +414,7 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
             final long checkpointId,
             final long timestamp,
             @Nonnull final CheckpointStreamFactory streamFactory,
-            @Nonnull CheckpointOptions checkpointOptions, boolean isChangelogEnabled) throws Exception {
+            @Nonnull CheckpointOptions checkpointOptions, boolean isChangelogEnabled, Set<Integer> backupKeyGroups) throws Exception {
 
 		long startTime = System.currentTimeMillis();
 
@@ -430,7 +426,7 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 				savepointSnapshotStrategy : checkpointSnapshotStrategy;
 
 		RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshotRunner =
-			chosenSnapshotStrategy.snapshot(checkpointId, timestamp, streamFactory, checkpointOptions, isChangelogEnabled);
+			chosenSnapshotStrategy.snapshot(checkpointId, timestamp, streamFactory, checkpointOptions, isChangelogEnabled, backupKeyGroups);
 
 		chosenSnapshotStrategy.logSyncCompleted(streamFactory, startTime);
 

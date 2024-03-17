@@ -32,6 +32,7 @@ import org.apache.flink.util.Disposable;
 import javax.annotation.Nullable;
 import java.io.Serializable;
 import java.util.Collection;
+import java.util.Set;
 
 /**
  * Basic interface for stream operators. Implementers would implement one of
@@ -129,7 +130,8 @@ public interface StreamOperator<OUT> extends CheckpointListener, KeyContext, Dis
 		long timestamp,
 		CheckpointOptions checkpointOptions,
 		CheckpointStreamFactory storageLocation,
-		boolean isChangelogEnabled) throws Exception;
+		boolean isChangelogEnabled,
+		Set<Integer> backupKeyGroups) throws Exception;
 
 	/**
 	 * snapshot

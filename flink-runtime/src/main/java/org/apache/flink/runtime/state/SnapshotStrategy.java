@@ -23,6 +23,7 @@ import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 
 import javax.annotation.Nonnull;
 
+import java.util.Set;
 import java.util.concurrent.RunnableFuture;
 
 /**
@@ -45,6 +46,7 @@ public interface SnapshotStrategy<S extends StateObject> {
 	 * @param streamFactory      The factory that we can use for writing our state to streams.
 	 * @param checkpointOptions  Options for how to perform this checkpoint.
 	 * @param isChangelogEnabled
+	 * @param backupKeyGroups
 	 * @return A runnable future that will yield a {@link StateObject}.
 	 */
 	@Nonnull
@@ -53,5 +55,6 @@ public interface SnapshotStrategy<S extends StateObject> {
 		long timestamp,
 		@Nonnull CheckpointStreamFactory streamFactory,
 		@Nonnull CheckpointOptions checkpointOptions,
-		boolean isChangelogEnabled) throws Exception;
+		boolean isChangelogEnabled,
+		Set<Integer> backupKeyGroups) throws Exception;
 }

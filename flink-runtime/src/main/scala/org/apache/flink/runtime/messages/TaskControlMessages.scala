@@ -26,6 +26,8 @@ import org.apache.flink.runtime.executiongraph.{ExecutionAttemptID, PartitionInf
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID
 import org.apache.flink.runtime.taskmanager.TaskExecutionState
 
+import java.util.Set
+
 /**
  * A set of messages that control the deployment and the state of Tasks executed
  * on the TaskManager.
@@ -180,6 +182,11 @@ object TaskMessages {
   case class dispatchStateToStandbyTask(
                                          attemptID: ExecutionAttemptID,
                                          taskRestore: JobManagerTaskRestore)
+    extends TaskMessage with RequiresLeaderSessionID
+
+  case class updateBackupKeyGroupsToTask(
+                                         attemptID: ExecutionAttemptID,
+                                         backupKeyGroups: util.Set[Integer])
     extends TaskMessage with RequiresLeaderSessionID
 
   case class testRPC(attemptID: ExecutionAttemptID, requestId: String)

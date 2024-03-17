@@ -808,7 +808,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			checkpointOptions,
 			storage,
 			checkpointMetrics,
-			getEnvironment().getJobConfiguration().getBoolean(SNAPSHOT_CHANGELOG_ENABLED));
+			getEnvironment().getJobConfiguration().getBoolean(SNAPSHOT_CHANGELOG_ENABLED),
+			((RuntimeEnvironment) getEnvironment()).taskConfigManager.getBackupKeyGroups());
 
 		checkpointingOperation.executeCheckpointing();
 	}
@@ -1179,10 +1180,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			boolean hasAckState = acknowledgedTaskStateSnapshot.hasState();
 			boolean hasLocalState = localTaskStateSnapshot.hasState();
 
-			if (owner.idInModel != 0 || owner.idInModel != 3) {
-				System.out.println("= =");
-			}
-
 			LOG.info("++++++ {} - reported the following states in snapshot for checkpoint {}: {}, {}.",
 				owner.getName(), checkpointMetaData.getCheckpointId(), acknowledgedTaskStateSnapshot, checkpointMetrics);
 
@@ -1433,6 +1430,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		private final StreamOperator<?>[] allOperators;
 		private final boolean isChangelogEnabled;
 
+		private final Set<Integer> backupKeyGroups;
+
 		private long startSyncPartNano;
 		private long startAsyncPartNano;
 
@@ -1446,7 +1445,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			CheckpointOptions checkpointOptions,
 			CheckpointStreamFactory checkpointStorageLocation,
 			CheckpointMetrics checkpointMetrics,
-			boolean isChangelogEnabled) {
+			boolean isChangelogEnabled,
+			Set<Integer> backupKeyGroups) {
 
 			this.owner = Preconditions.checkNotNull(owner);
 			this.checkpointMetaData = Preconditions.checkNotNull(checkpointMetaData);
@@ -1456,6 +1456,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			this.allOperators = owner.operatorChain.getAllOperators();
 			this.operatorSnapshotsInProgress = new HashMap<>(allOperators.length);
 			this.isChangelogEnabled = isChangelogEnabled;
+			this.backupKeyGroups = backupKeyGroups;
 		}
 
 		public void executeCheckpointing() throws Exception {
@@ -1526,7 +1527,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 						checkpointMetaData.getTimestamp(),
 						checkpointOptions,
 						storageLocation,
-						isChangelogEnabled);
+						isChangelogEnabled,
+						backupKeyGroups);
 				operatorSnapshotsInProgress.put(op.getOperatorID(), snapshotInProgress);
 			}
 		}

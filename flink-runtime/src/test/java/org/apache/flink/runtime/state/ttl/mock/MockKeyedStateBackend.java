@@ -54,11 +54,7 @@ import org.apache.flink.util.FlinkRuntimeException;
 
 import javax.annotation.Nonnull;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.RunnableFuture;
 import java.util.stream.Collectors;
@@ -179,7 +175,7 @@ public class MockKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
             long checkpointId,
             long timestamp,
             @Nonnull CheckpointStreamFactory streamFactory,
-            @Nonnull CheckpointOptions checkpointOptions, boolean isChangelogEnabled) {
+            @Nonnull CheckpointOptions checkpointOptions, boolean isChangelogEnabled, Set<Integer> backupKeyGroups) {
 		return new FutureTask<>(() ->
 			SnapshotResult.of(new MockKeyedStateHandle<>(copy(stateValues, stateSnapshotFilters))));
 	}

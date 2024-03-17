@@ -42,7 +42,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * Base implementation of KeyedStateBackend. The state can be checkpointed
- * to streams using {@link SnapshotStrategy#snapshot(long, long, CheckpointStreamFactory, CheckpointOptions, boolean)}.
+ * to streams using {@link SnapshotStrategy#snapshot(long, long, CheckpointStreamFactory, CheckpointOptions, boolean, java.util.Set)}.
  *
  * @param <K> Type of the key by which state is keyed.
  */

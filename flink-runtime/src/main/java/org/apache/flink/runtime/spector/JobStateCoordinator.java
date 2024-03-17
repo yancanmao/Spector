@@ -183,9 +183,16 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 							backupKeyGroups.add(i);
 						}
 					}
+
+					for (ExecutionVertex vertex : value.getTaskVertices()) {
+						Execution execution = vertex.getCurrentExecutionAttempt();
+						execution.setBackupKeyGroups(backupKeyGroups);
+					}
 				}
 			});
 		}
+
+
 	}
 
 	public void setSlotsMap(CompletableFuture<Collection<TaskManagerSlot>> allSlots) {

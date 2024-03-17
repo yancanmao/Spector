@@ -33,6 +33,7 @@ import org.apache.flink.runtime.spector.migration.ReconfigOptions;
 import org.apache.flink.runtime.rpc.RpcTimeout;
 import org.apache.flink.runtime.state.KeyGroupRange;
 
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -143,10 +144,10 @@ public interface TaskManagerGateway {
 	 * Trigger for the given task a checkpoint.
 	 *
 	 * @param executionAttemptID identifying the task
-	 * @param jobId identifying the job to which the task belongs
-	 * @param checkpointId of the checkpoint to trigger
-	 * @param timestamp of the checkpoint to trigger
-	 * @param checkpointOptions of the checkpoint to trigger
+	 * @param jobId              identifying the job to which the task belongs
+	 * @param checkpointId       of the checkpoint to trigger
+	 * @param timestamp          of the checkpoint to trigger
+	 * @param checkpointOptions  of the checkpoint to trigger
 	 */
 	void triggerCheckpoint(
 		ExecutionAttemptID executionAttemptID,
@@ -183,6 +184,10 @@ public interface TaskManagerGateway {
 		ExecutionAttemptID executionAttemptID,
 		JobVertexID jobvertexId, JobManagerTaskRestore taskRestore,
 		KeyGroupRange keyGroupRange, int idInModel, Time timeout);
+
+	CompletableFuture<Acknowledge> updateBackupKeyGroupsToTask(
+		ExecutionAttemptID attemptId,
+		JobVertexID jobvertexId, Set<Integer> backupKeyGroups, Time rpcTimeout);
 
 	CompletableFuture<Acknowledge> testRPC(
 		ExecutionAttemptID executionAttemptID,

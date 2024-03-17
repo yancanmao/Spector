@@ -40,10 +40,7 @@ import org.apache.flink.util.Preconditions;
 import javax.annotation.Nonnull;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.RunnableFuture;
 
 /** Base class for state backend test context. */
@@ -139,7 +136,7 @@ public abstract class StateBackendTestContext {
 	RunnableFuture<SnapshotResult<KeyedStateHandle>> triggerSnapshot() throws Exception {
 		RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshotRunnableFuture =
 			keyedStateBackend.snapshot(682375462392L, 10L,
-				checkpointStorageLocation, CheckpointOptions.forCheckpointWithDefaultLocation(), true);
+				checkpointStorageLocation, CheckpointOptions.forCheckpointWithDefaultLocation(), true, new HashSet<>());
 		if (!snapshotRunnableFuture.isDone()) {
 			snapshotRunnableFuture.run();
 		}

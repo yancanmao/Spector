@@ -89,6 +89,7 @@ import javax.annotation.Nonnull;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.FutureTask;
@@ -162,6 +163,7 @@ public class StreamTaskTerminationTest extends TestLogger {
 			new ExecutionAttemptID(),
 			new AllocationID(),
 			ReconfigID.DEFAULT,
+			new HashSet<>(),
 			null,
 			0,
 			0,
@@ -288,7 +290,7 @@ public class StreamTaskTerminationTest extends TestLogger {
 			@Nonnull Collection<OperatorStateHandle> stateHandles,
 			CloseableRegistry cancelStreamRegistry) throws Exception {
 			OperatorStateBackend operatorStateBackend = mock(OperatorStateBackend.class);
-			when(operatorStateBackend.snapshot(anyLong(), anyLong(), any(CheckpointStreamFactory.class), any(CheckpointOptions.class), true))
+			when(operatorStateBackend.snapshot(anyLong(), anyLong(), any(CheckpointStreamFactory.class), any(CheckpointOptions.class), true, new HashSet<>()))
 				.thenReturn(new FutureTask<>(new BlockingCallable()));
 
 			return operatorStateBackend;

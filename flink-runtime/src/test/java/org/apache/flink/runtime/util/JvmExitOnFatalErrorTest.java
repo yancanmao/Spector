@@ -75,6 +75,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -202,6 +203,7 @@ public class JvmExitOnFatalErrorTest {
 						executionAttemptID,
 						slotAllocationId,
 						ReconfigID.DEFAULT,
+						new HashSet<>(),
 						null,
 						0,       // subtaskIndex
 						0,       // attemptNumber

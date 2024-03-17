@@ -66,6 +66,7 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.RunnableFuture;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -291,16 +292,16 @@ public class HeapKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 	@Override
 	@SuppressWarnings("unchecked")
 	public RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshot(
-		final long checkpointId,
-		final long timestamp,
-		@Nonnull final CheckpointStreamFactory streamFactory,
-		@Nonnull CheckpointOptions checkpointOptions,
-		boolean isChangelogEnabled) throws IOException {
+            final long checkpointId,
+            final long timestamp,
+            @Nonnull final CheckpointStreamFactory streamFactory,
+            @Nonnull CheckpointOptions checkpointOptions,
+            boolean isChangelogEnabled, Set<Integer> backupKeyGroups) throws IOException {
 
 		long startTime = System.currentTimeMillis();
 
 		final RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshotRunner =
-			snapshotStrategy.snapshot(checkpointId, timestamp, streamFactory, checkpointOptions, isChangelogEnabled);
+			snapshotStrategy.snapshot(checkpointId, timestamp, streamFactory, checkpointOptions, isChangelogEnabled, backupKeyGroups);
 
 		snapshotStrategy.logSyncCompleted(streamFactory, startTime);
 		return snapshotRunner;

@@ -1,3 +1,4 @@
+
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -45,6 +46,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Set;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -69,19 +71,21 @@ public class TaskConfigManager {
 
 	private final ResultPartitionConsumableNotifier resultPartitionConsumableNotifier;
 
+	private volatile Set<Integer> backupKeyGroups;
+
 	private volatile TaskReconfigMeta reconfigMeta;
 
 	private volatile ResultPartition[] storedOldWriterCopies;
 
 	public TaskConfigManager(
-			JobID jobId,
-			ExecutionAttemptID executionId,
-			String taskNameWithSubtaskAndId,
-			TaskActions taskActions,
-			NetworkEnvironment network,
-			IOManager ioManager,
-			TaskMetricGroup metrics,
-			ResultPartitionConsumableNotifier notifier) {
+		JobID jobId,
+		ExecutionAttemptID executionId,
+		String taskNameWithSubtaskAndId,
+		TaskActions taskActions,
+		NetworkEnvironment network,
+		IOManager ioManager,
+		TaskMetricGroup metrics,
+		ResultPartitionConsumableNotifier notifier, Set<Integer> backupKeyGroups) {
 
 		this.jobId = checkNotNull(jobId);
 		this.executionId = checkNotNull(executionId);
@@ -91,6 +95,7 @@ public class TaskConfigManager {
 		this.ioManager = checkNotNull(ioManager);
 		this.metrics = checkNotNull(metrics);
 		this.resultPartitionConsumableNotifier = checkNotNull(notifier);
+		this.backupKeyGroups = backupKeyGroups;
 	}
 
 	public void prepareReconfigMeta(
@@ -276,5 +281,14 @@ public class TaskConfigManager {
 
 	public Collection<Integer> getDstAffectedKeygroups() {
 		return reconfigMeta.getDstAffectedKeygroups();
+	}
+
+	public void setBackupKeyGroups(Set<Integer> backupKeyGroups) {
+		this.backupKeyGroups = backupKeyGroups;
+	}
+
+
+	public Set<Integer> getBackupKeyGroups() {
+		return backupKeyGroups;
 	}
 }

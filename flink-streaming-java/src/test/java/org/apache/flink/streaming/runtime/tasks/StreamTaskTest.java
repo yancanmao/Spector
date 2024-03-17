@@ -127,6 +127,7 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -332,9 +333,9 @@ public class StreamTaskTest extends TestLogger {
 
 		final Exception testException = new Exception("Test exception");
 
-		when(streamOperator1.snapshotState(anyLong(), anyLong(), any(CheckpointOptions.class), any(CheckpointStreamFactory.class), true)).thenReturn(operatorSnapshotResult1);
-		when(streamOperator2.snapshotState(anyLong(), anyLong(), any(CheckpointOptions.class), any(CheckpointStreamFactory.class), true)).thenReturn(operatorSnapshotResult2);
-		when(streamOperator3.snapshotState(anyLong(), anyLong(), any(CheckpointOptions.class), any(CheckpointStreamFactory.class), true)).thenThrow(testException);
+		when(streamOperator1.snapshotState(anyLong(), anyLong(), any(CheckpointOptions.class), any(CheckpointStreamFactory.class), true, new HashSet<>())).thenReturn(operatorSnapshotResult1);
+		when(streamOperator2.snapshotState(anyLong(), anyLong(), any(CheckpointOptions.class), any(CheckpointStreamFactory.class), true, new HashSet<>())).thenReturn(operatorSnapshotResult2);
+		when(streamOperator3.snapshotState(anyLong(), anyLong(), any(CheckpointOptions.class), any(CheckpointStreamFactory.class), true, new HashSet<>())).thenThrow(testException);
 
 		OperatorID operatorID1 = new OperatorID();
 		OperatorID operatorID2 = new OperatorID();
@@ -405,9 +406,9 @@ public class StreamTaskTest extends TestLogger {
 
 		when(operatorSnapshotResult3.getOperatorStateRawFuture()).thenReturn(failingFuture);
 
-		when(streamOperator1.snapshotState(anyLong(), anyLong(), any(CheckpointOptions.class), any(CheckpointStreamFactory.class), true)).thenReturn(operatorSnapshotResult1);
-		when(streamOperator2.snapshotState(anyLong(), anyLong(), any(CheckpointOptions.class), any(CheckpointStreamFactory.class), true)).thenReturn(operatorSnapshotResult2);
-		when(streamOperator3.snapshotState(anyLong(), anyLong(), any(CheckpointOptions.class), any(CheckpointStreamFactory.class), true)).thenReturn(operatorSnapshotResult3);
+		when(streamOperator1.snapshotState(anyLong(), anyLong(), any(CheckpointOptions.class), any(CheckpointStreamFactory.class), true, new HashSet<>())).thenReturn(operatorSnapshotResult1);
+		when(streamOperator2.snapshotState(anyLong(), anyLong(), any(CheckpointOptions.class), any(CheckpointStreamFactory.class), true, new HashSet<>())).thenReturn(operatorSnapshotResult2);
+		when(streamOperator3.snapshotState(anyLong(), anyLong(), any(CheckpointOptions.class), any(CheckpointStreamFactory.class), true, new HashSet<>())).thenReturn(operatorSnapshotResult3);
 
 		OperatorID operatorID1 = new OperatorID();
 		OperatorID operatorID2 = new OperatorID();
@@ -511,7 +512,7 @@ public class StreamTaskTest extends TestLogger {
 			DoneFuture.of(SnapshotResult.of(managedOperatorStateHandle)),
 			DoneFuture.of(SnapshotResult.of(rawOperatorStateHandle)));
 
-		when(streamOperator.snapshotState(anyLong(), anyLong(), any(CheckpointOptions.class), any(CheckpointStreamFactory.class), true)).thenReturn(operatorSnapshotResult);
+		when(streamOperator.snapshotState(anyLong(), anyLong(), any(CheckpointOptions.class), any(CheckpointStreamFactory.class), true, new HashSet<>())).thenReturn(operatorSnapshotResult);
 
 		StreamOperator<?>[] streamOperators = {streamOperator};
 
@@ -615,7 +616,7 @@ public class StreamTaskTest extends TestLogger {
 			DoneFuture.of(SnapshotResult.of(managedOperatorStateHandle)),
 			DoneFuture.of(SnapshotResult.of(rawOperatorStateHandle)));
 
-		when(streamOperator.snapshotState(anyLong(), anyLong(), any(CheckpointOptions.class), any(CheckpointStreamFactory.class), true)).thenReturn(operatorSnapshotResult);
+		when(streamOperator.snapshotState(anyLong(), anyLong(), any(CheckpointOptions.class), any(CheckpointStreamFactory.class), true, new HashSet<>())).thenReturn(operatorSnapshotResult);
 
 		StreamOperator<?>[] streamOperators = {streamOperator};
 
@@ -714,7 +715,7 @@ public class StreamTaskTest extends TestLogger {
 
 		// mock the returned empty snapshot result (all state handles are null)
 		OperatorSnapshotFutures statelessOperatorSnapshotResult = new OperatorSnapshotFutures();
-		when(statelessOperator.snapshotState(anyLong(), anyLong(), any(CheckpointOptions.class), any(CheckpointStreamFactory.class), true))
+		when(statelessOperator.snapshotState(anyLong(), anyLong(), any(CheckpointOptions.class), any(CheckpointStreamFactory.class), true, new HashSet<>()))
 				.thenReturn(statelessOperatorSnapshotResult);
 
 		// set up the task
@@ -929,6 +930,7 @@ public class StreamTaskTest extends TestLogger {
 			new ExecutionAttemptID(),
 			new AllocationID(),
 			ReconfigID.DEFAULT,
+			new HashSet<>(),
 			null,
 			0,
 			0,

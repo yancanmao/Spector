@@ -1,34 +1,21 @@
 package org.apache.flink.runtime.spector.replication;
 
-import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.api.java.tuple.Tuple3;
-import org.apache.flink.core.fs.FSDataInputStream;
-import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
-import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
-import org.apache.flink.runtime.checkpoint.StateObjectCollection;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
-import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.*;
-import org.apache.flink.runtime.state.memory.ByteStreamStateHandle;
-import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.util.Preconditions;
 
-import java.io.IOException;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
 
 /**
  * Instantiated on each task manager, each Job need to instantiate one TaskStateManager on each TaskManager
  * TODO: maybe we do not need this class, we assign a task to be a backup task, other task can access the task to get the backup state.
  */
-public class BackupStateManager {
+public class ReplicaStateManager {
 	public Map<JobVertexID, TaskStateManager> replicas;
 
-	public BackupStateManager() {
+	public ReplicaStateManager() {
 		replicas = new ConcurrentHashMap<>();
 	}
 

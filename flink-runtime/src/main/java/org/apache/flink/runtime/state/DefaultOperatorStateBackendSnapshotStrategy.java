@@ -27,10 +27,7 @@ import org.apache.flink.runtime.state.metainfo.StateMetaInfoSnapshot;
 import javax.annotation.Nonnull;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.RunnableFuture;
 
@@ -64,7 +61,7 @@ class DefaultOperatorStateBackendSnapshotStrategy extends AbstractSnapshotStrate
             final long checkpointId,
             final long timestamp,
             @Nonnull final CheckpointStreamFactory streamFactory,
-            @Nonnull final CheckpointOptions checkpointOptions, boolean isChangelogEnabled) throws IOException {
+            @Nonnull final CheckpointOptions checkpointOptions, boolean isChangelogEnabled, Set<Integer> backupKeyGroups) throws IOException {
 
 		if (registeredOperatorStates.isEmpty() && registeredBroadcastStates.isEmpty()) {
 			return DoneFuture.of(SnapshotResult.empty());
