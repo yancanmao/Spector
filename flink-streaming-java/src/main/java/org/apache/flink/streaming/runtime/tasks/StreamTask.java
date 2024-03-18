@@ -21,13 +21,13 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.TaskInfo;
 import org.apache.flink.api.common.accumulators.Accumulator;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.fs.CloseableRegistry;
+import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.fs.FileSystemSafetyNet;
-import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
-import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
-import org.apache.flink.runtime.checkpoint.CheckpointOptions;
-import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
+import org.apache.flink.core.memory.DataInputViewStreamWrapper;
+import org.apache.flink.runtime.checkpoint.*;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
@@ -40,13 +40,8 @@ import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.runtime.spector.TaskConfigManager;
-import org.apache.flink.runtime.state.CheckpointStorage;
-import org.apache.flink.runtime.state.CheckpointStreamFactory;
-import org.apache.flink.runtime.state.KeyGroupRange;
-import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
-import org.apache.flink.runtime.state.StateBackend;
-import org.apache.flink.runtime.state.StateBackendLoader;
-import org.apache.flink.runtime.state.TaskStateManager;
+import org.apache.flink.runtime.state.*;
+import org.apache.flink.runtime.state.memory.ByteStreamStateHandle;
 import org.apache.flink.runtime.taskmanager.DispatcherThreadFactory;
 import org.apache.flink.runtime.taskmanager.RuntimeEnvironment;
 import org.apache.flink.runtime.util.profiling.MetricsManager;
@@ -72,6 +67,8 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 
 import java.io.Closeable;
+import java.io.IOException;
+import java.lang.reflect.Array;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -1132,6 +1129,20 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					OperatorSnapshotFinalizer finalizedSnapshots =
 						new OperatorSnapshotFinalizer(snapshotInProgress);
 
+					OperatorSubtaskState operatorSubtaskState = finalizedSnapshots.getJobManagerOwnedState();
+					for (KeyedStateHandle keyedStateHandle : operatorSubtaskState.getManagedKeyedState()) {
+						if (keyedStateHandle != null) {
+							if (keyedStateHandle instanceof KeyGroupsStateHandle) {
+								KeyGroupsStateHandle keyGroupsStateHandle = (KeyGroupsStateHandle) keyedStateHandle;
+								// Step 1: Separate the Combined StateHandle into per KeyGroup KeyedStateHandle, i.e., Map<Integer, KeyedStateHandle>
+								Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle = composeSnapshotToJM(keyGroupsStateHandle);
+								// TODO: Step 2: Store the KeyedStateHandles i.e., Map<Integer, KeyedStateHandle>, into the TaskExecutor's TaskStateManager.LocalSnapshotCache.
+								// TODO: Step 3: Reporting an empty taskLocalSnapshot to JobManager.
+								// TODO: Step 4: Create a new Communication Stack between TaskExecutors to make TaskExecutors sends Map<Integer, KeyedStateHandle> to remote replicaStateManagers.
+							}
+						}
+					}
+
 					jobManagerTaskOperatorSubtaskStates.putSubtaskStateByOperatorID(
 						operatorID,
 						finalizedSnapshots.getJobManagerOwnedState());
@@ -1201,6 +1212,83 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 			LOG.trace("{} - reported the following states in snapshot for checkpoint {}: {}.",
 				owner.getName(), checkpointMetaData.getCheckpointId(), acknowledgedTaskStateSnapshot);
+		}
+
+		/**
+		 * propose an empty state handle to JM and also prepare per KeyGroup KeyedStateHandle to be sent to remote destinations
+		 */
+		static Map<Integer, Tuple2<Long, StreamStateHandle>> composeSnapshotToJM(KeyGroupsStateHandle keyGroupsStateHandle) {
+			Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle = new HashMap<>();
+
+			KeyGroupRangeOffsets keyGroupRangeOffsets = keyGroupsStateHandle.getGroupRangeOffsets();
+			StreamStateHandle jobManagerOwnedSnapshot = keyGroupsStateHandle.getDelegateStateHandle();
+			// compose an empty state snapshot that can be sent to JobManager
+			StreamStateHandle jobManagerOwnedSnapshotToJM;
+			KeyGroupRangeOffsets keyGroupRangeOffsetsToJM;
+
+			// Step 1: Separate the Combined StateHandle into per KeyGroup KeyedStateHandle, i.e., Map<Integer, KeyedStateHandle>
+			if (jobManagerOwnedSnapshot instanceof ByteStreamStateHandle) {
+
+				ByteStreamStateHandle bytedJobManagerOwnedSnapshot = (ByteStreamStateHandle) jobManagerOwnedSnapshot;
+				try {
+					FSDataInputStream fsDataInputStream = bytedJobManagerOwnedSnapshot.openInputStream();
+					DataInputViewStreamWrapper inView = new DataInputViewStreamWrapper(fsDataInputStream);
+					KeyGroupRange keyGroupRange = keyGroupRangeOffsets.getKeyGroupRange();
+					if (keyGroupRange.equals(KeyGroupRange.EMPTY_KEY_GROUP_RANGE)) {
+						// Do nothing because the state is empty
+						jobManagerOwnedSnapshotToJM = bytedJobManagerOwnedSnapshot;
+						keyGroupRangeOffsetsToJM = keyGroupRangeOffsets;
+					} else {
+						// update original KeyGroupsStateHandle
+
+						int start = keyGroupRange.getStartKeyGroup();
+						int end = keyGroupRange.getEndKeyGroup();
+
+						// for byte stream state handle usage, to reduce the state size to be migrated over Akka rpc
+						long startOffset = keyGroupRangeOffsets.getKeyGroupOffset(start);
+
+						// compose an empty state snapshot that can be sent to JobManager
+						jobManagerOwnedSnapshotToJM =
+							bytedJobManagerOwnedSnapshot.copyOfRange(startOffset, 0, 0);
+						final long[] offsets = new long[keyGroupRange.getNumberOfKeyGroups()];
+						Arrays.fill(offsets, startOffset);
+						keyGroupRangeOffsetsToJM = new KeyGroupRangeOffsets(keyGroupRangeOffsets.getKeyGroupRange(), offsets, keyGroupRangeOffsets.getChangelogs());
+
+						for (int alignedOldKeyGroup = start; alignedOldKeyGroup <= end; alignedOldKeyGroup++) {
+							long offset = keyGroupRangeOffsets.getKeyGroupOffset(alignedOldKeyGroup);
+							boolean isModified = keyGroupRangeOffsets.getIsModified(alignedOldKeyGroup);
+
+							int nextAlignedOldKeyGroup = alignedOldKeyGroup + 1;
+
+							long nextOffset = nextAlignedOldKeyGroup <= end ?
+								keyGroupRangeOffsets.getKeyGroupOffset(nextAlignedOldKeyGroup)
+								: bytedJobManagerOwnedSnapshot.getStateSize();
+
+							// skip if the keygroup does not have any state snapshot
+							if (nextOffset == offset) continue;
+
+							fsDataInputStream.seek(offset);
+							int hashedKeyGroup = inView.readInt();
+
+							StreamStateHandle newStateHandlePerKeyGroup =
+								bytedJobManagerOwnedSnapshot.copyOfRange(startOffset, offset, nextOffset);
+
+							hashedKeyGroupToHandle.put(
+								hashedKeyGroup,
+								Tuple2.of(startOffset, newStateHandlePerKeyGroup));
+						}
+					}
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				}
+			} else {
+				jobManagerOwnedSnapshotToJM = jobManagerOwnedSnapshot;
+				keyGroupRangeOffsetsToJM = keyGroupRangeOffsets;
+			}
+
+			keyGroupsStateHandle.setDelegateStateHandle(jobManagerOwnedSnapshotToJM);
+			keyGroupsStateHandle.setGroupRangeOffsets(keyGroupRangeOffsetsToJM);
+			return hashedKeyGroupToHandle;
 		}
 
 		private void handleExecutionException(Exception e) {

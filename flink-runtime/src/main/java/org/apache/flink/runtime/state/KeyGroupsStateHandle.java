@@ -23,6 +23,7 @@ import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
+import java.util.stream.Stream;
 
 /**
  * A handle to the partitioned stream operator state after it has been checkpointed. This state
@@ -34,10 +35,10 @@ public class KeyGroupsStateHandle implements StreamStateHandle, KeyedStateHandle
 	private static final long serialVersionUID = -8070326169926626355L;
 
 	/** Range of key-groups with their respective offsets in the stream state */
-	private final KeyGroupRangeOffsets groupRangeOffsets;
+	private KeyGroupRangeOffsets groupRangeOffsets;
 
 	/** Inner stream handle to the actual states of the key-groups in the range */
-	private final StreamStateHandle stateHandle;
+	private StreamStateHandle stateHandle;
 
 	/**
 	 *
@@ -60,12 +61,20 @@ public class KeyGroupsStateHandle implements StreamStateHandle, KeyedStateHandle
 		return groupRangeOffsets;
 	}
 
+	public void setGroupRangeOffsets(KeyGroupRangeOffsets keyGroupRangeOffsets) {
+		groupRangeOffsets = keyGroupRangeOffsets;
+	}
+
 	/**
 	 *
 	 * @return The handle to the actual states
 	 */
 	public StreamStateHandle getDelegateStateHandle() {
 		return stateHandle;
+	}
+
+	public void setDelegateStateHandle(StreamStateHandle streamStateHandle) {
+		stateHandle = streamStateHandle;
 	}
 
 	/**

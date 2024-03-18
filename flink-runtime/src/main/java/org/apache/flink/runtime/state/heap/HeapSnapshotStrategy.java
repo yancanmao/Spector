@@ -85,6 +85,9 @@ class HeapSnapshotStrategy<K>
 		boolean isChangelogEnabled,
 		Set<Integer> backupKeyGroups) throws IOException {
 
+		// In HeapSnapshotStrategy, we have to snapshot affected keygroups that will be replicated remotely.
+
+
 		if (!hasRegisteredState()) {
 			return DoneFuture.of(SnapshotResult.empty());
 		}

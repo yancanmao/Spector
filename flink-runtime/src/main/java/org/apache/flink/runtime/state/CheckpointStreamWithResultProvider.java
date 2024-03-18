@@ -18,19 +18,28 @@
 
 package org.apache.flink.runtime.state;
 
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.fs.Path;
+import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.runtime.state.filesystem.FileBasedStateOutputStream;
+import org.apache.flink.runtime.state.memory.ByteStreamStateHandle;
 import org.apache.flink.util.ExceptionUtils;
 
+import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnegative;
 import javax.annotation.Nonnull;
 
+import java.io.ByteArrayInputStream;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -202,21 +211,14 @@ public interface CheckpointStreamWithResultProvider extends Closeable {
 
 		if (jobManagerOwnedSnapshot != null) {
 
+//			StreamStateHandle jobManagerOwnedSnapshotToJM = composeSnapshotToJM(keyGroupRangeOffsets, jobManagerOwnedSnapshot);
+
 			KeyedStateHandle jmKeyedState = new KeyGroupsStateHandle(keyGroupRangeOffsets, jobManagerOwnedSnapshot);
 			StreamStateHandle taskLocalSnapshot = snapshotResult.getTaskLocalSnapshot();
-
 			if (taskLocalSnapshot != null) {
-
-				// TODO: Optimization: in HeapSnapshotStrategy, we have to snapshot affected keygroups that will be replicated remotely.
-				// TODO: Step 1: Separate the Combined StateHandle into per KeyGroup KeyedStateHandle, i.e., Map<Integer, KeyedStateHandle>
-				// TODO: Step 2: Store the KeyedStateHandles i.e., Map<Integer, KeyedStateHandle>, into the TaskExecutor's TaskStateManager.LocalSnapshotCache.
-				// TODO: Step 3: Reporting an empty taskLocalSnapshot to JobManager.
-				// TODO: Step 4: Create a new Communication Stack between TaskExecutors to make TaskExecutors sends Map<Integer, KeyedStateHandle> to remote replicaStateManagers.
-
 				KeyedStateHandle localKeyedState = new KeyGroupsStateHandle(keyGroupRangeOffsets, taskLocalSnapshot);
 				return SnapshotResult.withLocalState(jmKeyedState, localKeyedState);
 			} else {
-
 				return SnapshotResult.of(jmKeyedState);
 			}
 		} else {
