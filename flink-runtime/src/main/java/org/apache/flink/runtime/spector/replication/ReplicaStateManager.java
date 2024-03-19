@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * TODO: maybe we do not need this class, we assign a task to be a backup task, other task can access the task to get the backup state.
  */
 public class ReplicaStateManager {
-	public Map<JobVertexID, TaskStateManager> replicas;
+	private final Map<JobVertexID, TaskStateManager> replicas;
 
 	public ReplicaStateManager() {
 		replicas = new ConcurrentHashMap<>();
@@ -25,7 +25,7 @@ public class ReplicaStateManager {
 	 * @return
 	 */
 	public JobManagerTaskRestore getTaskRestoreFromReplica(JobVertexID jobvertexId) {
-		TaskStateManager taskStateManager = this.replicas.get(jobvertexId);
+		TaskStateManager taskStateManager = this.getReplicas().get(jobvertexId);
 		// directly assign backup taskrestore for the targeting task, and it will be updated in each operator during
 		// state initialization.
 		Preconditions.checkNotNull(taskStateManager);
@@ -33,14 +33,14 @@ public class ReplicaStateManager {
 	}
 
 	public void put(JobVertexID jobvertexId, TaskStateManager taskStateManager) {
-		this.replicas.put(jobvertexId, taskStateManager);
+		this.getReplicas().put(jobvertexId, taskStateManager);
 	}
 
 	/**
 	 * Substitute keyed state that is shown up in
 	 */
 	public void mergeState(JobVertexID jobvertexId, JobManagerTaskRestore newStateRestore) {
-		TaskStateManager taskStateManager = this.replicas.get(jobvertexId);
+		TaskStateManager taskStateManager = this.getReplicas().get(jobvertexId);
 		JobManagerTaskRestore oldTaskRestore = ((TaskStateManagerImpl) taskStateManager).getTaskRestore();
 
 		newStateRestore.merge(oldTaskRestore);
@@ -48,4 +48,7 @@ public class ReplicaStateManager {
 		taskStateManager.setTaskRestore(newStateRestore);
 	}
 
+	public Map<JobVertexID, TaskStateManager> getReplicas() {
+		return replicas;
+	}
 }

@@ -24,9 +24,11 @@ import java.util
 import org.apache.flink.runtime.deployment.{InputChannelDeploymentDescriptor, TaskDeploymentDescriptor}
 import org.apache.flink.runtime.executiongraph.{ExecutionAttemptID, PartitionInfo}
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID
+import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway
+import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway
 import org.apache.flink.runtime.taskmanager.TaskExecutionState
 
-import java.util.Set
+import java.util.{List, Set}
 
 /**
  * A set of messages that control the deployment and the state of Tasks executed
@@ -182,6 +184,11 @@ object TaskMessages {
   case class dispatchStateToStandbyTask(
                                          attemptID: ExecutionAttemptID,
                                          taskRestore: JobManagerTaskRestore)
+    extends TaskMessage with RequiresLeaderSessionID
+
+  case class dispatchStandbyTaskGatewaysToTask(
+                                          attemptID: ExecutionAttemptID,
+                                          standbyTaskGateways: util.List[TaskManagerGateway])
     extends TaskMessage with RequiresLeaderSessionID
 
   case class updateBackupKeyGroupsToTask(

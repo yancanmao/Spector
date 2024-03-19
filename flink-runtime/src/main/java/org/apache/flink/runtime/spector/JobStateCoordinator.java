@@ -34,6 +34,7 @@ import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.jsonplan.JsonPlanGenerator;
+import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
 import org.apache.flink.runtime.jobmaster.slotpool.SchedulerImpl;
 import org.apache.flink.runtime.spector.controller.impl.ControlPlane;
 import org.apache.flink.runtime.spector.migration.*;
@@ -266,8 +267,9 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 						executionGraph.getGlobalModVersion(),
 						System.currentTimeMillis(),
 						slotsMap.size());
-					// TODO: need to create number of tasks according to number of nodes in the cluster.
+					// Create number of tasks according to number of nodes in the cluster.
 					standbyExecutionVertexes.put(executionJobVertex.getJobVertexId(), createCandidates);
+
 					LOG.info("++++++ add standby task for: " + executionJobVertex.getJobVertexId()
 						+ " number of backup tasks: " + createCandidates.size());
 
@@ -311,6 +313,19 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 
 					Preconditions.checkState(standbyExecutionVertexes.size() == newExecutionJobVerticesTopological.size(),
 						"++++++ Inconsistent standby tasks number");
+
+					// dispatch standby gateways to all running tasks
+					for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
+						List<TaskManagerGateway> standbyTaskGateways = new ArrayList<>();
+						for (ExecutionVertex standbyVertex : executionJobVertex.getStandbyExecutionVertexs()) {
+							Execution execution = standbyVertex.getCurrentExecutionAttempt();
+							standbyTaskGateways.add(execution.getTaskManagerGateway());
+						}
+						for (ExecutionVertex runningVertex : executionJobVertex.getTaskVertices()) {
+							Execution execution = runningVertex.getCurrentExecutionAttempt();
+							execution.dispatchStandbyTaskGateways(standbyTaskGateways);
+						}
+					}
 
 					controlPlane.startControllers();
 					CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();

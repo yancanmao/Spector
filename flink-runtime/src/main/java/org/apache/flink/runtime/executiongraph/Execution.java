@@ -389,6 +389,17 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		LOG.info("++++++ Update backup keygroups for task {}.", vertex.getTaskNameWithSubtaskIndex());
 	}
 
+	public void dispatchStandbyTaskGateways(List<TaskManagerGateway> standbyTaskGateways) {
+		CompletableFuture<Acknowledge> ack = dispatchStandbyTaskGatewaysByTaskRPCCall(standbyTaskGateways);
+
+		try {
+			ack.get();
+		} catch (InterruptedException | ExecutionException e) {
+			e.printStackTrace();
+		}
+		LOG.info("++++++ Update backup keygroups for task {}.", vertex.getTaskNameWithSubtaskIndex());
+	}
+
 	/**
 	 * This method sends a dispatchStateToStandbyTask message to the instance of the assigned slot.
 	 *
@@ -415,6 +426,27 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			executor);
 
 		return dispatchStateResultFuture;
+	}
+
+	private CompletableFuture<Acknowledge> dispatchStandbyTaskGatewaysByTaskRPCCall(List<TaskManagerGateway> standbyTaskGateways) {
+		final LogicalSlot slot = assignedResource;
+		final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
+
+		CompletableFuture<Acknowledge> updateResultFuture = FutureUtils.retry(
+			() -> taskManagerGateway.dispatchStandbyTaskGatewaysToTask(attemptId, vertex.getJobvertexId(), standbyTaskGateways, rpcTimeout),
+			NUM_CANCEL_CALL_TRIES,
+			executor);
+
+		updateResultFuture.whenCompleteAsync(
+			(ack, failure) -> {
+				if (failure != null) {
+					fail(new Exception("Backup KeyGroups could not be updated to running task " +
+						vertex.getTaskNameWithSubtaskIndex() + '.', failure));
+				}
+			},
+			executor);
+
+		return updateResultFuture;
 	}
 
 	private CompletableFuture<Acknowledge> updateBackupKeyGroupsByTaskRPCCall(Set<Integer> backupKeyGroups) {
@@ -1811,5 +1843,10 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 	private void assertRunningInJobMasterMainThread() {
 		vertex.getExecutionGraph().assertRunningInJobMasterMainThread();
+	}
+
+	public TaskManagerGateway getTaskManagerGateway() {
+		final LogicalSlot slot = assignedResource;
+		return slot.getTaskManagerGateway();
 	}
 }

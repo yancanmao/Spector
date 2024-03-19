@@ -33,6 +33,7 @@ import org.apache.flink.runtime.spector.migration.ReconfigOptions;
 import org.apache.flink.runtime.rpc.RpcTimeout;
 import org.apache.flink.runtime.state.KeyGroupRange;
 
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
@@ -184,6 +185,9 @@ public interface TaskManagerGateway {
 		ExecutionAttemptID executionAttemptID,
 		JobVertexID jobvertexId, JobManagerTaskRestore taskRestore,
 		KeyGroupRange keyGroupRange, int idInModel, Time timeout);
+
+	CompletableFuture<Acknowledge> dispatchStandbyTaskGatewaysToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId,
+																	 List<TaskManagerGateway> standbyTaskGateways, Time timeout);
 
 	CompletableFuture<Acknowledge> updateBackupKeyGroupsToTask(
 		ExecutionAttemptID attemptId,

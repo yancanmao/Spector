@@ -56,6 +56,7 @@ import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
+import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
 import org.apache.flink.runtime.jobmaster.AllocatedSlotInfo;
 import org.apache.flink.runtime.jobmaster.AllocatedSlotReport;
 import org.apache.flink.runtime.jobmaster.JMTMRegistrationSuccess;
@@ -84,6 +85,7 @@ import org.apache.flink.runtime.spector.netty.CheckpointCoordinatorNettyClient;
 import org.apache.flink.runtime.spector.netty.TaskExecutorNettyServer;
 import org.apache.flink.runtime.spector.netty.data.CheckpointCoordinatorSocketAddress;
 import org.apache.flink.runtime.spector.netty.data.TaskExecutorSocketAddress;
+import org.apache.flink.runtime.spector.replication.RemoteReplicaRegistry;
 import org.apache.flink.runtime.state.*;
 import org.apache.flink.runtime.taskexecutor.exceptions.CheckpointException;
 import org.apache.flink.runtime.taskexecutor.exceptions.PartitionException;
@@ -235,6 +237,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	 */
 	private final ReplicaStateManager replicaStateManager;
 
+	private final RemoteReplicaRegistry remoteReplicaRegistry;
+
 	private final boolean nettyStateTransmissionEnabled;
 
 
@@ -282,6 +286,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		this.stackTraceSampleService = new StackTraceSampleService(rpcService.getScheduledExecutor());
 
 		this.replicaStateManager = new ReplicaStateManager();
+		this.remoteReplicaRegistry = new RemoteReplicaRegistry();
 
 		nettyStateTransmissionEnabled = taskManagerConfiguration.getConfiguration().getBoolean(NETTY_STATE_TRANSMISSION_ENABLED);
 		this.stateTransferDelay = taskManagerConfiguration.getConfiguration().getInteger(STATE_TRANSFER_DELAY);
@@ -576,7 +581,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 					taskRestore,
 					checkpointResponder);
 
-				Preconditions.checkState(!replicaStateManager.replicas.containsKey(taskInformation.getJobVertexId()),
+				Preconditions.checkState(!replicaStateManager.getReplicas().containsKey(taskInformation.getJobVertexId()),
 					"++++++ backupStateManager should only maintain a replica for each jobVertex");
 				replicaStateManager.put(taskInformation.getJobVertexId(), taskStateManager);
 
@@ -816,7 +821,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		Task task = taskSlotTable.getTask(executionAttemptID);
 		if (task == null) {
 			log.info("++++++ " + jobvertexId + " Receive backup state");
-			TaskStateManager taskStateManager = replicaStateManager.replicas.get(jobvertexId);
+			TaskStateManager taskStateManager = replicaStateManager.getReplicas().get(jobvertexId);
 
 			if (taskStateManager != null) {
 				JobID jobID = taskStateManager.getJobID();
@@ -885,6 +890,22 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		}
 		return CompletableFuture.completedFuture(Acknowledge.get());
 	}
+
+	@Override
+	public CompletableFuture<Acknowledge> dispatchStandbyTaskGatewaysToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, List<TaskManagerGateway> standbyTaskGateways, Time timeout) {
+		log.info("++++++ Receiving StandbyTaskGateways:{} to StreamTask {} in TaskExecutor {}", standbyTaskGateways, jobvertexId, this.getAddress());
+		final Task task = taskSlotTable.getTask(executionAttemptID);
+		if (task != null) {
+			remoteReplicaRegistry.put(jobvertexId, standbyTaskGateways);
+		} else {
+			final String message = "Cannot find task to update its configuration " + executionAttemptID + '.';
+
+			log.debug(message);
+			return FutureUtils.completedExceptionally(new TaskException(message));
+		}
+		return CompletableFuture.completedFuture(Acknowledge.get());
+	}
+
 
 	@Override
 	public CompletableFuture<Acknowledge> testRPC(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, String requestId, Time timeout) {

@@ -41,6 +41,7 @@ import org.apache.flink.runtime.spector.migration.ReconfigOptions;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.util.Preconditions;
 
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
@@ -226,16 +227,30 @@ public class ActorTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
+	public CompletableFuture<Acknowledge> dispatchStandbyTaskGatewaysToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId,
+																			List<TaskManagerGateway> standbyTaskGateways, Time timeout) {
+		Preconditions.checkNotNull(executionAttemptID);
+		Preconditions.checkNotNull(timeout);
+
+		scala.concurrent.Future<Acknowledge> dispatchStandbyTaskGatewaysToTaskResult = actorGateway.ask(
+				new TaskMessages.dispatchStandbyTaskGatewaysToTask(executionAttemptID, standbyTaskGateways),
+				new FiniteDuration(timeout.getSize(), timeout.getUnit()))
+			.mapTo(ClassTag$.MODULE$.<Acknowledge>apply(Acknowledge.class));
+
+		return FutureUtils.toJava(dispatchStandbyTaskGatewaysToTaskResult);
+	}
+
+	@Override
 	public CompletableFuture<Acknowledge> updateBackupKeyGroupsToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, Set<Integer> backupKeyGroups, Time timeout) {
 		Preconditions.checkNotNull(executionAttemptID);
 		Preconditions.checkNotNull(timeout);
 
-		scala.concurrent.Future<Acknowledge> dispatchStateToStandbyTaskResult = actorGateway.ask(
+		scala.concurrent.Future<Acknowledge> updateBackupKeyGroupsToTaskResult = actorGateway.ask(
 				new TaskMessages.updateBackupKeyGroupsToTask(executionAttemptID, backupKeyGroups),
 				new FiniteDuration(timeout.getSize(), timeout.getUnit()))
 			.mapTo(ClassTag$.MODULE$.<Acknowledge>apply(Acknowledge.class));
 
-		return FutureUtils.toJava(dispatchStateToStandbyTaskResult);
+		return FutureUtils.toJava(updateBackupKeyGroupsToTaskResult);
 	}
 
 	@Override

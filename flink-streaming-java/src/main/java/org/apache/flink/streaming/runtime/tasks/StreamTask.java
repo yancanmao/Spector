@@ -1135,10 +1135,10 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 							if (keyedStateHandle instanceof KeyGroupsStateHandle) {
 								KeyGroupsStateHandle keyGroupsStateHandle = (KeyGroupsStateHandle) keyedStateHandle;
 								// Step 1: Separate the Combined StateHandle into per KeyGroup KeyedStateHandle, i.e., Map<Integer, KeyedStateHandle>
+								// Step 2: Reporting an empty taskLocalSnapshot to JobManager.
 								Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle = composeSnapshotToJM(keyGroupsStateHandle);
-								// TODO: Step 2: Store the KeyedStateHandles i.e., Map<Integer, KeyedStateHandle>, into the TaskExecutor's TaskStateManager.LocalSnapshotCache.
-								// TODO: Step 3: Reporting an empty taskLocalSnapshot to JobManager.
-								// TODO: Step 4: Create a new Communication Stack between TaskExecutors to make TaskExecutors sends Map<Integer, KeyedStateHandle> to remote replicaStateManagers.
+								// TODO: Step 3: Create a new Communication Stack between TaskExecutors to make TaskExecutors sends Map<Integer, KeyedStateHandle> to remote replicaStateManagers.
+
 							}
 						}
 					}
