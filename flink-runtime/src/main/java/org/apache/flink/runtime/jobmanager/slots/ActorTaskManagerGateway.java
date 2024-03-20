@@ -228,7 +228,7 @@ public class ActorTaskManagerGateway implements TaskManagerGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> dispatchStandbyTaskGatewaysToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId,
-																			List<TaskManagerGateway> standbyTaskGateways, Time timeout) {
+                                                                            List<String> standbyTaskGateways, Time timeout) {
 		Preconditions.checkNotNull(executionAttemptID);
 		Preconditions.checkNotNull(timeout);
 

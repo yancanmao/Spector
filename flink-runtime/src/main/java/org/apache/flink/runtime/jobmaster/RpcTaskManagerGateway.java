@@ -166,7 +166,7 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> dispatchStandbyTaskGatewaysToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId,
-																			List<TaskManagerGateway> standbyTaskGateways, Time timeout) {
+																			List<String> standbyTaskGateways, Time timeout) {
 		return taskExecutorGateway.dispatchStandbyTaskGatewaysToTask(executionAttemptID, jobvertexId, standbyTaskGateways, timeout);
 	}
 

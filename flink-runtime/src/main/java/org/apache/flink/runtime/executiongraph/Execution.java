@@ -389,7 +389,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		LOG.info("++++++ Update backup keygroups for task {}.", vertex.getTaskNameWithSubtaskIndex());
 	}
 
-	public void dispatchStandbyTaskGateways(List<TaskManagerGateway> standbyTaskGateways) {
+	public void dispatchStandbyTaskGateways(List<String> standbyTaskGateways) {
 		CompletableFuture<Acknowledge> ack = dispatchStandbyTaskGatewaysByTaskRPCCall(standbyTaskGateways);
 
 		try {
@@ -428,7 +428,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		return dispatchStateResultFuture;
 	}
 
-	private CompletableFuture<Acknowledge> dispatchStandbyTaskGatewaysByTaskRPCCall(List<TaskManagerGateway> standbyTaskGateways) {
+	private CompletableFuture<Acknowledge> dispatchStandbyTaskGatewaysByTaskRPCCall(List<String> standbyTaskGateways) {
 		final LogicalSlot slot = assignedResource;
 		final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
 
@@ -1845,8 +1845,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		vertex.getExecutionGraph().assertRunningInJobMasterMainThread();
 	}
 
-	public TaskManagerGateway getTaskManagerGateway() {
+	public String getTaskManagerGateway() {
 		final LogicalSlot slot = assignedResource;
-		return slot.getTaskManagerGateway();
+		return slot.getTaskManagerGateway().getAddress();
 	}
 }

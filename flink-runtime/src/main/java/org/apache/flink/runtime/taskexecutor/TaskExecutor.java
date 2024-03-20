@@ -56,7 +56,6 @@ import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
-import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
 import org.apache.flink.runtime.jobmaster.AllocatedSlotInfo;
 import org.apache.flink.runtime.jobmaster.AllocatedSlotReport;
 import org.apache.flink.runtime.jobmaster.JMTMRegistrationSuccess;
@@ -892,11 +891,18 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	}
 
 	@Override
-	public CompletableFuture<Acknowledge> dispatchStandbyTaskGatewaysToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, List<TaskManagerGateway> standbyTaskGateways, Time timeout) {
+	public CompletableFuture<Acknowledge> dispatchStandbyTaskGatewaysToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, List<String> standbyTaskGateways, Time timeout) {
 		log.info("++++++ Receiving StandbyTaskGateways:{} to StreamTask {} in TaskExecutor {}", standbyTaskGateways, jobvertexId, this.getAddress());
 		final Task task = taskSlotTable.getTask(executionAttemptID);
 		if (task != null) {
-			remoteReplicaRegistry.put(jobvertexId, standbyTaskGateways);
+			List<TaskExecutorGateway> taskExecutorGateways = new ArrayList<>();
+			for (String standbyTaskAddress : standbyTaskGateways) {
+				CompletableFuture<TaskExecutorGateway> taskExecutorGatewayFuture = getRpcService().connect(standbyTaskAddress, TaskExecutorGateway.class);
+				taskExecutorGatewayFuture.whenComplete(
+					(TaskExecutorGateway taskExecutorGateway, Throwable throwable) -> taskExecutorGateways.add(taskExecutorGateway));
+			}
+
+			remoteReplicaRegistry.put(jobvertexId, taskExecutorGateways);
 		} else {
 			final String message = "Cannot find task to update its configuration " + executionAttemptID + '.';
 

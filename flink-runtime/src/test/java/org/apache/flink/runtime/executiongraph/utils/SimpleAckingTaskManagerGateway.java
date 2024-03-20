@@ -145,7 +145,7 @@ public class SimpleAckingTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
-	public CompletableFuture<Acknowledge> dispatchStandbyTaskGatewaysToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, List<TaskManagerGateway> standbyTaskGateways, Time timeout) {
+	public CompletableFuture<Acknowledge> dispatchStandbyTaskGatewaysToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, List<String> standbyTaskGateways, Time timeout) {
 		return null;
 	}
 

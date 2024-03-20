@@ -188,7 +188,7 @@ object TaskMessages {
 
   case class dispatchStandbyTaskGatewaysToTask(
                                           attemptID: ExecutionAttemptID,
-                                          standbyTaskGateways: util.List[TaskManagerGateway])
+                                          standbyTaskGateways: util.List[String])
     extends TaskMessage with RequiresLeaderSessionID
 
   case class updateBackupKeyGroupsToTask(

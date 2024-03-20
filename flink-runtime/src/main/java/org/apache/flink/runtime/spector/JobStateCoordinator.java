@@ -34,7 +34,6 @@ import org.apache.flink.runtime.jobgraph.JobStatus;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.jsonplan.JsonPlanGenerator;
-import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
 import org.apache.flink.runtime.jobmaster.slotpool.SchedulerImpl;
 import org.apache.flink.runtime.spector.controller.impl.ControlPlane;
 import org.apache.flink.runtime.spector.migration.*;
@@ -316,7 +315,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 
 					// dispatch standby gateways to all running tasks
 					for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
-						List<TaskManagerGateway> standbyTaskGateways = new ArrayList<>();
+						List<String> standbyTaskGateways = new ArrayList<>();
 						for (ExecutionVertex standbyVertex : executionJobVertex.getStandbyExecutionVertexs()) {
 							Execution execution = standbyVertex.getCurrentExecutionAttempt();
 							standbyTaskGateways.add(execution.getTaskManagerGateway());
