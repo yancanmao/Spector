@@ -91,7 +91,7 @@ public class RuntimeEnvironment implements Environment {
 	private final TaskManagerRuntimeInfo taskManagerInfo;
 
 	// TODO scaling : pls update here
-	public final TaskConfigManager taskConfigManager;
+	private final TaskConfigManager taskConfigManager;
 
 	public final KeyGroupRange keyGroupRange;
 
@@ -330,5 +330,9 @@ public class RuntimeEnvironment implements Environment {
 	@Override
 	public MetricsManager getMetricsManager() {
 		return metricsManager;
+	}
+
+	public TaskConfigManager getTaskConfigManager() {
+		return taskConfigManager;
 	}
 }

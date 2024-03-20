@@ -126,7 +126,7 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 
 	@Override
 	public void reconnect() {
-		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
+		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).getTaskConfigManager();
 
 		if (!taskConfigManager.isReconfigTarget()) {
 			return;
@@ -145,7 +145,7 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 
 	@Override
 	public void resume() {
-		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
+		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).getTaskConfigManager();
 
 		if (taskConfigManager.isDestination()) {
 			inputProcessor.completeMigration();
@@ -154,7 +154,7 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 
 	@Override
 	public void resume(int keygroup) {
-		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
+		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).getTaskConfigManager();
 
 		if (taskConfigManager.isDestination()) {
 			inputProcessor.completeMigrationForKey(keygroup);

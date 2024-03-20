@@ -215,6 +215,9 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 	private final TaskExecutorNettyServer taskExecutorNettyServer;
 
+	private final HashMap<String, TaskExecutorGateway> connectedTaskExecutorGateways;
+
+
 	// --------- resource manager --------
 
 	@Nullable
@@ -302,6 +305,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				rpcService.getAddress(),
 				deploymentOptEnabled,
 				deploymentChunkEnabled) : null;
+
+		connectedTaskExecutorGateways = new HashMap<>();
 	}
 
 	@Override
@@ -896,10 +901,17 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		final Task task = taskSlotTable.getTask(executionAttemptID);
 		if (task != null) {
 			List<TaskExecutorGateway> taskExecutorGateways = new ArrayList<>();
-			for (String standbyTaskAddress : standbyTaskGateways) {
-				CompletableFuture<TaskExecutorGateway> taskExecutorGatewayFuture = getRpcService().connect(standbyTaskAddress, TaskExecutorGateway.class);
-				taskExecutorGatewayFuture.whenComplete(
-					(TaskExecutorGateway taskExecutorGateway, Throwable throwable) -> taskExecutorGateways.add(taskExecutorGateway));
+			for (String standbyTaskGatewayAddress : standbyTaskGateways) {
+				if (!connectedTaskExecutorGateways.containsKey(standbyTaskGatewayAddress)) {
+					CompletableFuture<TaskExecutorGateway> taskExecutorGatewayFuture = getRpcService().connect(standbyTaskGatewayAddress, TaskExecutorGateway.class);
+					taskExecutorGatewayFuture.whenComplete(
+						(TaskExecutorGateway taskExecutorGateway, Throwable throwable) -> {
+							connectedTaskExecutorGateways.put(standbyTaskGatewayAddress, taskExecutorGateway);
+							taskExecutorGateways.add(taskExecutorGateway);
+						});
+				} else {
+					taskExecutorGateways.add(connectedTaskExecutorGateways.get(standbyTaskGatewayAddress));
+				}
 			}
 
 			remoteReplicaRegistry.put(jobvertexId, taskExecutorGateways);

@@ -138,7 +138,7 @@ public class TwoInputStreamTask<IN1, IN2, OUT> extends StreamTask<OUT, TwoInputS
 
 	@Override
 	public void reconnect() {
-		TaskConfigManager rescaleManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
+		TaskConfigManager rescaleManager = ((RuntimeEnvironment) getEnvironment()).getTaskConfigManager();
 
 		if (!rescaleManager.isReconfigTarget()) {
 			return;

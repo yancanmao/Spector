@@ -68,7 +68,6 @@ import javax.annotation.Nullable;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.lang.reflect.Array;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -806,7 +805,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			storage,
 			checkpointMetrics,
 			getEnvironment().getJobConfiguration().getBoolean(SNAPSHOT_CHANGELOG_ENABLED),
-			((RuntimeEnvironment) getEnvironment()).taskConfigManager.getBackupKeyGroups());
+			((RuntimeEnvironment) getEnvironment()).getTaskConfigManager().getBackupKeyGroups());
 
 		checkpointingOperation.executeCheckpointing();
 	}
@@ -820,7 +819,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			checkpointMetaData.getCheckpointId(),
 			checkpointOptions.getTargetLocation());
 
-		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
+		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).getTaskConfigManager();
 		List<Integer> affectedKeygroups = new ArrayList<>();
 		if (taskConfigManager.isReconfigTarget()) {
 			if (taskConfigManager.isSource()) {
@@ -917,7 +916,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	}
 
 	private void initReconnect() {
-		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
+		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).getTaskConfigManager();
 
 		if (!taskConfigManager.isReconfigTarget()) {
 			return;
@@ -1013,7 +1012,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				this.assignedKeyGroupRange.update(keyGroupRange);
 				this.idInModel = idInModel;
 
-				TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
+				TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).getTaskConfigManager();
 
 
 				if (taskConfigManager.getDstAffectedKeygroups() != null) {
@@ -1034,7 +1033,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			LOG.info("++++++ error", e);
 			throw new RuntimeException(e);
 		} finally {
-			TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
+			TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).getTaskConfigManager();
 			Preconditions.checkState(taskConfigManager.isSourceOrDestination(), "++++++ Cannot reinitialize state for an unaffected task.");
 			taskConfigManager.finish();
 		}
@@ -1055,7 +1054,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 	public void updateKeyGroupRange(KeyGroupRange keyGroupRange) {
 		LOG.info("++++++ updateKeyGroupRange: "  + this + "  " + keyGroupRange);
 
-		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).taskConfigManager;
+		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).getTaskConfigManager();
 
 //		synchronized (lock) {
 //			this.assignedKeyGroupRange.update(keyGroupRange);
