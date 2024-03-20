@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.state;
 
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
 import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
@@ -27,6 +28,7 @@ import org.apache.flink.runtime.checkpoint.PrioritizedOperatorSubtaskState;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
+import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.runtime.taskmanager.CheckpointResponder;
 
 import org.slf4j.Logger;
@@ -36,7 +38,9 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * This class is the default implementation of {@link TaskStateManager} and collaborates with the job manager
@@ -62,11 +66,15 @@ public class TaskStateManagerImpl implements TaskStateManager {
 	@Nullable
 	private JobManagerTaskRestore jobManagerTaskRestore;
 
+	/** The data given by the job manager to restore the job. This is null for a new job without previous state. */
+	private Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle;
+
 	/** The local state store to which this manager reports local state snapshots. */
 	private final TaskLocalStateStore localStateStore;
 
 	/** The checkpoint responder through which this manager can report to the job manager. */
 	private final CheckpointResponder checkpointResponder;
+	private List<TaskExecutorGateway> standbyTaskExecutorGateways;
 
 	public TaskStateManagerImpl(
 		@Nonnull JobID jobId,
@@ -80,6 +88,8 @@ public class TaskStateManagerImpl implements TaskStateManager {
 		this.jobManagerTaskRestore = jobManagerTaskRestore;
 		this.executionAttemptID = executionAttemptID;
 		this.checkpointResponder = checkpointResponder;
+		this.standbyTaskExecutorGateways = null;
+		this.hashedKeyGroupToHandle = new HashMap<>();
 	}
 
 	@Override
@@ -186,7 +196,20 @@ public class TaskStateManagerImpl implements TaskStateManager {
 		return jobId;
 	}
 
+	@Override
+	public void setStandbyTaskExecutorGateways(List<TaskExecutorGateway> standbyTaskExecutorGateways) {
+		this.standbyTaskExecutorGateways = standbyTaskExecutorGateways;
+	}
+
 	public JobManagerTaskRestore getTaskRestore() {
 		return jobManagerTaskRestore;
+	}
+
+	public List<TaskExecutorGateway> getStandbyTaskExecutorGateways() {
+		return standbyTaskExecutorGateways;
+	}
+
+	public Map<Integer, Tuple2<Long, StreamStateHandle>> getHashedKeyGroupToHandle() {
+		return hashedKeyGroupToHandle;
 	}
 }

@@ -23,6 +23,7 @@ import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.runtime.checkpoint.*;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
+import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.runtime.taskmanager.CheckpointResponder;
 import org.apache.flink.runtime.taskmanager.TestCheckpointResponder;
 import org.apache.flink.util.Preconditions;
@@ -176,6 +177,16 @@ public class TestTaskStateManager implements TaskStateManager {
 
 	public JobID getJobID() {
 		return jobId;
+	}
+
+	@Override
+	public void setStandbyTaskExecutorGateways(List<TaskExecutorGateway> standbyTaskExecutorGateways) {
+
+	}
+
+	@Override
+	public List<TaskExecutorGateway> getStandbyTaskExecutorGateways() {
+		return null;
 	}
 
 	public void setJobId(JobID jobId) {

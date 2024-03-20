@@ -1,5 +1,6 @@
 package org.apache.flink.runtime.spector.replication;
 
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.state.*;
@@ -46,6 +47,16 @@ public class ReplicaStateManager {
 		newStateRestore.merge(oldTaskRestore);
 
 		taskStateManager.setTaskRestore(newStateRestore);
+	}
+
+	/**
+	 * Substitute keyed state that is shown up in
+	 */
+	public void mergeState(JobVertexID jobvertexId, Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle) {
+		TaskStateManager taskStateManager = this.getReplicas().get(jobvertexId);
+		Map<Integer, Tuple2<Long, StreamStateHandle>> localReplicatedStateHandle = ((TaskStateManagerImpl) taskStateManager).getHashedKeyGroupToHandle();
+		Preconditions.checkNotNull(localReplicatedStateHandle);
+		hashedKeyGroupToHandle.forEach(localReplicatedStateHandle::putIfAbsent);
 	}
 
 	public Map<JobVertexID, TaskStateManager> getReplicas() {

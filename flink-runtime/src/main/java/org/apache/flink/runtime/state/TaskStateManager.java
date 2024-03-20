@@ -21,9 +21,11 @@ package org.apache.flink.runtime.state;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.checkpoint.*;
 import org.apache.flink.runtime.jobgraph.OperatorID;
+import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.List;
 
 /**
  * This interface provides methods to report and retrieve state for a task.
@@ -80,4 +82,8 @@ public interface TaskStateManager extends CheckpointListener {
 	long getCurrentCheckpointRestoreID();
 
 	JobID getJobID();
+
+	void setStandbyTaskExecutorGateways(List<TaskExecutorGateway> standbyTaskExecutorGateways);
+
+	List<TaskExecutorGateway> getStandbyTaskExecutorGateways();
 }

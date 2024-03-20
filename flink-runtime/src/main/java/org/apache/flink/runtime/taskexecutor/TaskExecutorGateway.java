@@ -20,6 +20,7 @@ package org.apache.flink.runtime.taskexecutor;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.blob.TransientBlobKey;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
@@ -40,10 +41,12 @@ import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rpc.RpcGateway;
 import org.apache.flink.runtime.rpc.RpcTimeout;
 import org.apache.flink.runtime.state.KeyGroupRange;
+import org.apache.flink.runtime.state.StreamStateHandle;
 import org.apache.flink.runtime.taskmanager.Task;
 import org.apache.flink.types.SerializableOptional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
@@ -240,7 +243,11 @@ public interface TaskExecutorGateway extends RpcGateway {
 
 	CompletableFuture<Acknowledge> dispatchStandbyTaskGatewaysToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, List<String> standbyTaskGateways, Time timeout);
 
-	CompletableFuture<Acknowledge> updateBackupKeyGroupsToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, Set<Integer> backupKeyGroups, Time timeout);
+    CompletableFuture<Acknowledge> dispatchStateToStandbyTask(
+            JobVertexID jobvertexId,
+            Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle);
+
+    CompletableFuture<Acknowledge> updateBackupKeyGroupsToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, Set<Integer> backupKeyGroups, Time timeout);
 
 	/**
 	 * Dispatch a checkpointed state snapshot of a running task to its standby task.

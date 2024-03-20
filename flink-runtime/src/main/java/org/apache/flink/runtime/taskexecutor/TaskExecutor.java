@@ -22,6 +22,7 @@ import com.esotericsoftware.minlog.Log;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.accumulators.AccumulatorSnapshot;
 import org.apache.flink.runtime.blob.BlobCacheService;
 import org.apache.flink.runtime.blob.TransientBlobCache;
@@ -880,6 +881,25 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	}
 
 	@Override
+	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(
+		JobVertexID jobvertexId,
+		Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle) {
+			log.info("++++++ " + jobvertexId + " Receive backup state");
+			TaskStateManager taskStateManager = replicaStateManager.getReplicas().get(jobvertexId);
+
+			if (taskStateManager != null) {
+				replicaStateManager.mergeState(jobvertexId, hashedKeyGroupToHandle);
+
+				return CompletableFuture.completedFuture(Acknowledge.get());
+			} else {
+				final String message = "Cannot find standby task " + jobvertexId + " to dispatch state to it.";
+				log.debug(message);
+
+				throw new RuntimeException("++++++ Cannot find the corresponding taskStateManager");
+			}
+	}
+
+	@Override
 	public CompletableFuture<Acknowledge> updateBackupKeyGroupsToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, Set<Integer> backupKeyGroups, Time timeout) {
 		log.info("++++++ Receiving BackupKeyGroups:{} to StreamTask {} in TaskExecutor {}",
 			backupKeyGroups, jobvertexId, this.getAddress());
@@ -900,21 +920,24 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		log.info("++++++ Receiving StandbyTaskGateways:{} to StreamTask {} in TaskExecutor {}", standbyTaskGateways, jobvertexId, this.getAddress());
 		final Task task = taskSlotTable.getTask(executionAttemptID);
 		if (task != null) {
-			List<TaskExecutorGateway> taskExecutorGateways = new ArrayList<>();
+			List<TaskExecutorGateway> standbyTaskExecutorGateways = new ArrayList<>();
 			for (String standbyTaskGatewayAddress : standbyTaskGateways) {
 				if (!connectedTaskExecutorGateways.containsKey(standbyTaskGatewayAddress)) {
 					CompletableFuture<TaskExecutorGateway> taskExecutorGatewayFuture = getRpcService().connect(standbyTaskGatewayAddress, TaskExecutorGateway.class);
 					taskExecutorGatewayFuture.whenComplete(
 						(TaskExecutorGateway taskExecutorGateway, Throwable throwable) -> {
 							connectedTaskExecutorGateways.put(standbyTaskGatewayAddress, taskExecutorGateway);
-							taskExecutorGateways.add(taskExecutorGateway);
+							standbyTaskExecutorGateways.add(taskExecutorGateway);
 						});
 				} else {
-					taskExecutorGateways.add(connectedTaskExecutorGateways.get(standbyTaskGatewayAddress));
+					standbyTaskExecutorGateways.add(connectedTaskExecutorGateways.get(standbyTaskGatewayAddress));
 				}
 			}
 
-			remoteReplicaRegistry.put(jobvertexId, taskExecutorGateways);
+			remoteReplicaRegistry.put(jobvertexId, standbyTaskExecutorGateways);
+			TaskStateManager taskStateManager = replicaStateManager.getReplicas().get(jobvertexId);
+			Preconditions.checkNotNull(taskStateManager, "++++++ task state manager cannot be null during dispatchStandbyTaskGatewaysToTask");
+			taskStateManager.setStandbyTaskExecutorGateways(standbyTaskExecutorGateways);
 		} else {
 			final String message = "Cannot find task to update its configuration " + executionAttemptID + '.';
 

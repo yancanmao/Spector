@@ -28,6 +28,7 @@ import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.fs.FileSystemSafetyNet;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.runtime.checkpoint.*;
+import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
@@ -38,10 +39,12 @@ import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
+import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.runtime.spector.TaskConfigManager;
 import org.apache.flink.runtime.state.*;
 import org.apache.flink.runtime.state.memory.ByteStreamStateHandle;
+import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.runtime.taskmanager.DispatcherThreadFactory;
 import org.apache.flink.runtime.taskmanager.RuntimeEnvironment;
 import org.apache.flink.runtime.util.profiling.MetricsManager;
@@ -1136,8 +1139,23 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 								// Step 1: Separate the Combined StateHandle into per KeyGroup KeyedStateHandle, i.e., Map<Integer, KeyedStateHandle>
 								// Step 2: Reporting an empty taskLocalSnapshot to JobManager.
 								Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle = composeSnapshotToJM(keyGroupsStateHandle);
-								// TODO: Step 3: Create a new Communication Stack between TaskExecutors to make TaskExecutors sends Map<Integer, KeyedStateHandle> to remote replicaStateManagers.
+								// Step 3: Create a new Communication Stack between TaskExecutors to make TaskExecutors sends Map<Integer, KeyedStateHandle> to remote replicaStateManagers.
+								TaskStateManager taskStateManager = owner.getEnvironment().getTaskStateManager();
+								List<TaskExecutorGateway> standbyTaskExecutorGateways = taskStateManager.getStandbyTaskExecutorGateways();
+								final Collection<CompletableFuture<Acknowledge>> dispatchStateToStandbyTaskFutures = new ArrayList<>();
+								for (TaskExecutorGateway taskExecutorGateway : standbyTaskExecutorGateways) {
+									// dispatch state to remote standbyTasks.
+									dispatchStateToStandbyTaskFutures.add(taskExecutorGateway.dispatchStateToStandbyTask(owner.getEnvironment().getJobVertexId(), hashedKeyGroupToHandle));
+								}
 
+								FutureUtils
+									.combineAll(dispatchStateToStandbyTaskFutures)
+									.whenComplete((ignored, failure) -> {
+										if (failure != null) {
+											throw new CompletionException(failure);
+										}
+										LOG.info("++++++ Replicate snapshot to standby tasks completed");
+									});
 							}
 						}
 					}
