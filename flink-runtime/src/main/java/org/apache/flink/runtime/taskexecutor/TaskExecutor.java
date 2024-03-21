@@ -216,8 +216,6 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 	private final TaskExecutorNettyServer taskExecutorNettyServer;
 
-	private final HashMap<String, TaskExecutorGateway> connectedTaskExecutorGateways;
-
 
 	// --------- resource manager --------
 
@@ -239,6 +237,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	 * The component to manage replicated state that stored in standby tasks.
 	 */
 	private final ReplicaStateManager replicaStateManager;
+
+	private final HashMap<String, TaskExecutorGateway> connectedTaskExecutorGateways;
 
 	private final RemoteReplicaRegistry remoteReplicaRegistry;
 
@@ -723,20 +723,21 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				if (reconfigOptions.isUpdatingState()) {
 					log.info("++++++ update task state: " + tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId());
 
-					JobManagerTaskRestore backupTaskRestore = replicaStateManager.getTaskRestoreFromReplica(task.getJobVertexId());
 					JobManagerTaskRestore taskRestore = tdd.getTaskRestore();
-
-					if (taskRestore != null) {
-						taskRestore.merge(backupTaskRestore);
-					} else {
-						taskRestore = backupTaskRestore;
-					}
+					replicaStateManager
+						.mergeTaskRestoreFromReplica(taskRestore, task.getJobVertexId(), tdd.getKeyGroupRange());
 
 					task.assignNewState(
 						tdd.getKeyGroupRange(),
 						tdd.getIdInModel(),
 						taskRestore);
 				} else {
+					Map<Integer, TaskExecutorGateway> srcKeyGroupsWithDstGateway = new HashMap<>();
+					for (Map.Entry<Integer, String> keyGroupWithAddr : tdd.getSrcKeyGroupsWithDstAddr().entrySet()) {
+						TaskExecutorGateway taskExecutorGateway = connectedTaskExecutorGateways.get(keyGroupWithAddr.getValue());
+						srcKeyGroupsWithDstGateway.put(keyGroupWithAddr.getKey(), taskExecutorGateway);
+					}
+
 					task.prepareReconfigComponent(
 						tdd.getReconfigId(),
 						reconfigOptions,
@@ -744,13 +745,15 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 						tdd.getInputGates(),
 						tdd.getSrcAffectedKeygroups(),
 						tdd.getDstAffectedKeygroups(),
+						srcKeyGroupsWithDstGateway,
 						tdd.getKeyGroupRange());
 
 					if (reconfigOptions.isSettingAffectedkeys()) {
 						log.info("++++++ set affected keys for this source subtask "
 							+ tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId()
 							+ " affected keygroups src: " + tdd.getSrcAffectedKeygroups()
-							+ " dst: " + tdd.getDstAffectedKeygroups());
+							+ " dst: " + tdd.getDstAffectedKeygroups()
+							+ " src to dst: " + tdd.getSrcKeyGroupsWithDstAddr());
 					}
 
 					if (reconfigOptions.isUpdatingPartitions()) {
@@ -824,6 +827,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		int idInModel,
 		Time timeout) {
 		Task task = taskSlotTable.getTask(executionAttemptID);
+		// check whether the state is dispatched to the standby task.
 		if (task == null) {
 			log.info("++++++ " + jobvertexId + " Receive backup state");
 			TaskStateManager taskStateManager = replicaStateManager.getReplicas().get(jobvertexId);
@@ -857,13 +861,13 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			JobID jobID = task.getJobID();
 			JobManagerConnection jobManagerConnection = jobManagerTable.get(jobID);
 
-			JobManagerTaskRestore backupTaskRestore = replicaStateManager.getTaskRestoreFromReplica(task.getJobVertexId());
+			replicaStateManager.mergeTaskRestoreFromReplica(taskRestore, task.getJobVertexId(), keyGroupRange);
 
-			if (taskRestore != null) {
-				taskRestore.merge(backupTaskRestore);
-			} else {
-				taskRestore = backupTaskRestore;
-			}
+//			if (taskRestore != null) {
+//				taskRestore.merge(backupTaskRestore);
+//			} else {
+//				taskRestore = backupTaskRestore;
+//			}
 
 			task.assignNewState(
 				keyGroupRange,

@@ -7,8 +7,10 @@ import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.spector.migration.ReconfigID;
 import org.apache.flink.runtime.spector.migration.ReconfigOptions;
 import org.apache.flink.runtime.state.KeyGroupRange;
+import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 
 import java.util.Collection;
+import java.util.Map;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -26,6 +28,7 @@ class TaskReconfigMeta {
 	private final Collection<Integer> dstAffectedKeygroups;
 
 	private final KeyGroupRange keyGroupRange;
+	private final Map<Integer, TaskExecutorGateway> srcKeyGroupsWithDstGateway;
 
 	TaskReconfigMeta(
 		ReconfigID reconfigId,
@@ -33,7 +36,9 @@ class TaskReconfigMeta {
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
 		Collection<Integer> srcAffectedKeygroups,
-		Collection<Integer> dstAffectedKeygroups, KeyGroupRange keyGroupRange) {
+		Collection<Integer> dstAffectedKeygroups,
+		Map<Integer, TaskExecutorGateway> srcKeyGroupsWithDstGateway,
+		KeyGroupRange keyGroupRange) {
 
 		this.reconfigId = checkNotNull(reconfigId);
 		this.reconfigOptions = checkNotNull(reconfigOptions);
@@ -45,6 +50,9 @@ class TaskReconfigMeta {
 
 		this.srcAffectedKeygroups = srcAffectedKeygroups;
 		this.dstAffectedKeygroups = dstAffectedKeygroups;
+
+		this.srcKeyGroupsWithDstGateway = srcKeyGroupsWithDstGateway;
+
 		this.keyGroupRange = keyGroupRange;
 	}
 
@@ -82,6 +90,10 @@ class TaskReconfigMeta {
 
 	public Collection<Integer> getDstAffectedKeygroups() {
 		return dstAffectedKeygroups;
+	}
+
+	public Map<Integer, TaskExecutorGateway> getSrcKeyGroupsWithDstGateway() {
+		return srcKeyGroupsWithDstGateway;
 	}
 
 	public KeyGroupRange getKeyGroupRange() {

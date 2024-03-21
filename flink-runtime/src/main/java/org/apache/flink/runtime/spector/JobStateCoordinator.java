@@ -340,29 +340,6 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 				});
 			}
 		}, mainThreadExecutor);
-
-//		.thenRunAsync(() -> {
-//			final CompletableFuture<Void> allSchedulingFutures = FutureUtils.waitForAll(schedulingFutures);
-//			allSchedulingFutures.whenComplete((Void ignored2, Throwable t2) -> {
-//				LOG.info("++++++ Standby tasks allocation completed");
-//
-//				Preconditions.checkState(standbyExecutionVertexes.size() == newExecutionJobVerticesTopological.size(),
-//					"++++++ Inconsistent standby tasks number");
-//
-//
-//				controlPlane.startControllers();
-//				CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
-//				checkNotNull(checkpointCoordinator);
-//				checkpointCoordinator.setReconfigpointAcknowledgeListener(this);
-//
-//				if (t2 != null) {
-//					LOG.warn("Scheduling of standby tasks failed. Cancelling the scheduling of standby tasks.");
-//					for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
-//						cancelStandbyExecution(executionJobVertex);
-//					}
-//				}
-//			});
-//		}, mainThreadExecutor);
 	}
 
 	// TODO: see if other place need to add this
@@ -563,9 +540,6 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		checkNotNull(checkpointCoordinator);
 		checkpointCoordinator.setReconfigpointAcknowledgeListener(this);
 
-//		// stop checkpoint coordinator then start the reconfiguration
-//		checkpointCoordinator.stopCheckpointScheduler();
-
 		this.targetVertex = tasks.get(vertexID);
 
 		for (ExecutionVertex vertex : this.targetVertex.getTaskVertices()) {
@@ -586,50 +560,33 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 			for (ExecutionVertex vertex : tasks.get(jobId).getTaskVertices()) {
 				Execution execution = vertex.getCurrentExecutionAttempt();
 				rescaleCandidatesFutures.add(execution.scheduleReconfig(
-//					reconfigId, ReconfigOptions.UPDATE_PARTITIONS_ONLY, null, null, null));
-					reconfigId, ReconfigOptions.UPDATE_WRITERS_ONLY, null, null, null));
+					reconfigId, ReconfigOptions.UPDATE_WRITERS_ONLY, null, null, null, null));
 			}
 		}
 
-//		for (JobVertexID jobId : updatedDownstream) {
-//			tasks.get(jobId).cleanBeforeRescale();
-//
-//			for (ExecutionVertex vertex : tasks.get(jobId).getTaskVertices()) {
-//				Execution execution = vertex.getCurrentExecutionAttempt();
-//				notYetAcknowledgedTasks.add(execution.getAttemptId());
-//				rescaleCandidatesFutures.add(execution.scheduleReconfig(
-//					reconfigId, ReconfigOptions.UPDATE_GATES_ONLY, null, null, null));
-//			}
-//		}
 
 		for (int subtaskIndex = 0; subtaskIndex < targetVertex.getTaskVertices().length; subtaskIndex++) {
 			ExecutionVertex vertex = targetVertex.getTaskVertices()[subtaskIndex];
 			Execution execution = vertex.getCurrentExecutionAttempt();
-//			if (!jobExecutionPlan.isAffectedTask(subtaskIndex)) {
-////				rescaleCandidatesFutures.add(
-////					execution.scheduleReconfig(reconfigId, ReconfigOptions.UPDATE_BOTH,
-////						jobExecutionPlan.getAlignedKeyGroupRange(subtaskIndex), null, null)); // cannot update keygrouprange and checkpoint simoutaneously.
-//				rescaleCandidatesFutures.add(
-//					execution.scheduleReconfig(reconfigId, ReconfigOptions.UPDATE_BOTH,
-//						null, null, null));
-//			} else {
-				if (jobExecutionPlan.isSourceSubtask(subtaskIndex) || jobExecutionPlan.isDestinationSubtask(subtaskIndex)) {
-					List<Integer> srcKeygroups = jobExecutionPlan.isSourceSubtask(subtaskIndex) ?
-						jobExecutionPlan.getAffectedKeygroupsForSource(subtaskIndex) : null;
-					List<Integer> dstKeygroups = jobExecutionPlan.isDestinationSubtask(subtaskIndex) ?
-						jobExecutionPlan.getAffectedKeygroupsForDestination(subtaskIndex) : null;
-					// if is source, set keygroups to be checkpointed
-					LOG.info("++++++ Task " + subtaskIndex + " set affected keys: migrate out => "
-						+ srcKeygroups + " : in => "
-						+ dstKeygroups);
-					rescaleCandidatesFutures.add(execution.scheduleReconfig(
-							reconfigId,
-							ReconfigOptions.PREPARE_AFFECTED_KEYGROUPS,
-							null,
-							srcKeygroups,
-							dstKeygroups));
-				}
-//			}
+			if (jobExecutionPlan.isSourceSubtask(subtaskIndex) || jobExecutionPlan.isDestinationSubtask(subtaskIndex)) {
+				List<Integer> srcKeygroups = jobExecutionPlan.isSourceSubtask(subtaskIndex) ?
+					jobExecutionPlan.getAffectedKeygroupsForSource(subtaskIndex) : null;
+				List<Integer> dstKeygroups = jobExecutionPlan.isDestinationSubtask(subtaskIndex) ?
+					jobExecutionPlan.getAffectedKeygroupsForDestination(subtaskIndex) : null;
+				// if is source, find out dst tasks for all migrating keys, keep it in Map<Key, TaskManagerAddress>
+				Map<Integer, String> srcKeyGroupsWithDstAddr = getSrcKeyGroupsWithDstAddr(subtaskIndex, srcKeygroups);
+				// if is source, set keygroups to be checkpointed, if is dst, set keygroups to be received.
+				LOG.info("++++++ Task " + subtaskIndex + " set affected keys: migrate out => "
+					+ srcKeygroups + " : in => "
+					+ dstKeygroups);
+				rescaleCandidatesFutures.add(execution.scheduleReconfig(
+						reconfigId,
+						ReconfigOptions.PREPARE_AFFECTED_KEYGROUPS,
+						null,
+						srcKeygroups,
+						dstKeygroups,
+						srcKeyGroupsWithDstAddr));
+			}
 		}
 
 		FutureUtils
@@ -656,38 +613,29 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 			}, mainThreadExecutor);
 	}
 
-
-	private void handleCollectedStates(Map<OperatorID, OperatorState> operatorStates) throws Exception {
-		switch (actionType) {
-			case REPARTITION:
-				assignNewStates();
-				break;
-			case SCALE_OUT:
-				throw new UnsupportedOperationException();
-//				break;
-			case SCALE_IN:
-				throw new UnsupportedOperationException();
-//				break;
-			default:
-				throw new IllegalStateException("illegal action type");
+	public Map<Integer, String> getSrcKeyGroupsWithDstAddr(int subtaskIndex, List<Integer> srcKeygroups) {
+		Map<Integer, String> srcKeyGroupsWithDstAddr = new HashMap<>();
+		if (jobExecutionPlan.isSourceSubtask(subtaskIndex)) {
+			Preconditions.checkNotNull(srcKeygroups, "++++++ src task should not contain no keygroup to migrate out");
+			for (Map.Entry<Integer, List<Integer>> subTaskEntry : jobExecutionPlan.getPartitionAssignment().entrySet()) {
+				int curSubTaskIdx = subTaskEntry.getKey();
+				for (int keyGroup : subTaskEntry.getValue()) {
+					if (srcKeygroups.contains(keyGroup)) {
+						Execution currentExecutionAttempt = this.targetVertex.getTaskVertices()[curSubTaskIdx]
+							.getCurrentExecutionAttempt();
+						srcKeyGroupsWithDstAddr.put(keyGroup, currentExecutionAttempt.getTaskManagerGateway());
+					}
+				}
+			}
 		}
+		return srcKeyGroupsWithDstAddr;
 	}
 
-	private CompletableFuture<Void> assignNewStates() throws ExecutionGraphException {
+
+	private void assignNewStates() throws ExecutionGraphException {
 
 		reconfigurationProfiler.onUpdateStart();
 		scheduleReconfigCompleted = false; // set this to false to wait until all schedule reconfig being processed.
-
-//		Map<JobVertexID, ExecutionJobVertex> tasks = new HashMap<>();
-//		tasks.put(targetVertex.getJobVertexId(), targetVertex);
-
-//		StateAssignmentOperation stateAssignmentOperation =
-//			new StateAssignmentOperation(checkpointId, tasks, operatorStates,
-//				true, REPARTITION_STATE);
-//		stateAssignmentOperation.setRedistributeStrategy(jobExecutionPlan);
-//
-//		LOG.info("++++++ start to assign states");
-//		stateAssignmentOperation.assignStates();
 
 		Collection<CompletableFuture<Void>> rescaledFuture = new ArrayList<>(targetVertex.getTaskVertices().length);
 
@@ -707,13 +655,13 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 			} else {
 				scheduledRescale = executionAttempt.scheduleReconfig(reconfigId,
 					ReconfigOptions.UPDATE_KEYGROUP_RANGE_ONLY,
-					jobExecutionPlan.getAlignedKeyGroupRange(i), null, null);
+					jobExecutionPlan.getAlignedKeyGroupRange(i), null, null, null);
 			}
 			rescaledFuture.add(scheduledRescale);
 		}
 		LOG.info("++++++ Assign new state futures created");
 
-		return FutureUtils
+		FutureUtils
 			.combineAll(rescaledFuture)
 			.thenRunAsync(() -> {
 				LOG.info("++++++ State migration completed");
@@ -724,12 +672,6 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 
 	private void completeReconfiguration() {
 		LOG.info("++++++ Assign new state for repartition Completed");
-//		CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
-
-//		checkNotNull(checkpointCoordinator);
-//		if (checkpointCoordinator.isPeriodicCheckpointingConfigured()) {
-//			checkpointCoordinator.startCheckpointScheduler();
-//		}
 
 		clean();
 

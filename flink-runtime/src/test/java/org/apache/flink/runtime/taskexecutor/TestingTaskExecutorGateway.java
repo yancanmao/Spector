@@ -20,6 +20,7 @@ package org.apache.flink.runtime.taskexecutor;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple5;
 import org.apache.flink.runtime.blob.TransientBlobKey;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
@@ -39,9 +40,12 @@ import org.apache.flink.runtime.messages.StackTraceSampleResponse;
 import org.apache.flink.runtime.spector.migration.ReconfigOptions;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.state.KeyGroupRange;
+import org.apache.flink.runtime.state.StreamStateHandle;
 import org.apache.flink.types.SerializableOptional;
 import org.apache.flink.util.Preconditions;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
@@ -200,6 +204,16 @@ public class TestingTaskExecutorGateway implements TaskExecutorGateway {
 
 	@Override
 	public CompletableFuture<Acknowledge> dispatchStateToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, JobManagerTaskRestore taskRestore, KeyGroupRange keyGroupRange, int idInModel, Time timeout) {
+		return null;
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> dispatchStandbyTaskGatewaysToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, List<String> standbyTaskGateways, Time timeout) {
+		return null;
+	}
+
+	@Override
+	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(JobVertexID jobvertexId, Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle) {
 		return null;
 	}
 

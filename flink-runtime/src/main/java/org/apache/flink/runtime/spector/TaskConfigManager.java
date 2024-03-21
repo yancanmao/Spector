@@ -39,6 +39,7 @@ import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.spector.migration.ReconfigID;
 import org.apache.flink.runtime.spector.migration.ReconfigOptions;
 import org.apache.flink.runtime.state.KeyGroupRange;
+import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.runtime.taskmanager.TaskActions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,6 +47,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Map;
 import java.util.Set;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -104,7 +106,9 @@ public class TaskConfigManager {
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
 		Collection<Integer> srcAffectedKeygroups,
-		Collection<Integer> dstAffectedKeygroups, KeyGroupRange keyGroupRange) {
+		Collection<Integer> dstAffectedKeygroups,
+		Map<Integer, TaskExecutorGateway> srcKeyGroupsWithDstGateway,
+		KeyGroupRange keyGroupRange) {
 
 		TaskReconfigMeta meta = new TaskReconfigMeta(
 			reconfigId,
@@ -113,6 +117,7 @@ public class TaskConfigManager {
 			inputGateDeploymentDescriptors,
 			srcAffectedKeygroups,
 			dstAffectedKeygroups,
+			srcKeyGroupsWithDstGateway,
 			keyGroupRange);
 
 		long timeStart = System.currentTimeMillis();
@@ -281,6 +286,10 @@ public class TaskConfigManager {
 
 	public Collection<Integer> getDstAffectedKeygroups() {
 		return reconfigMeta.getDstAffectedKeygroups();
+	}
+
+	public Map<Integer, TaskExecutorGateway> getSrcKeyGroupsWithDstGateway(){
+		return reconfigMeta.getSrcKeyGroupsWithDstGateway();
 	}
 
 	public void setBackupKeyGroups(Set<Integer> backupKeyGroups) {

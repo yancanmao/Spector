@@ -279,50 +279,21 @@ public class StateAssignmentOperation {
 		} else if (operation == Operation.REPARTITION_STATE) {
 			checkNotNull(jobExecutionPlan, "++++++ JobExecutionPlan Cannot be null for repartition");
 
-//			// replicate to standby tasks
-//			LOG.info("++++++ Replicate to standby tasks");
+			LOG.info("++++++ Transfer snapshoted + non-replicated states to destination tasks");
 //			reDistributePartitionableStates(
 //				operatorStates,
 //				newParallelism,
 //				operatorIDs,
 //				newManagedOperatorStates,
 //				newRawOperatorStates);
-//
-//			reDistributeKeyedStatesToStandbyTasks(
+
+			// TODO: The state assignment operation is applied on all operators, rather than one operator.
+//			reDistributeKeyedStatesWithExecutionPlan(
 //				operatorStates,
+//				newParallelism,
 //				operatorIDs,
 //				newManagedKeyedState,
 //				newRawKeyedState);
-//
-//			backupTaskStateToExecutionJobVertices(
-//				executionJobVertex,
-//				newManagedOperatorStates,
-//				newRawOperatorStates,
-//				newManagedKeyedState,
-//				newRawKeyedState
-//			);
-//
-//			// forward non-replicated state to destination tasks
-//			newManagedOperatorStates.clear();
-//			newRawOperatorStates.clear();
-//			newManagedKeyedState.clear();
-//			newRawKeyedState.clear();
-
-			LOG.info("++++++ Transfer snapshoted + non-replicated states to destination tasks");
-			reDistributePartitionableStates(
-				operatorStates,
-				newParallelism,
-				operatorIDs,
-				newManagedOperatorStates,
-				newRawOperatorStates);
-
-			// TODO: The state assignment operation is applied on all operators, rather than one operator.
-			reDistributeKeyedStatesWithExecutionPlan(
-				operatorStates,
-				newParallelism,
-				operatorIDs,
-				newManagedKeyedState,
-				newRawKeyedState);
 			/*
 			 *  An executionJobVertex's all state handles needed to restore are something like a matrix
 			 *
@@ -342,23 +313,18 @@ public class StateAssignmentOperation {
 				newParallelism);
 
 		} else if (operation == Operation.DISPATCH_STATE_TO_STANDBY_TASK) {
-//			reDistributePartitionableStatesToStandbyTasks(
+//			reDistributePartitionableStates(
 //				operatorStates,
+//				newParallelism,
 //				operatorIDs,
 //				newManagedOperatorStates,
 //				newRawOperatorStates);
-			reDistributePartitionableStates(
-				operatorStates,
-				newParallelism,
-				operatorIDs,
-				newManagedOperatorStates,
-				newRawOperatorStates);
-
-			reDistributeKeyedStatesToStandbyTasks(
-				operatorStates,
-				operatorIDs,
-				newManagedKeyedState,
-				newRawKeyedState);
+//
+//			reDistributeKeyedStatesToStandbyTasks(
+//				operatorStates,
+//				operatorIDs,
+//				newManagedKeyedState,
+//				newRawKeyedState);
 
 			backupTaskStateToExecutionJobVertices(
 				executionJobVertex,

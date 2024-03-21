@@ -835,6 +835,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				isStandby,
 				null,
 				null,
+				null,
 				backupKeyGroups);
 
 			// null taskRestore to let it be GC'ed
@@ -1120,7 +1121,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		ReconfigOptions reconfigOptions,
 		@Nullable KeyGroupRange keyGroupRange,
 		@Nullable List<Integer> srcAffectedKeygroups,
-		List<Integer> dstAffectedKeygroups) throws ExecutionGraphException {
+		List<Integer> dstAffectedKeygroups,
+		Map<Integer, String> srcKeyGroupsWithDstAddr) throws ExecutionGraphException {
 
 		getVertex().updateReconfigId(reconfigId);
 		getVertex().assignKeyGroupRange(keyGroupRange);
@@ -1133,10 +1135,6 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		if (this.state != RUNNING && this.state != STANDBY) {
 			throw new IllegalStateException("The vertex must be in RUNNING state to be reconfiged. Found state " + this.state);
 		}
-
-//		testRPCMessage("1");
-//		testRPCMessage("2");
-//		testRPCMessage("3");
 
 		if (taskRestore != null) {
 			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
@@ -1170,6 +1168,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 				isStandby,
 				srcAffectedKeygroups,
 				dstAffectedKeygroups,
+				srcKeyGroupsWithDstAddr,
 				backupKeyGroups);
 
 			// null taskRestore to let it be GC'ed
@@ -1201,7 +1200,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 		getVertex().setIdInModel(idInModel);
 
-		return scheduleReconfig(reconfigId, reconfigOptions, keyGroupRange, null, null);
+		return scheduleReconfig(reconfigId, reconfigOptions, keyGroupRange, null, null, null);
 	}
 
 	public CompletableFuture<Void> deploy(KeyGroupRange keyGroupRange, int idInModel) throws JobException {

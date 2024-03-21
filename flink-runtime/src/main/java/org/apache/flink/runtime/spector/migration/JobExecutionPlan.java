@@ -215,9 +215,9 @@ public class JobExecutionPlan {
 		}
 	}
 
-	private void compareAndSetAffectedKeys(Map<Integer, List<Integer>> executorMapping, Map<Integer, List<Integer>> oldExecutorMapping, Integer id, Map<Integer, List<Integer>> subtaskMap) {
-		for (Integer hashedKeys : executorMapping.get(id)) {
-			if (!oldExecutorMapping.get(id).contains(hashedKeys)) {
+	private void compareAndSetAffectedKeys(Map<Integer, List<Integer>> leftExecutorMapping, Map<Integer, List<Integer>> rightExecutorMapping, Integer id, Map<Integer, List<Integer>> subtaskMap) {
+		for (Integer hashedKeys : leftExecutorMapping.get(id)) {
+			if (!rightExecutorMapping.get(id).contains(hashedKeys)) {
 				List<Integer> affectedKeys = subtaskMap.computeIfAbsent(id, t -> new ArrayList<>());
 				affectedKeys.add(hashedKeys);
 			}

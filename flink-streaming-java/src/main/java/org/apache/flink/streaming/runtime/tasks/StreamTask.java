@@ -1092,6 +1092,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		private final long asyncStartNanos;
 
+		private final boolean isReconfigPoint;
+
 		private final AtomicReference<CheckpointingOperation.AsyncCheckpointState> asyncCheckpointState = new AtomicReference<>(
 			CheckpointingOperation.AsyncCheckpointState.RUNNING);
 
@@ -1107,6 +1109,23 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			this.checkpointMetaData = Preconditions.checkNotNull(checkpointMetaData);
 			this.checkpointMetrics = Preconditions.checkNotNull(checkpointMetrics);
 			this.asyncStartNanos = asyncStartNanos;
+			this.isReconfigPoint = false;
+		}
+
+		AsyncCheckpointRunnable(
+			StreamTask<?, ?> owner,
+			Map<OperatorID, OperatorSnapshotFutures> operatorSnapshotsInProgress,
+			CheckpointMetaData checkpointMetaData,
+			CheckpointMetrics checkpointMetrics,
+			long asyncStartNanos,
+			boolean isReconfigPoint) {
+
+			this.owner = Preconditions.checkNotNull(owner);
+			this.operatorSnapshotsInProgress = Preconditions.checkNotNull(operatorSnapshotsInProgress);
+			this.checkpointMetaData = Preconditions.checkNotNull(checkpointMetaData);
+			this.checkpointMetrics = Preconditions.checkNotNull(checkpointMetrics);
+			this.asyncStartNanos = asyncStartNanos;
+			this.isReconfigPoint = isReconfigPoint;
 		}
 
 		@Override
@@ -1139,23 +1158,13 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 								// Step 1: Separate the Combined StateHandle into per KeyGroup KeyedStateHandle, i.e., Map<Integer, KeyedStateHandle>
 								// Step 2: Reporting an empty taskLocalSnapshot to JobManager.
 								Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle = composeSnapshotToJM(keyGroupsStateHandle);
-								// Step 3: Create a new Communication Stack between TaskExecutors to make TaskExecutors sends Map<Integer, KeyedStateHandle> to remote replicaStateManagers.
-								TaskStateManager taskStateManager = owner.getEnvironment().getTaskStateManager();
-								List<TaskExecutorGateway> standbyTaskExecutorGateways = taskStateManager.getStandbyTaskExecutorGateways();
-								final Collection<CompletableFuture<Acknowledge>> dispatchStateToStandbyTaskFutures = new ArrayList<>();
-								for (TaskExecutorGateway taskExecutorGateway : standbyTaskExecutorGateways) {
-									// dispatch state to remote standbyTasks.
-									dispatchStateToStandbyTaskFutures.add(taskExecutorGateway.dispatchStateToStandbyTask(owner.getEnvironment().getJobVertexId(), hashedKeyGroupToHandle));
+								if (isReconfigPoint) {
+									// Step 3.1: Sends Map<Integer, KeyedStateHandle> to remote replicaStateManagers.
+									replicateStateHandleToReplicas(hashedKeyGroupToHandle);
+								} else {
+									// Step 3.2: Sends Map<Integer, KeyedStateHandle> to the remote destination tasks.
+									transferStateHandleToDstTasks(hashedKeyGroupToHandle);
 								}
-
-								FutureUtils
-									.combineAll(dispatchStateToStandbyTaskFutures)
-									.whenComplete((ignored, failure) -> {
-										if (failure != null) {
-											throw new CompletionException(failure);
-										}
-										LOG.info("++++++ Replicate snapshot to standby tasks completed");
-									});
 							}
 						}
 					}
@@ -1196,6 +1205,53 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				owner.cancelables.unregisterCloseable(this);
 				FileSystemSafetyNet.closeSafetyNetAndGuardedResourcesForThread();
 			}
+		}
+
+		private void transferStateHandleToDstTasks(Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle) {
+			Map<Integer, TaskExecutorGateway> srcKeyGroupsWithDstGateway = ((RuntimeEnvironment) owner.getEnvironment()).getTaskConfigManager().getSrcKeyGroupsWithDstGateway();
+			// Prepare statehandle to send, according to keys and its future owning tasks.
+			Map<TaskExecutorGateway, Map<Integer, Tuple2<Long, StreamStateHandle>>> gatewayToStateHandle = new HashMap<>();
+			for (Map.Entry<Integer, TaskExecutorGateway> keygroupWithGateway : srcKeyGroupsWithDstGateway.entrySet()) {
+				if (hashedKeyGroupToHandle.containsKey(keygroupWithGateway.getKey())) {
+					Map<Integer, Tuple2<Long, StreamStateHandle>> stateHandleToSend = gatewayToStateHandle.computeIfAbsent(keygroupWithGateway.getValue(), t -> new HashMap<>());
+					stateHandleToSend.put(keygroupWithGateway.getKey(), hashedKeyGroupToHandle.get(keygroupWithGateway.getKey()));
+				}
+			}
+
+			final Collection<CompletableFuture<Acknowledge>> dispatchStateToStandbyTaskFutures = new ArrayList<>();
+			// send all packed state handle to remote dst tasks.
+			for (Map.Entry<TaskExecutorGateway, Map<Integer, Tuple2<Long, StreamStateHandle>>> keygroupWithGateway : gatewayToStateHandle.entrySet()) {
+				// dispatch state to remote standbyTasks.
+				dispatchStateToStandbyTaskFutures.add(keygroupWithGateway.getKey().dispatchStateToStandbyTask(owner.getEnvironment().getJobVertexId(), hashedKeyGroupToHandle));
+			}
+
+			FutureUtils
+				.combineAll(dispatchStateToStandbyTaskFutures)
+				.whenComplete((ignored, failure) -> {
+					if (failure != null) {
+						throw new CompletionException(failure);
+					}
+					LOG.info("++++++ Replicate snapshot to standby tasks completed");
+				});
+		}
+
+		private void replicateStateHandleToReplicas(Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle) {
+			TaskStateManager taskStateManager = owner.getEnvironment().getTaskStateManager();
+			List<TaskExecutorGateway> standbyTaskExecutorGateways = taskStateManager.getStandbyTaskExecutorGateways();
+			final Collection<CompletableFuture<Acknowledge>> dispatchStateToStandbyTaskFutures = new ArrayList<>();
+			for (TaskExecutorGateway taskExecutorGateway : standbyTaskExecutorGateways) {
+				// dispatch state to remote standbyTasks.
+				dispatchStateToStandbyTaskFutures.add(taskExecutorGateway.dispatchStateToStandbyTask(owner.getEnvironment().getJobVertexId(), hashedKeyGroupToHandle));
+			}
+
+			FutureUtils
+				.combineAll(dispatchStateToStandbyTaskFutures)
+				.whenComplete((ignored, failure) -> {
+					if (failure != null) {
+						throw new CompletionException(failure);
+					}
+					LOG.info("++++++ Replicate snapshot to standby tasks completed");
+				});
 		}
 
 		private void reportCompletedSnapshotStates(
@@ -1466,7 +1522,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					operatorSnapshotsInProgress,
 					checkpointMetaData,
 					checkpointMetrics,
-					startAsyncPartNano);
+					startAsyncPartNano,
+					true);
 
 				owner.cancelables.registerCloseable(asyncCheckpointRunnable);
 				owner.asyncOperationsThreadPool.execute(asyncCheckpointRunnable);
@@ -1587,7 +1644,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					operatorSnapshotsInProgress,
 					checkpointMetaData,
 					checkpointMetrics,
-					startAsyncPartNano);
+					startAsyncPartNano,
+					false);
 
 				owner.cancelables.registerCloseable(asyncCheckpointRunnable);
 				owner.asyncOperationsThreadPool.submit(asyncCheckpointRunnable);

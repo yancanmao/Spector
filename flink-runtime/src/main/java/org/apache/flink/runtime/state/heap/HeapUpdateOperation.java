@@ -217,6 +217,7 @@ public class HeapUpdateOperation<K> {
 			fsDataInputStream.seek(offset);
 
 			int hashedKeyGroup = inView.readInt();
+			// Skip those state handle that does not belong to dst task.
 			if (!migrateInKeygroup.contains(hashedKeyGroup)) {
 				continue;
 			}

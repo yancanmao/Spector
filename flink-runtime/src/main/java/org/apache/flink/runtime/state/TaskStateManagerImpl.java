@@ -20,27 +20,20 @@ package org.apache.flink.runtime.state;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
-import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
-import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
-import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
-import org.apache.flink.runtime.checkpoint.PrioritizedOperatorSubtaskState;
-import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
+import org.apache.flink.runtime.checkpoint.*;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.runtime.taskmanager.CheckpointResponder;
 
+import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * This class is the default implementation of {@link TaskStateManager} and collaborates with the job manager
@@ -67,7 +60,7 @@ public class TaskStateManagerImpl implements TaskStateManager {
 	private JobManagerTaskRestore jobManagerTaskRestore;
 
 	/** The data given by the job manager to restore the job. This is null for a new job without previous state. */
-	private Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle;
+	private Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandles;
 
 	/** The local state store to which this manager reports local state snapshots. */
 	private final TaskLocalStateStore localStateStore;
@@ -89,7 +82,7 @@ public class TaskStateManagerImpl implements TaskStateManager {
 		this.executionAttemptID = executionAttemptID;
 		this.checkpointResponder = checkpointResponder;
 		this.standbyTaskExecutorGateways = null;
-		this.hashedKeyGroupToHandle = new HashMap<>();
+		this.hashedKeyGroupToHandles = new HashMap<>();
 	}
 
 	@Override
@@ -209,7 +202,33 @@ public class TaskStateManagerImpl implements TaskStateManager {
 		return standbyTaskExecutorGateways;
 	}
 
-	public Map<Integer, Tuple2<Long, StreamStateHandle>> getHashedKeyGroupToHandle() {
-		return hashedKeyGroupToHandle;
+	public Map<Integer, Tuple2<Long, StreamStateHandle>> getHashedKeyGroupToHandles() {
+		return hashedKeyGroupToHandles;
+	}
+
+	public void getTaskRestoreFromStateHandle(JobManagerTaskRestore taskRestore, KeyGroupRange keyGroupRange) {
+		Map.Entry<OperatorID, OperatorSubtaskState> operatorSubtaskStateEntry = taskRestore.getOperatorSubtaskState();
+		Preconditions.checkState(operatorSubtaskStateEntry != null, "++++++ operatorSubtaskState cannot be null");
+
+		List<KeyedStateHandle> keyGroupsStateHandles = new ArrayList<>();
+
+		for (Map.Entry<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle: hashedKeyGroupToHandles.entrySet()) {
+			int alignedKeyGroupId = keyGroupRange.mapFromHashedToAligned(hashedKeyGroupToHandle.getKey());
+			// keyGroupRange which length is 1
+			KeyGroupRange rangeOfOneKeyGroupRange = KeyGroupRange.of(alignedKeyGroupId, alignedKeyGroupId);
+			keyGroupsStateHandles.add(new KeyGroupsStateHandle(
+				new KeyGroupRangeOffsets(rangeOfOneKeyGroupRange, new long[]{hashedKeyGroupToHandle.getValue().f0}),
+				hashedKeyGroupToHandle.getValue().f1
+			));
+		}
+
+		OperatorSubtaskState composedOperatorSubtaskState = new OperatorSubtaskState(
+			operatorSubtaskStateEntry.getValue().getManagedOperatorState(),
+			operatorSubtaskStateEntry.getValue().getRawOperatorState(),
+			new StateObjectCollection<>(operatorSubtaskStateEntry.getValue().getManagedKeyedState()),
+			new StateObjectCollection<>(keyGroupsStateHandles));
+
+		taskRestore.putSubtaskStateByOperatorID(operatorSubtaskStateEntry.getKey(), composedOperatorSubtaskState);
+//		return taskRestore;
 	}
 }

@@ -110,7 +110,7 @@ public class JobManagerTaskRestore implements Serializable {
 //		hashedKeyGroupToManagedStateHandle.putAll(hashedKeyGroupToManagedStateHandle2);
 //		hashedKeyGroupToRawStateHandle.putAll(hashedKeyGroupToRawStateHandle2);
 
-		Map.Entry<OperatorID, OperatorSubtaskState> operatorSubtaskStateEntry = getOperatorSubtaskState(this);
+		Map.Entry<OperatorID, OperatorSubtaskState> operatorSubtaskStateEntry = getOperatorSubtaskState();
 
 		Preconditions.checkState(operatorSubtaskStateEntry != null, "++++++ operatorSubtaskState cannot be null");
 
@@ -120,7 +120,13 @@ public class JobManagerTaskRestore implements Serializable {
 			new StateObjectCollection<>(hashedKeyGroupToManagedStateHandle.values()),
 			new StateObjectCollection<>(hashedKeyGroupToRawStateHandle.values()));
 
-		taskStateSnapshot.putSubtaskStateByOperatorID(operatorSubtaskStateEntry.getKey(), newOperatorSubtaskState);
+		putSubtaskStateByOperatorID(operatorSubtaskStateEntry.getKey(), newOperatorSubtaskState);
+	}
+
+	public void putSubtaskStateByOperatorID(
+		@Nonnull OperatorID operatorID,
+		@Nonnull OperatorSubtaskState state) {
+		taskStateSnapshot.putSubtaskStateByOperatorID(operatorID, state);
 	}
 
 	private Map<Integer, KeyedStateHandle> getHashedKeyGroupToHandleFromStateRestore(
@@ -187,12 +193,12 @@ public class JobManagerTaskRestore implements Serializable {
 		return hashedKeyGroupToHandle;
 	}
 
-	private Map.Entry<OperatorID, OperatorSubtaskState> getOperatorSubtaskState(JobManagerTaskRestore stateRestore) {
+	public Map.Entry<OperatorID, OperatorSubtaskState> getOperatorSubtaskState() {
 
-		Preconditions.checkState(stateRestore != null, "++++++ new state restore should not be null");
+//		Preconditions.checkState(stateRestore != null, "++++++ new state restore should not be null");
 
 		Set<Map.Entry<OperatorID, OperatorSubtaskState>> subtaskStateMappings
-			= stateRestore.getTaskStateSnapshot().getSubtaskStateMappings();
+			= this.getTaskStateSnapshot().getSubtaskStateMappings();
 
 		// By default, there will only be one Operator inside the OperatorChain.
 		for (Map.Entry<OperatorID, OperatorSubtaskState> subtaskStateEntry : subtaskStateMappings) {

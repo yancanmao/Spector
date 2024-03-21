@@ -74,6 +74,7 @@ import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.state.TaskStateManagerImpl;
 import org.apache.flink.runtime.taskexecutor.GlobalAggregateManager;
+import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.runtime.util.FatalExitExceptionHandler;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
@@ -105,7 +106,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
-import static org.apache.flink.runtime.spector.SpectorOptions.REPLICATE_KEYS_FILTER;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -1380,7 +1380,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
 		Collection<Integer> srcAffectedKeygroups, Collection<Integer> dstAffectedKeygroups,
-		KeyGroupRange keyGroupRange) {
+		Map<Integer, TaskExecutorGateway> srcKeyGroupsWithDstGateway, KeyGroupRange keyGroupRange) {
 
 		taskConfigManager.prepareReconfigMeta(
 			reconfigId,
@@ -1389,6 +1389,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 			inputGateDeploymentDescriptors,
 			srcAffectedKeygroups,
 			dstAffectedKeygroups,
+			srcKeyGroupsWithDstGateway,
 			keyGroupRange);
 	}
 

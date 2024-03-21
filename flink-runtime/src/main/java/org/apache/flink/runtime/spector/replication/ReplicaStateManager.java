@@ -22,15 +22,19 @@ public class ReplicaStateManager {
 
 	/**
 	 * The API to retrieve task restore from the replica tasks.
+	 *
+	 * @param taskRestore
 	 * @param jobvertexId
+	 * @param keyGroupRange
 	 * @return
 	 */
-	public JobManagerTaskRestore getTaskRestoreFromReplica(JobVertexID jobvertexId) {
+	public void mergeTaskRestoreFromReplica(JobManagerTaskRestore taskRestore, JobVertexID jobvertexId, KeyGroupRange keyGroupRange) {
 		TaskStateManager taskStateManager = this.getReplicas().get(jobvertexId);
 		// directly assign backup taskrestore for the targeting task, and it will be updated in each operator during
 		// state initialization.
 		Preconditions.checkNotNull(taskStateManager);
-		return ((TaskStateManagerImpl) taskStateManager).getTaskRestore();
+
+		((TaskStateManagerImpl) taskStateManager).getTaskRestoreFromStateHandle(taskRestore, keyGroupRange);
 	}
 
 	public void put(JobVertexID jobvertexId, TaskStateManager taskStateManager) {
@@ -54,7 +58,7 @@ public class ReplicaStateManager {
 	 */
 	public void mergeState(JobVertexID jobvertexId, Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle) {
 		TaskStateManager taskStateManager = this.getReplicas().get(jobvertexId);
-		Map<Integer, Tuple2<Long, StreamStateHandle>> localReplicatedStateHandle = ((TaskStateManagerImpl) taskStateManager).getHashedKeyGroupToHandle();
+		Map<Integer, Tuple2<Long, StreamStateHandle>> localReplicatedStateHandle = ((TaskStateManagerImpl) taskStateManager).getHashedKeyGroupToHandles();
 		Preconditions.checkNotNull(localReplicatedStateHandle);
 		hashedKeyGroupToHandle.forEach(localReplicatedStateHandle::putIfAbsent);
 	}

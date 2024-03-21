@@ -905,6 +905,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		boolean isStandby,
 		@Nullable List<Integer> srcAffectedKeygroups,
 		List<Integer> dstAffectedKeygroups,
+		Map<Integer, String> srcKeyGroupsWithDstAddr,
 		Set<Integer> backupKeyGroups) throws ExecutionGraphException {
 
 		// Produced intermediate results
@@ -1003,6 +1004,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			consumedPartitions,
 			srcAffectedKeygroups,
 			dstAffectedKeygroups,
+			srcKeyGroupsWithDstAddr,
 			isStandby);
 	}
 

@@ -40,6 +40,7 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -167,6 +168,8 @@ public final class TaskDeploymentDescriptor implements Serializable {
 	private final Collection<Integer> srcAffectedKeygroups;
 	private final Collection<Integer> dstAffectedKeygroups;
 
+	private final Map<Integer, String> srcKeyGroupsWithDstAddr;
+
 	public TaskDeploymentDescriptor(
 		JobID jobId,
 		MaybeOffloaded<JobInformation> serializedJobInformation,
@@ -186,7 +189,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		this(jobId, serializedJobInformation, serializedTaskInformation,
 			executionAttemptId, allocationId, reconfigId, new HashSet<>(), subtaskIndex, attemptNumber,
 			targetSlotNumber, taskRestore, keyGroupRange, idInModel, resultPartitionDeploymentDescriptors,
-			inputGateDeploymentDescriptors, null, null, false);
+			inputGateDeploymentDescriptors, null, null, null, false);
 	}
 
 	public TaskDeploymentDescriptor(
@@ -207,6 +210,7 @@ public final class TaskDeploymentDescriptor implements Serializable {
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
 		@Nullable Collection<Integer> srcAffectedKeygroups,
 		@Nullable Collection<Integer> dstAffectedKeygroups,
+		Map<Integer, String> srcKeyGroupsWithDstAddr,
 		boolean isStandby) {
 
 		this.jobId = Preconditions.checkNotNull(jobId);
@@ -240,6 +244,8 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 		this.srcAffectedKeygroups = srcAffectedKeygroups;
 		this.dstAffectedKeygroups = dstAffectedKeygroups;
+
+		this.srcKeyGroupsWithDstAddr = srcKeyGroupsWithDstAddr;
 	}
 
 	/**
@@ -434,5 +440,9 @@ public final class TaskDeploymentDescriptor implements Serializable {
 
 	public Set<Integer> getBackupKeygroups() {
 		return backupKeyGroups;
+	}
+
+	public Map<Integer, String> getSrcKeyGroupsWithDstAddr() {
+		return srcKeyGroupsWithDstAddr;
 	}
 }

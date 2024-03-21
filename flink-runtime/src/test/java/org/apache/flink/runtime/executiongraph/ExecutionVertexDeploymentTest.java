@@ -305,7 +305,7 @@ public class ExecutionVertexDeploymentTest extends TestLogger {
 		for (ScheduleMode mode : ScheduleMode.values()) {
 			vertex.getExecutionGraph().setScheduleMode(mode);
 
-			TaskDeploymentDescriptor tdd = vertex.createDeploymentDescriptor(new ExecutionAttemptID(), slot, null, 1, false, null, null, new HashSet<>());
+			TaskDeploymentDescriptor tdd = vertex.createDeploymentDescriptor(new ExecutionAttemptID(), slot, null, 1, false, null, null, null, new HashSet<>());
 
 			Collection<ResultPartitionDeploymentDescriptor> producedPartitions = tdd.getProducedPartitions();
 
