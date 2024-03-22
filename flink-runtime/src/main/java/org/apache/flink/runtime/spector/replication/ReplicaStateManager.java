@@ -23,29 +23,28 @@ public class ReplicaStateManager {
 	/**
 	 * The API to retrieve task restore from the replica tasks.
 	 *
-	 * @param taskRestore
 	 * @param jobvertexId
 	 * @param keyGroupRange
 	 * @return
 	 */
-	public void mergeTaskRestoreFromReplica(JobManagerTaskRestore taskRestore, JobVertexID jobvertexId, KeyGroupRange keyGroupRange) {
-		TaskStateManager taskStateManager = this.getReplicas().get(jobvertexId);
+	public JobManagerTaskRestore mergeTaskRestoreFromReplica(JobVertexID jobvertexId, KeyGroupRange keyGroupRange) {
+		TaskStateManager taskStateManager = replicas.get(jobvertexId);
 		// directly assign backup taskrestore for the targeting task, and it will be updated in each operator during
 		// state initialization.
 		Preconditions.checkNotNull(taskStateManager);
 
-		((TaskStateManagerImpl) taskStateManager).getTaskRestoreFromStateHandle(taskRestore, keyGroupRange);
+		return ((TaskStateManagerImpl) taskStateManager).getTaskRestoreFromStateHandle(jobvertexId, keyGroupRange);
 	}
 
 	public void put(JobVertexID jobvertexId, TaskStateManager taskStateManager) {
-		this.getReplicas().put(jobvertexId, taskStateManager);
+		replicas.put(jobvertexId, taskStateManager);
 	}
 
 	/**
 	 * Substitute keyed state that is shown up in
 	 */
 	public void mergeState(JobVertexID jobvertexId, JobManagerTaskRestore newStateRestore) {
-		TaskStateManager taskStateManager = this.getReplicas().get(jobvertexId);
+		TaskStateManager taskStateManager = replicas.get(jobvertexId);
 		JobManagerTaskRestore oldTaskRestore = ((TaskStateManagerImpl) taskStateManager).getTaskRestore();
 
 		newStateRestore.merge(oldTaskRestore);
@@ -57,7 +56,7 @@ public class ReplicaStateManager {
 	 * Substitute keyed state that is shown up in
 	 */
 	public void mergeState(JobVertexID jobvertexId, Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle) {
-		TaskStateManager taskStateManager = this.getReplicas().get(jobvertexId);
+		TaskStateManager taskStateManager = replicas.get(jobvertexId);
 		Map<Integer, Tuple2<Long, StreamStateHandle>> localReplicatedStateHandle = ((TaskStateManagerImpl) taskStateManager).getHashedKeyGroupToHandles();
 		Preconditions.checkNotNull(localReplicatedStateHandle);
 		hashedKeyGroupToHandle.forEach(localReplicatedStateHandle::putIfAbsent);

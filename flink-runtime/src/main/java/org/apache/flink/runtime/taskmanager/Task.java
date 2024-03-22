@@ -191,7 +191,6 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	/** The BroadcastVariableManager to be used by this task. */
 	private final BroadcastVariableManager broadcastVariableManager;
 
-	/** The manager for state of operators running in this task/slot. */
 	private final TaskStateManager taskStateManager;
 
 	/** Serialized version of the job specific execution configuration (see {@link ExecutionConfig}). */
@@ -766,7 +765,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				memoryManager,
 				ioManager,
 				broadcastVariableManager,
-				taskStateManager,
+				getTaskStateManager(),
 				aggregateManager,
 				accumulatorRegistry,
 				kvStateRegistry,
@@ -1219,7 +1218,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				"dispatch.");
 		}
 
-		taskStateManager.setTaskRestore(taskRestore);
+		getTaskStateManager().setTaskRestore(taskRestore);
 		LOG.info("++++++ Standby task " + taskNameWithSubtask + " received state snapshot of checkpoint " +
 			taskRestore.getRestoreCheckpointId() + ".");
 	}
@@ -1347,7 +1346,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				public void run() {
 					try {
 						invokable.notifyCheckpointComplete(checkpointID);
-						taskStateManager.notifyCheckpointComplete(checkpointID);
+						getTaskStateManager().notifyCheckpointComplete(checkpointID);
 					} catch (Throwable t) {
 						if (getExecutionState() == ExecutionState.RUNNING) {
 							// fail task if checkpoint confirmation failed.
@@ -1380,7 +1379,8 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
 		Collection<Integer> srcAffectedKeygroups, Collection<Integer> dstAffectedKeygroups,
-		Map<Integer, TaskExecutorGateway> srcKeyGroupsWithDstGateway, KeyGroupRange keyGroupRange) {
+		Map<Integer, TaskExecutorGateway> srcKeyGroupsWithDstGateway,
+		KeyGroupRange keyGroupRange) {
 
 		taskConfigManager.prepareReconfigMeta(
 			reconfigId,
@@ -1398,7 +1398,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	}
 
 	public void assignNewState(KeyGroupRange keyGroupRange, int idInModel, JobManagerTaskRestore taskRestore) {
-		((TaskStateManagerImpl) taskStateManager).updateTaskRestore(taskRestore);
+		((TaskStateManagerImpl) getTaskStateManager()).updateTaskRestore(taskRestore);
 
 		invokable.reinitializeState(keyGroupRange, idInModel);
 	}
@@ -1590,6 +1590,11 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		} catch (Exception e) {
 			throw new FlinkException("Could not instantiate the task's invokable class.", e);
 		}
+	}
+
+	/** The manager for state of operators running in this task/slot. */
+	public TaskStateManager getTaskStateManager() {
+		return taskStateManager;
 	}
 
 	// ------------------------------------------------------------------------

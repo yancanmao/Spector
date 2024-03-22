@@ -21,7 +21,6 @@ package org.apache.flink.runtime.jobmanager.slots;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
-import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
@@ -175,7 +174,6 @@ public interface TaskManagerGateway {
 	 *
 	 * @param executionAttemptID identifying the standby task
 	 * @param jobvertexId
-	 * @param taskRestore        identifying the task state snapshot
 	 * @param keyGroupRange
 	 * @param idInModel
 	 * @param timeout            for the cancel operation
@@ -183,8 +181,10 @@ public interface TaskManagerGateway {
 	 */
 	CompletableFuture<Acknowledge> dispatchStateToTask(
 		ExecutionAttemptID executionAttemptID,
-		JobVertexID jobvertexId, JobManagerTaskRestore taskRestore,
-		KeyGroupRange keyGroupRange, int idInModel, Time timeout);
+		JobVertexID jobvertexId,
+		KeyGroupRange keyGroupRange,
+		int idInModel,
+		Time timeout);
 
 	CompletableFuture<Acknowledge> dispatchStandbyTaskGatewaysToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId,
 																	 List<String> standbyTaskGateways, Time timeout);

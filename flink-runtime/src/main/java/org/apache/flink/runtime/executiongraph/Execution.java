@@ -364,7 +364,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		this.taskRestore = taskRestore;
 
 		if (isStandby && state == STANDBY) {
-			CompletableFuture<Acknowledge> ack = dispatchStateToStandbyTaskRpcCall(taskRestore);
+			CompletableFuture<Acknowledge> ack = dispatchStateToStandbyTaskRpcCall();
 			//We must synchronously wait for the result
 //			try {
 //				ack.get();
@@ -406,13 +406,13 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	 * <p>The sending is tried up to NUM_CANCEL_CALL_TRIES times.
 	 * @return
 	 */
-	private CompletableFuture<Acknowledge> dispatchStateToStandbyTaskRpcCall(JobManagerTaskRestore taskRestore) {
+	private CompletableFuture<Acknowledge> dispatchStateToStandbyTaskRpcCall() {
 		final LogicalSlot slot = assignedResource;
 
 		final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
 
 		CompletableFuture<Acknowledge> dispatchStateResultFuture = FutureUtils.retry(
-			() -> taskManagerGateway.dispatchStateToTask(attemptId, vertex.getJobvertexId(), taskRestore, vertex.getKeyGroupRange(), vertex.getIdInModel(), rpcTimeout),
+			() -> taskManagerGateway.dispatchStateToTask(attemptId, vertex.getJobvertexId(), vertex.getKeyGroupRange(), vertex.getIdInModel(), rpcTimeout),
 			NUM_CANCEL_CALL_TRIES,
 			executor);
 
@@ -1136,14 +1136,14 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			throw new IllegalStateException("The vertex must be in RUNNING state to be reconfiged. Found state " + this.state);
 		}
 
-		if (taskRestore != null) {
+		if (reconfigOptions.isUpdatingState()) {
 			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
 
 			final ComponentMainThreadExecutor jobMasterMainThreadExecutor =
 				vertex.getExecutionGraph().getJobMasterMainThreadExecutor();
 
 			return CompletableFuture
-				.supplyAsync(() -> taskManagerGateway.dispatchStateToTask(attemptId, vertex.getJobvertexId(), taskRestore,
+				.supplyAsync(() -> taskManagerGateway.dispatchStateToTask(attemptId, vertex.getJobvertexId(),
 					vertex.getKeyGroupRange(), vertex.getIdInModel(), rpcTimeout), executor)
 				.thenCompose(Function.identity())
 				.handleAsync((ack, failure) -> {
@@ -1157,8 +1157,8 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 					return null;
 				}, jobMasterMainThreadExecutor);
 		} else {
-
-			checkState(taskRestore == null, "++++++ task restore need to be null");
+			checkState(taskRestore == null && !reconfigOptions.isUpdatingState(),
+				"++++++ task reconfig option cannot be update state, and restore need to be null");
 
 			final TaskDeploymentDescriptor deployment = vertex.createDeploymentDescriptor(
 				attemptId,

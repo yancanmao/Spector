@@ -182,8 +182,7 @@ object TaskMessages {
    * @param taskRestore The task's latest checkpointed state snapshot.
    */
   case class dispatchStateToStandbyTask(
-                                         attemptID: ExecutionAttemptID,
-                                         taskRestore: JobManagerTaskRestore)
+                                         attemptID: ExecutionAttemptID)
     extends TaskMessage with RequiresLeaderSessionID
 
   case class dispatchStandbyTaskGatewaysToTask(

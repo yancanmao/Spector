@@ -720,51 +720,54 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 				task.updateTaskConfiguration(taskInformation);
 
-				if (reconfigOptions.isUpdatingState()) {
-					log.info("++++++ update task state: " + tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId());
-
-					JobManagerTaskRestore taskRestore = tdd.getTaskRestore();
-					replicaStateManager
-						.mergeTaskRestoreFromReplica(taskRestore, task.getJobVertexId(), tdd.getKeyGroupRange());
-
-					task.assignNewState(
-						tdd.getKeyGroupRange(),
-						tdd.getIdInModel(),
-						taskRestore);
-				} else {
-					Map<Integer, TaskExecutorGateway> srcKeyGroupsWithDstGateway = new HashMap<>();
+//				if (reconfigOptions.isUpdatingState()) {
+//					log.info("++++++ update task state: " + tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId());
+//
+//					JobManagerTaskRestore taskRestore = tdd.getTaskRestore();
+//					Preconditions.checkNotNull(taskRestore, "++++++ Task Restore cannot be null during state update");
+//					replicaStateManager
+//						.mergeTaskRestoreFromReplica(taskRestore, task.getJobVertexId(), tdd.getKeyGroupRange());
+//
+//					task.assignNewState(
+//						tdd.getKeyGroupRange(),
+//						tdd.getIdInModel(),
+//						taskRestore);
+//				} else {
+				Map<Integer, TaskExecutorGateway> srcKeyGroupsWithDstGateway = new HashMap<>();
+				if (tdd.getSrcAffectedKeygroups() != null) {
 					for (Map.Entry<Integer, String> keyGroupWithAddr : tdd.getSrcKeyGroupsWithDstAddr().entrySet()) {
 						TaskExecutorGateway taskExecutorGateway = connectedTaskExecutorGateways.get(keyGroupWithAddr.getValue());
 						srcKeyGroupsWithDstGateway.put(keyGroupWithAddr.getKey(), taskExecutorGateway);
 					}
-
-					task.prepareReconfigComponent(
-						tdd.getReconfigId(),
-						reconfigOptions,
-						tdd.getProducedPartitions(),
-						tdd.getInputGates(),
-						tdd.getSrcAffectedKeygroups(),
-						tdd.getDstAffectedKeygroups(),
-						srcKeyGroupsWithDstGateway,
-						tdd.getKeyGroupRange());
-
-					if (reconfigOptions.isSettingAffectedkeys()) {
-						log.info("++++++ set affected keys for this source subtask "
-							+ tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId()
-							+ " affected keygroups src: " + tdd.getSrcAffectedKeygroups()
-							+ " dst: " + tdd.getDstAffectedKeygroups()
-							+ " src to dst: " + tdd.getSrcKeyGroupsWithDstAddr());
-					}
-
-					if (reconfigOptions.isUpdatingPartitions()) {
-						task.createNewResultPartitions();
-					}
-
-					if (reconfigOptions.isUpdatingKeyGroupRange()) {
-						log.info("++++++ update task keyGroupRange for subtask: " + tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId());
-						task.updateKeyGroupRange(tdd.getKeyGroupRange());
-					}
 				}
+
+				task.prepareReconfigComponent(
+					tdd.getReconfigId(),
+					reconfigOptions,
+					tdd.getProducedPartitions(),
+					tdd.getInputGates(),
+					tdd.getSrcAffectedKeygroups(),
+					tdd.getDstAffectedKeygroups(),
+					srcKeyGroupsWithDstGateway,
+					tdd.getKeyGroupRange());
+
+				if (reconfigOptions.isSettingAffectedkeys()) {
+					log.info("++++++ set affected keys for this source subtask "
+						+ tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId()
+						+ " affected keygroups src: " + tdd.getSrcAffectedKeygroups()
+						+ " dst: " + tdd.getDstAffectedKeygroups()
+						+ " src to dst: " + tdd.getSrcKeyGroupsWithDstAddr());
+				}
+
+				if (reconfigOptions.isUpdatingPartitions()) {
+					task.createNewResultPartitions();
+				}
+
+				if (reconfigOptions.isUpdatingKeyGroupRange()) {
+					log.info("++++++ update task keyGroupRange for subtask: " + tdd.getSubtaskIndex() + "  " + tdd.getExecutionAttemptId());
+					task.updateKeyGroupRange(tdd.getKeyGroupRange());
+				}
+//				}
 
 				return CompletableFuture.completedFuture(Acknowledge.get());
 			} catch (Exception e) {
@@ -822,7 +825,6 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	public CompletableFuture<Acknowledge> dispatchStateToTask(
 		ExecutionAttemptID executionAttemptID,
 		JobVertexID jobvertexId,
-		JobManagerTaskRestore taskRestore,
 		KeyGroupRange keyGroupRange,
 		int idInModel,
 		Time timeout) {
@@ -836,7 +838,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				JobID jobID = taskStateManager.getJobID();
 				JobManagerConnection jobManagerConnection = jobManagerTable.get(jobID);
 
-				replicaStateManager.mergeState(jobvertexId, taskRestore);
+//				replicaStateManager.mergeState(jobvertexId, taskRestore);
 //			taskStateManager.setTaskRestore(taskRestore);
 
 				log.debug("++++++ " + jobvertexId + " Replicate completed, Acking to the jobmaster");
@@ -851,23 +853,13 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				log.debug(message);
 
 				throw new RuntimeException("++++++ Cannot find the corresponding taskStateManager");
-//			return FutureUtils.completedExceptionally(new TaskException(message));
 			}
 		} else {
-//			long start = System.currentTimeMillis();
-//			while (System.currentTimeMillis() - start < stateTransferDelay){}
-
 			log.info("++++++ update task state of execution: " + executionAttemptID);
 			JobID jobID = task.getJobID();
 			JobManagerConnection jobManagerConnection = jobManagerTable.get(jobID);
 
-			replicaStateManager.mergeTaskRestoreFromReplica(taskRestore, task.getJobVertexId(), keyGroupRange);
-
-//			if (taskRestore != null) {
-//				taskRestore.merge(backupTaskRestore);
-//			} else {
-//				taskRestore = backupTaskRestore;
-//			}
+			JobManagerTaskRestore taskRestore = replicaStateManager.mergeTaskRestoreFromReplica(task.getJobVertexId(), keyGroupRange);
 
 			task.assignNewState(
 				keyGroupRange,
@@ -939,7 +931,9 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			}
 
 			remoteReplicaRegistry.put(jobvertexId, standbyTaskExecutorGateways);
-			TaskStateManager taskStateManager = replicaStateManager.getReplicas().get(jobvertexId);
+//			TaskStateManager taskStateManager = replicaStateManager.getReplicas().get(jobvertexId);
+			// save replica gateways to running task
+			TaskStateManager taskStateManager = task.getTaskStateManager();
 			Preconditions.checkNotNull(taskStateManager, "++++++ task state manager cannot be null during dispatchStandbyTaskGatewaysToTask");
 			taskStateManager.setStandbyTaskExecutorGateways(standbyTaskExecutorGateways);
 		} else {

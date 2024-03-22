@@ -313,6 +313,12 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 					Preconditions.checkState(standbyExecutionVertexes.size() == newExecutionJobVerticesTopological.size(),
 						"++++++ Inconsistent standby tasks number");
 
+					controlPlane.startControllers();
+					CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
+					checkNotNull(checkpointCoordinator);
+					checkpointCoordinator.setReconfigpointAcknowledgeListener(this);
+
+					checkpointCoordinator.stopCheckpointScheduler();
 					// dispatch standby gateways to all running tasks
 					for (ExecutionJobVertex executionJobVertex : newExecutionJobVerticesTopological) {
 						List<String> standbyTaskGateways = new ArrayList<>();
@@ -326,10 +332,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 						}
 					}
 
-					controlPlane.startControllers();
-					CheckpointCoordinator checkpointCoordinator = executionGraph.getCheckpointCoordinator();
-					checkNotNull(checkpointCoordinator);
-					checkpointCoordinator.setReconfigpointAcknowledgeListener(this);
+					checkpointCoordinator.startCheckpointScheduler();
 
 					if (t2 != null) {
 						LOG.warn("Scheduling of standby tasks failed. Cancelling the scheduling of standby tasks.");
@@ -376,9 +379,12 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 			LOG.info("++++++ checkpoint complete, start to dispatch state to replica");
 			Preconditions.checkState(!reconfigInProgress,
 				"++++++ A reconfig is in progress, cannot do replication at the moment");
-			replicationInProgress = true;
-			reconfigurationProfiler.onReplicationStart();
-			dispatchLatestCheckpointedStateToStandbyTasks(checkpoint);
+//			replicationInProgress = true;
+//			reconfigurationProfiler.onReplicationStart();
+//			dispatchLatestCheckpointedStateToStandbyTasks(checkpoint);
+//			reconfigurationProfiler.onReplicationEnd();
+//			replicationInProgress = false;
+			LOG.info("++++++ Skip replication in this version");
 		}
 	}
 
@@ -402,7 +408,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	public void migrateStateToDestinationTasks(CompletedCheckpoint checkpoint) throws ExecutionGraphException {
 		Preconditions.checkState(checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT, "++++++ Need to be a RECONFIGPOINT");
 
-		prepareAssignStates(checkpoint, REPARTITION_STATE);
+//		prepareAssignStates(checkpoint, REPARTITION_STATE);
 		// start to transfer the state to the destination tasks
 		assignNewStates();
 	}

@@ -102,13 +102,13 @@ public class ControlPlane {
 	}
 
 	public void startControllers() {
-		for (org.apache.flink.runtime.spector.controller.OperatorController controller : controllers.values()) {
+		for (OperatorController controller : controllers.values()) {
 			controller.start();
 		}
 	}
 
 	public void stopControllers() {
-		for (org.apache.flink.runtime.spector.controller.OperatorController controller : controllers.values()) {
+		for (OperatorController controller : controllers.values()) {
 			controller.stopGracefully();
 		}
 	}

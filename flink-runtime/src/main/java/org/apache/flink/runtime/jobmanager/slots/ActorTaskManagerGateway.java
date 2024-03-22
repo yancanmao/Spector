@@ -22,7 +22,6 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.blob.TransientBlobKey;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
-import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
@@ -213,13 +212,12 @@ public class ActorTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
-	public CompletableFuture<Acknowledge> dispatchStateToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, JobManagerTaskRestore taskRestore, KeyGroupRange keyGroupRange, int idInModel, Time timeout) {
+	public CompletableFuture<Acknowledge> dispatchStateToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, KeyGroupRange keyGroupRange, int idInModel, Time timeout) {
 		Preconditions.checkNotNull(executionAttemptID);
-		Preconditions.checkNotNull(taskRestore);
 		Preconditions.checkNotNull(timeout);
 
 		scala.concurrent.Future<Acknowledge> dispatchStateToStandbyTaskResult = actorGateway.ask(
-				new TaskMessages.dispatchStateToStandbyTask(executionAttemptID, taskRestore),
+				new TaskMessages.dispatchStateToStandbyTask(executionAttemptID),
 				new FiniteDuration(timeout.getSize(), timeout.getUnit()))
 			.mapTo(ClassTag$.MODULE$.<Acknowledge>apply(Acknowledge.class));
 

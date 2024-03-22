@@ -21,7 +21,6 @@ package org.apache.flink.runtime.jobmaster;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
-import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
@@ -152,15 +151,16 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
 	}
 
 	@Override
-	public CompletableFuture<Acknowledge> dispatchStateToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId,
-															  JobManagerTaskRestore taskRestore, KeyGroupRange keyGroupRange,
+	public CompletableFuture<Acknowledge> dispatchStateToTask(ExecutionAttemptID executionAttemptID,
+															  JobVertexID jobvertexId,
+															  KeyGroupRange keyGroupRange,
 															  int idInModel, Time timeout) {
 		// TODO: comment out this is mainly to make state migration less efficient to test the different sensitivity study in localhost
 		// TODO: this can be released to get more efficient state migration.
 //		if (nettyStateTransmissionEnable && taskExecutorNettyClient != null) {
 //			return taskExecutorNettyClient.dispatchStateToTask(executionAttemptID, jobvertexId, taskRestore, keyGroupRange, idInModel, timeout);
 //		} else {
-			return taskExecutorGateway.dispatchStateToTask(executionAttemptID, jobvertexId, taskRestore, keyGroupRange, idInModel, timeout);
+			return taskExecutorGateway.dispatchStateToTask(executionAttemptID, jobvertexId, keyGroupRange, idInModel, timeout);
 //		}
 	}
 

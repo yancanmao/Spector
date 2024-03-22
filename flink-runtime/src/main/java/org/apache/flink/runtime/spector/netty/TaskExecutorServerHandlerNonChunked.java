@@ -51,8 +51,7 @@ public class TaskExecutorServerHandlerNonChunked extends ChannelInboundHandlerAd
 			taskExecutorGateway.dispatchStateToTask(
 				taskState.getExecutionAttemptID(),
 				taskState.getJobvertexId(),
-				taskState.getTaskRestore(),
-				taskState.getKeyGroupRange(),
+                    taskState.getKeyGroupRange(),
 				taskState.getIdInModel(),
 				taskState.getTimeout()
 			);

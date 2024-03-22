@@ -24,7 +24,6 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.blob.TransientBlobKey;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
-import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.SlotID;
@@ -233,12 +232,11 @@ public interface TaskExecutorGateway extends RpcGateway {
 	 *
 	 * @param executionAttemptID identifying the standby task
 	 * @param jobvertexId
-	 * @param taskRestore identifying the state snapshot that is dispatchred
-	 * @param timeout for the cancel operation
+	 * @param timeout            for the cancel operation
 	 * @return Future acknowledge if the task is successfully canceled
 	 */
 	public CompletableFuture<Acknowledge> dispatchStateToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId,
-															  JobManagerTaskRestore taskRestore, KeyGroupRange keyGroupRange,
+															  KeyGroupRange keyGroupRange,
 															  int idInModel, Time timeout);
 
 	CompletableFuture<Acknowledge> dispatchStandbyTaskGatewaysToTask(ExecutionAttemptID executionAttemptID, JobVertexID jobvertexId, List<String> standbyTaskGateways, Time timeout);

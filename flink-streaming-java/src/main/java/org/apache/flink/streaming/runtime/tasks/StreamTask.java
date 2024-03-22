@@ -1158,7 +1158,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 								// Step 1: Separate the Combined StateHandle into per KeyGroup KeyedStateHandle, i.e., Map<Integer, KeyedStateHandle>
 								// Step 2: Reporting an empty taskLocalSnapshot to JobManager.
 								Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle = composeSnapshotToJM(keyGroupsStateHandle);
-								if (isReconfigPoint) {
+								if (!isReconfigPoint) {
 									// Step 3.1: Sends Map<Integer, KeyedStateHandle> to remote replicaStateManagers.
 									replicateStateHandleToReplicas(hashedKeyGroupToHandle);
 								} else {

@@ -66,8 +66,7 @@ public class TaskExecutorServerHandlerChunked extends ChannelInboundHandlerAdapt
 				CompletableFuture<Acknowledge> future = taskExecutorGateway.dispatchStateToTask(
 					taskState.getExecutionAttemptID(),
 					taskState.getJobvertexId(),
-					taskState.getTaskRestore(),
-					taskState.getKeyGroupRange(),
+                        taskState.getKeyGroupRange(),
 					taskState.getIdInModel(),
 					taskState.getTimeout());
 				future.whenCompleteAsync((ack, failure) -> {

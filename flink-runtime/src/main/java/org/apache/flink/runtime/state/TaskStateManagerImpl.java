@@ -22,6 +22,7 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.checkpoint.*;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
+import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.runtime.taskmanager.CheckpointResponder;
@@ -206,29 +207,34 @@ public class TaskStateManagerImpl implements TaskStateManager {
 		return hashedKeyGroupToHandles;
 	}
 
-	public void getTaskRestoreFromStateHandle(JobManagerTaskRestore taskRestore, KeyGroupRange keyGroupRange) {
-		Map.Entry<OperatorID, OperatorSubtaskState> operatorSubtaskStateEntry = taskRestore.getOperatorSubtaskState();
-		Preconditions.checkState(operatorSubtaskStateEntry != null, "++++++ operatorSubtaskState cannot be null");
-
+	public JobManagerTaskRestore getTaskRestoreFromStateHandle(JobVertexID jobvertexId, KeyGroupRange keyGroupRange) {
 		List<KeyedStateHandle> keyGroupsStateHandles = new ArrayList<>();
 
-		for (Map.Entry<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle: hashedKeyGroupToHandles.entrySet()) {
-			int alignedKeyGroupId = keyGroupRange.mapFromHashedToAligned(hashedKeyGroupToHandle.getKey());
+//		for (Map.Entry<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle: hashedKeyGroupToHandles.entrySet()) {
+		for (int hashedKeyGroup : keyGroupRange.getFromAlignedToHashed().values()) {
+			Tuple2<Long, StreamStateHandle> hashedKeyGroupToHandle = hashedKeyGroupToHandles.get(hashedKeyGroup);
+//			Preconditions.checkNotNull(hashedKeyGroupToHandle, "++++++ Local replicated state handle must contain migrating state handles " + hashedKeyGroup);
+			if (hashedKeyGroupToHandle == null) {
+				continue;
+			}
+			int alignedKeyGroupId = keyGroupRange.mapFromHashedToAligned(hashedKeyGroup);
 			// keyGroupRange which length is 1
 			KeyGroupRange rangeOfOneKeyGroupRange = KeyGroupRange.of(alignedKeyGroupId, alignedKeyGroupId);
 			keyGroupsStateHandles.add(new KeyGroupsStateHandle(
-				new KeyGroupRangeOffsets(rangeOfOneKeyGroupRange, new long[]{hashedKeyGroupToHandle.getValue().f0}),
-				hashedKeyGroupToHandle.getValue().f1
-			));
+				new KeyGroupRangeOffsets(rangeOfOneKeyGroupRange, new long[]{hashedKeyGroupToHandle.f0}), hashedKeyGroupToHandle.f1));
 		}
 
+		// create a new jobmanager task restore.
+		TaskStateSnapshot taskState = new TaskStateSnapshot(1);
+
 		OperatorSubtaskState composedOperatorSubtaskState = new OperatorSubtaskState(
-			operatorSubtaskStateEntry.getValue().getManagedOperatorState(),
-			operatorSubtaskStateEntry.getValue().getRawOperatorState(),
-			new StateObjectCollection<>(operatorSubtaskStateEntry.getValue().getManagedKeyedState()),
+			new StateObjectCollection<>(Collections.emptyList()),
+			new StateObjectCollection<>(Collections.emptyList()),
+			new StateObjectCollection<>(Collections.emptyList()),
 			new StateObjectCollection<>(keyGroupsStateHandles));
 
-		taskRestore.putSubtaskStateByOperatorID(operatorSubtaskStateEntry.getKey(), composedOperatorSubtaskState);
-//		return taskRestore;
+		taskState.putSubtaskStateByOperatorID(OperatorID.fromJobVertexID(jobvertexId), composedOperatorSubtaskState);
+
+        return new JobManagerTaskRestore(0, taskState);
 	}
 }
