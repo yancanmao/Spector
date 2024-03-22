@@ -1162,8 +1162,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 									// Step 3.1: Sends Map<Integer, KeyedStateHandle> to remote replicaStateManagers.
 									replicateStateHandleToReplicas(hashedKeyGroupToHandle);
 								} else {
-									// Step 3.2: Sends Map<Integer, KeyedStateHandle> to the remote destination tasks.
-									transferStateHandleToDstTasks(hashedKeyGroupToHandle);
+									// Step 3.2: If the stream task is source task to send out state, it sends Map<Integer, KeyedStateHandle> to the remote destination tasks.
+									TaskConfigManager taskConfigManager = ((RuntimeEnvironment) owner.getEnvironment()).getTaskConfigManager();
+									if (taskConfigManager.isReconfigTarget() && taskConfigManager.isSource()) {
+										transferStateHandleToDstTasks(hashedKeyGroupToHandle);
+									}
 								}
 							}
 						}
