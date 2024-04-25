@@ -976,7 +976,10 @@ public class CheckpointCoordinator {
 					throw new IllegalStateException("No completed checkpoint available");
 				}
 
-				checkpointProgressListener.onCompleteCheckpoint(latest);
+
+				PendingCheckpointStats statsCallback = pendingCheckpoint.getPendingCheckpointStats();
+
+				checkpointProgressListener.onCompleteCheckpoint(latest, statsCallback);
 			}
 		} catch (Exception e) {
 			LOG.error("Error while processing JobStateCoordinator Logic: {}.", job, e);

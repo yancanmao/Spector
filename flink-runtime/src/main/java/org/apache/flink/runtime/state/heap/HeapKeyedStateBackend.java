@@ -296,7 +296,8 @@ public class HeapKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
             final long timestamp,
             @Nonnull final CheckpointStreamFactory streamFactory,
             @Nonnull CheckpointOptions checkpointOptions,
-            boolean isChangelogEnabled, Set<Integer> backupKeyGroups) throws IOException {
+            boolean isChangelogEnabled,
+			Set<Integer> backupKeyGroups) throws IOException {
 
 		long startTime = System.currentTimeMillis();
 
@@ -312,12 +313,13 @@ public class HeapKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 		final long timestamp,
 		@Nonnull final CheckpointStreamFactory streamFactory,
 		@Nonnull CheckpointOptions checkpointOptions,
-		@Nullable Collection<Integer> affectedKeygroups) throws IOException {
+		@Nullable Collection<Integer> affectedKeyGroups,
+		Set<Integer> backupKeyGroups) throws IOException {
 
 		long startTime = System.currentTimeMillis();
 
 		final RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshotRunner =
-			snapshotStrategy.snapshotAffectedKeygroups(checkpointId, timestamp, streamFactory, checkpointOptions, affectedKeygroups);
+			snapshotStrategy.snapshotAffectedKeygroups(checkpointId, timestamp, streamFactory, checkpointOptions, affectedKeyGroups, backupKeyGroups);
 
 		snapshotStrategy.logSyncCompleted(streamFactory, startTime);
 		return snapshotRunner;

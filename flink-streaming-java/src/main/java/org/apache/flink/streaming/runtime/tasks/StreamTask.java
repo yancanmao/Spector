@@ -823,10 +823,10 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			checkpointOptions.getTargetLocation());
 
 		TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).getTaskConfigManager();
-		List<Integer> affectedKeygroups = new ArrayList<>();
+		List<Integer> affectedKeyGroups = new ArrayList<>();
 		if (taskConfigManager.isReconfigTarget()) {
 			if (taskConfigManager.isSource()) {
-				affectedKeygroups.addAll(taskConfigManager.getSrcAffectedKeygroups());
+				affectedKeyGroups.addAll(taskConfigManager.getSrcAffectedKeyGroups());
 			}
 		}
 
@@ -836,7 +836,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			checkpointOptions,
 			storage,
 			checkpointMetrics,
-			affectedKeygroups);
+			affectedKeyGroups,
+			((RuntimeEnvironment) getEnvironment()).getTaskConfigManager().getBackupKeyGroups());
 
 		snapshotAffectedStateOperation.executeAffectedStateSnapshot();
 	}
@@ -1018,9 +1019,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				TaskConfigManager taskConfigManager = ((RuntimeEnvironment) getEnvironment()).getTaskConfigManager();
 
 
-				if (taskConfigManager.getDstAffectedKeygroups() != null) {
-					LOG.info("++++++ " + this + " Migrated in: " + taskConfigManager.getDstAffectedKeygroups());
-					updateState(this.assignedKeyGroupRange, getEnvironment().getTaskInfo().getMaxNumberOfParallelSubtasks(), taskConfigManager.getDstAffectedKeygroups());
+				if (taskConfigManager.getDstAffectedKeyGroups() != null) {
+					LOG.info("++++++ " + this + " Migrated in: " + taskConfigManager.getDstAffectedKeyGroups());
+					updateState(this.assignedKeyGroupRange, getEnvironment().getTaskInfo().getMaxNumberOfParallelSubtasks(), taskConfigManager.getDstAffectedKeyGroups());
 				}
 
 //				initializeState();
@@ -1239,22 +1240,24 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		}
 
 		private void replicateStateHandleToReplicas(Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle) {
-			TaskStateManager taskStateManager = owner.getEnvironment().getTaskStateManager();
-			List<TaskExecutorGateway> standbyTaskExecutorGateways = taskStateManager.getStandbyTaskExecutorGateways();
-			final Collection<CompletableFuture<Acknowledge>> dispatchStateToStandbyTaskFutures = new ArrayList<>();
-			for (TaskExecutorGateway taskExecutorGateway : standbyTaskExecutorGateways) {
-				// dispatch state to remote standbyTasks.
-				dispatchStateToStandbyTaskFutures.add(taskExecutorGateway.dispatchStateToStandbyTask(owner.getEnvironment().getJobVertexId(), hashedKeyGroupToHandle));
-			}
+			if (!hashedKeyGroupToHandle.isEmpty()) {
+				TaskStateManager taskStateManager = owner.getEnvironment().getTaskStateManager();
+				List<TaskExecutorGateway> standbyTaskExecutorGateways = taskStateManager.getStandbyTaskExecutorGateways();
+				final Collection<CompletableFuture<Acknowledge>> dispatchStateToStandbyTaskFutures = new ArrayList<>();
+				for (TaskExecutorGateway taskExecutorGateway : standbyTaskExecutorGateways) {
+					// dispatch state to remote standbyTasks.
+					dispatchStateToStandbyTaskFutures.add(taskExecutorGateway.dispatchStateToStandbyTask(owner.getEnvironment().getJobVertexId(), hashedKeyGroupToHandle));
+				}
 
-			FutureUtils
-				.combineAll(dispatchStateToStandbyTaskFutures)
-				.whenComplete((ignored, failure) -> {
-					if (failure != null) {
-						throw new CompletionException(failure);
-					}
-					LOG.info("++++++ Replicate snapshot to standby tasks completed");
-				});
+				FutureUtils
+					.combineAll(dispatchStateToStandbyTaskFutures)
+					.whenComplete((ignored, failure) -> {
+						if (failure != null) {
+							throw new CompletionException(failure);
+						}
+						LOG.info("++++++ Replicate snapshot to standby tasks completed");
+					});
+			}
 		}
 
 		private void reportCompletedSnapshotStates(
@@ -1476,7 +1479,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		private long startSyncPartNano;
 		private long startAsyncPartNano;
 
-		private final Collection<Integer> affectedKeygroups;
+		private final Collection<Integer> affectedKeyGroups;
+
+		private final Set<Integer> backupKeyGroups;
 
 		// ------------------------
 
@@ -1488,7 +1493,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			CheckpointOptions checkpointOptions,
 			CheckpointStreamFactory checkpointStorageLocation,
 			CheckpointMetrics checkpointMetrics,
-			Collection<Integer> affectedKeygroups) {
+			Collection<Integer> affectedKeyGroups,
+			Set<Integer> backupKeyGroups) {
 
 			this.owner = Preconditions.checkNotNull(owner);
 			this.checkpointMetaData = Preconditions.checkNotNull(checkpointMetaData);
@@ -1497,8 +1503,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			this.storageLocation = Preconditions.checkNotNull(checkpointStorageLocation);
 			this.allOperators = owner.operatorChain.getAllOperators();
 			this.operatorSnapshotsInProgress = new HashMap<>(allOperators.length);
-			Preconditions.checkState(affectedKeygroups != null);
-			this.affectedKeygroups = affectedKeygroups;
+			Preconditions.checkState(affectedKeyGroups != null);
+			this.affectedKeyGroups = affectedKeyGroups;
+			this.backupKeyGroups = backupKeyGroups;
 		}
 
 		public void executeAffectedStateSnapshot() throws Exception {
@@ -1571,7 +1578,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					checkpointMetaData.getTimestamp(),
 					checkpointOptions,
 					storageLocation,
-					affectedKeygroups);
+					affectedKeyGroups,
+					backupKeyGroups);
 				operatorSnapshotsInProgress.put(op.getOperatorID(), snapshotInProgress);
 			}
 		}

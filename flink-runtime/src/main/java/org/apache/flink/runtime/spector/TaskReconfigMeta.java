@@ -24,8 +24,8 @@ class TaskReconfigMeta {
 
 	private final ResultPartition[] newPartitions;
 
-	private final Collection<Integer> srcAffectedKeygroups;
-	private final Collection<Integer> dstAffectedKeygroups;
+	private final Collection<Integer> srcAffectedKeyGroups;
+	private final Collection<Integer> dstAffectedKeyGroups;
 
 	private final KeyGroupRange keyGroupRange;
 	private final Map<Integer, TaskExecutorGateway> srcKeyGroupsWithDstGateway;
@@ -35,8 +35,8 @@ class TaskReconfigMeta {
 		ReconfigOptions reconfigOptions,
 		Collection<ResultPartitionDeploymentDescriptor> resultPartitionDeploymentDescriptors,
 		Collection<InputGateDeploymentDescriptor> inputGateDeploymentDescriptors,
-		Collection<Integer> srcAffectedKeygroups,
-		Collection<Integer> dstAffectedKeygroups,
+		Collection<Integer> srcAffectedKeyGroups,
+		Collection<Integer> dstAffectedKeyGroups,
 		Map<Integer, TaskExecutorGateway> srcKeyGroupsWithDstGateway,
 		KeyGroupRange keyGroupRange) {
 
@@ -48,8 +48,8 @@ class TaskReconfigMeta {
 
 		this.newPartitions = new ResultPartition[resultPartitionDeploymentDescriptors.size()];
 
-		this.srcAffectedKeygroups = srcAffectedKeygroups;
-		this.dstAffectedKeygroups = dstAffectedKeygroups;
+		this.srcAffectedKeyGroups = srcAffectedKeyGroups;
+		this.dstAffectedKeyGroups = dstAffectedKeyGroups;
 
 		this.srcKeyGroupsWithDstGateway = srcKeyGroupsWithDstGateway;
 
@@ -84,12 +84,12 @@ class TaskReconfigMeta {
 		newPartitions[index] = partition;
 	}
 
-	public Collection<Integer> getSrcAffectedKeygroups() {
-		return srcAffectedKeygroups;
+	public Collection<Integer> getSrcAffectedKeyGroups() {
+		return srcAffectedKeyGroups;
 	}
 
-	public Collection<Integer> getDstAffectedKeygroups() {
-		return dstAffectedKeygroups;
+	public Collection<Integer> getDstAffectedKeyGroups() {
+		return dstAffectedKeyGroups;
 	}
 
 	public Map<Integer, TaskExecutorGateway> getSrcKeyGroupsWithDstGateway() {

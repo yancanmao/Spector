@@ -324,7 +324,7 @@ public class RocksDBStateBackendTest extends StateBackendTestBase<RocksDBStateBa
 
 		try {
 			RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshot =
-				keyedStateBackend.snapshot(0L, 0L, testStreamFactory, CheckpointOptions.forCheckpointWithDefaultLocation(), true, backupKeyGroups);
+				keyedStateBackend.snapshot(0L, 0L, testStreamFactory, CheckpointOptions.forCheckpointWithDefaultLocation(), true, null);
 
 			RocksDB spyDB = keyedStateBackend.db;
 
@@ -361,7 +361,7 @@ public class RocksDBStateBackendTest extends StateBackendTestBase<RocksDBStateBa
 		setupRocksKeyedStateBackend();
 		try {
 			RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshot =
-				keyedStateBackend.snapshot(0L, 0L, testStreamFactory, CheckpointOptions.forCheckpointWithDefaultLocation(), true, backupKeyGroups);
+				keyedStateBackend.snapshot(0L, 0L, testStreamFactory, CheckpointOptions.forCheckpointWithDefaultLocation(), true, null);
 			snapshot.cancel(true);
 			verifyRocksObjectsReleased();
 		} finally {
@@ -375,7 +375,7 @@ public class RocksDBStateBackendTest extends StateBackendTestBase<RocksDBStateBa
 		setupRocksKeyedStateBackend();
 		try {
 			RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshot =
-				keyedStateBackend.snapshot(0L, 0L, testStreamFactory, CheckpointOptions.forCheckpointWithDefaultLocation(), true, backupKeyGroups);
+				keyedStateBackend.snapshot(0L, 0L, testStreamFactory, CheckpointOptions.forCheckpointWithDefaultLocation(), true, null);
 			snapshot.cancel(true);
 			Thread asyncSnapshotThread = new Thread(snapshot);
 			asyncSnapshotThread.start();
@@ -398,7 +398,7 @@ public class RocksDBStateBackendTest extends StateBackendTestBase<RocksDBStateBa
 		setupRocksKeyedStateBackend();
 		try {
 			RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshot =
-				keyedStateBackend.snapshot(0L, 0L, testStreamFactory, CheckpointOptions.forCheckpointWithDefaultLocation(), true, backupKeyGroups);
+				keyedStateBackend.snapshot(0L, 0L, testStreamFactory, CheckpointOptions.forCheckpointWithDefaultLocation(), true, null);
 			Thread asyncSnapshotThread = new Thread(snapshot);
 			asyncSnapshotThread.start();
 			waiter.await(); // wait for snapshot to run
@@ -430,7 +430,7 @@ public class RocksDBStateBackendTest extends StateBackendTestBase<RocksDBStateBa
 		setupRocksKeyedStateBackend();
 		try {
 			RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshot =
-				keyedStateBackend.snapshot(0L, 0L, testStreamFactory, CheckpointOptions.forCheckpointWithDefaultLocation(), true, backupKeyGroups);
+				keyedStateBackend.snapshot(0L, 0L, testStreamFactory, CheckpointOptions.forCheckpointWithDefaultLocation(), true, null);
 			Thread asyncSnapshotThread = new Thread(snapshot);
 			asyncSnapshotThread.start();
 			waiter.await(); // wait for snapshot to run
@@ -514,7 +514,7 @@ public class RocksDBStateBackendTest extends StateBackendTestBase<RocksDBStateBa
 						checkpointId,
 						checkpointId,
 						createStreamFactory(),
-						CheckpointOptions.forCheckpointWithDefaultLocation(), true, backupKeyGroups);
+						CheckpointOptions.forCheckpointWithDefaultLocation(), true, null);
 
 					snapshot.run();
 

@@ -87,7 +87,6 @@ class HeapSnapshotStrategy<K>
 
 		// In HeapSnapshotStrategy, we have to snapshot affected keygroups that will be replicated remotely.
 
-
 		if (!hasRegisteredState()) {
 			return DoneFuture.of(SnapshotResult.empty());
 		}
@@ -181,33 +180,16 @@ class HeapSnapshotStrategy<K>
 					}
 				}
 
-				private void nonChangelogedSnapshotHandle(CheckpointStreamFactory.CheckpointStateOutputStream localStream, DataOutputViewStreamWrapper outView, long[] keyGroupRangeOffsets) throws IOException {
+				private void nonChangelogedSnapshotHandle(CheckpointStreamFactory.CheckpointStateOutputStream localStream,
+														  DataOutputViewStreamWrapper outView,
+														  long[] keyGroupRangeOffsets) throws IOException {
 					for (int keyGroupPos = 0; keyGroupPos < keyGroupRange.getNumberOfKeyGroups(); ++keyGroupPos) {
 						int alignedKeyGroupId = keyGroupRange.getKeyGroupId(keyGroupPos);
 						keyGroupRangeOffsets[keyGroupPos] = localStream.getPos();
 
-						int hashedKeyGroup = keyGroupRange.mapFromAlignedToHashed(alignedKeyGroupId);
-						outView.writeInt(hashedKeyGroup);
-
-						LOG.info("+++++--- keyGroupRange: " + keyGroupRange +
-							", alignedKeyGroupIndex: " + alignedKeyGroupId +
-							", offset: " + keyGroupRangeOffsets[keyGroupPos] +
-							", hashedKeyGroup: " + hashedKeyGroup);
-
-						for (Map.Entry<StateUID, StateSnapshot> stateSnapshot :
-							cowStateStableSnapshots.entrySet()) {
-							StateSnapshot.StateKeyGroupWriter partitionedSnapshot =
-
-								stateSnapshot.getValue().getKeyGroupWriter();
-							try (
-								OutputStream kgCompressionOut =
-									keyGroupCompressionDecorator.decorateWithCompression(localStream)) {
-								DataOutputViewStreamWrapper kgCompressionView =
-									new DataOutputViewStreamWrapper(kgCompressionOut);
-								kgCompressionView.writeShort(stateNamesToId.get(stateSnapshot.getKey()));
-								partitionedSnapshot.writeStateInKeyGroup(kgCompressionView, alignedKeyGroupId);
-							} // this will just close the outer compression stream
-						}
+						int hashedKeyGroupId = keyGroupRange.mapFromAlignedToHashed(alignedKeyGroupId);
+						checkAndSerializeAllKeyState(localStream, outView, keyGroupRangeOffsets, keyGroupPos,
+							alignedKeyGroupId, hashedKeyGroupId, cowStateStableSnapshots, stateNamesToId);
 					}
 				}
 
@@ -216,17 +198,19 @@ class HeapSnapshotStrategy<K>
 													  long[] keyGroupRangeOffsets,
 													  boolean[] changelogs,
 													  int changelogCount,
-													  int totalStateCount, Set<Integer> backupKeyGroups) throws IOException {
+													  int totalStateCount,
+													  Set<Integer> backupKeyGroups) throws IOException {
 					for (int keyGroupPos = 0; keyGroupPos < keyGroupRange.getNumberOfKeyGroups(); ++keyGroupPos) {
 						int alignedKeyGroupId = keyGroupRange.getKeyGroupId(keyGroupPos);
 						keyGroupRangeOffsets[keyGroupPos] = localStream.getPos();
 
-						int hashedKeyGroup = keyGroupRange.mapFromAlignedToHashed(alignedKeyGroupId);
+						int hashedKeyGroupId = keyGroupRange.mapFromAlignedToHashed(alignedKeyGroupId);
 
 						totalStateCount++;
 
-						if (backupKeyGroups.contains(hashedKeyGroup)) {
-							if (checkAndSerializeKeyState(localStream, outView, keyGroupRangeOffsets, changelogs, keyGroupPos, alignedKeyGroupId, hashedKeyGroup, cowStateStableSnapshots, stateNamesToId)) {
+						if (backupKeyGroups.contains(hashedKeyGroupId)) {
+							if (checkAndSerializeChanglogedKeyState(localStream, outView, keyGroupRangeOffsets, keyGroupPos,
+								alignedKeyGroupId, hashedKeyGroupId, changelogs, cowStateStableSnapshots, stateNamesToId)) {
 								changelogCount++;
 							}
 						}
@@ -262,14 +246,16 @@ class HeapSnapshotStrategy<K>
 		return task;
 	}
 
-
 	@Nonnull
 	public RunnableFuture<SnapshotResult<KeyedStateHandle>> snapshotAffectedKeygroups(
 		long checkpointId,
 		long timestamp,
 		@Nonnull CheckpointStreamFactory primaryStreamFactory,
 		@Nonnull CheckpointOptions checkpointOptions,
-		@Nullable Collection<Integer> affectedKeygroups) throws IOException {
+		@Nullable Collection<Integer> affectedKeyGroups,
+		Set<Integer> backupKeyGroups) throws IOException {
+
+		// Snapshot affected keygroup, if it is not in backup keygroup set, or it is in backup keygroup set but not changeloged.
 
 		if (!hasRegisteredState()) {
 			return DoneFuture.of(SnapshotResult.empty());
@@ -344,7 +330,7 @@ class HeapSnapshotStrategy<K>
 					final long[] keyGroupRangeOffsets = new long[keyGroupRange.getNumberOfKeyGroups()];
 					final boolean[] changelogs = new boolean[keyGroupRange.getNumberOfKeyGroups()];
 
-					Preconditions.checkState(affectedKeygroups != null,
+					Preconditions.checkState(affectedKeyGroups != null,
 						"++++++ Need to provide an affected keygroup list ");
 
 					int changelogCount = 0;
@@ -353,13 +339,21 @@ class HeapSnapshotStrategy<K>
 					for (int keyGroupPos = 0; keyGroupPos < keyGroupRange.getNumberOfKeyGroups(); ++keyGroupPos) {
 						int alignedKeyGroupId = keyGroupRange.getKeyGroupId(keyGroupPos);
 						keyGroupRangeOffsets[keyGroupPos] = localStream.getPos();
-						int hashedKeyGroup = keyGroupRange.mapFromAlignedToHashed(alignedKeyGroupId);
+						int hashedKeyGroupId = keyGroupRange.mapFromAlignedToHashed(alignedKeyGroupId);
 
 						totalStateCount++;
 
-						if (affectedKeygroups.contains(hashedKeyGroup)) {
-							if (checkAndSerializeKeyState(localStream, outView, keyGroupRangeOffsets, changelogs, keyGroupPos, alignedKeyGroupId, hashedKeyGroup, cowStateStableSnapshots, stateNamesToId)) {
+						if (affectedKeyGroups.contains(hashedKeyGroupId)) {
+							// Snapshot affected keygroup, if it is not in backup keygroup set, or it is in backup keygroup set but not ch
+							if (!backupKeyGroups.contains(hashedKeyGroupId)) {
+								checkAndSerializeAllKeyState(localStream, outView, keyGroupRangeOffsets, keyGroupPos,
+									alignedKeyGroupId, hashedKeyGroupId, cowStateStableSnapshots, stateNamesToId);
 								changelogCount++;
+							} else {
+								if (checkAndSerializeChanglogedKeyState(localStream, outView, keyGroupRangeOffsets, keyGroupPos,
+									alignedKeyGroupId, hashedKeyGroupId, changelogs, cowStateStableSnapshots, stateNamesToId)) {
+									changelogCount++;
+								}
 							}
 						}
 					}
@@ -384,8 +378,8 @@ class HeapSnapshotStrategy<K>
 						// TODO: do not release the changeloged keys when just doing state migration.
 						// TODO: for window operations we need to clean up the priority queues which contains timers for the associated keys.
 						// TODO: our current work around is to bypass those timer and rely on the timer clean scheme to clean them up, not elegant.
-//						if (affectedKeygroups != null && tableSnapshot instanceof HeapPriorityQueueStateSnapshot) {
-//							tableSnapshot.releaseChangeLogs(affectedKeygroups);
+//						if (affectedKeyGroups != null && tableSnapshot instanceof HeapPriorityQueueStateSnapshot) {
+//							tableSnapshot.releaseChangeLogs(affectedKeyGroups);
 //						}
 					}
 					LOG.info("++++--- Snapshot affected keygroups completed");
@@ -406,14 +400,46 @@ class HeapSnapshotStrategy<K>
 		return task;
 	}
 
-	private boolean checkAndSerializeKeyState(
+	private void checkAndSerializeAllKeyState(
 		CheckpointStreamFactory.CheckpointStateOutputStream localStream,
 		DataOutputViewStreamWrapper outView,
 		long[] keyGroupRangeOffsets,
-		boolean[] changelogs,
 		int keyGroupPos,
 		int alignedKeyGroupId,
-		int hashedKeyGroup,
+		int hashedKeyGroupId,
+		Map<StateUID, StateSnapshot> cowStateStableSnapshots,
+		Map<StateUID, Integer> stateNamesToId) throws IOException {
+		outView.writeInt(hashedKeyGroupId);
+
+		LOG.info("+++++--- keyGroupRange: " + keyGroupRange +
+			", alignedKeyGroupIndex: " + alignedKeyGroupId +
+			", offset: " + keyGroupRangeOffsets[keyGroupPos] +
+			", hashedKeyGroupIndex: " + hashedKeyGroupId);
+
+		for (Map.Entry<StateUID, StateSnapshot> stateSnapshot :
+			cowStateStableSnapshots.entrySet()) {
+			StateSnapshot.StateKeyGroupWriter partitionedSnapshot =
+
+				stateSnapshot.getValue().getKeyGroupWriter();
+			try (
+				OutputStream kgCompressionOut =
+					keyGroupCompressionDecorator.decorateWithCompression(localStream)) {
+				DataOutputViewStreamWrapper kgCompressionView =
+					new DataOutputViewStreamWrapper(kgCompressionOut);
+				kgCompressionView.writeShort(stateNamesToId.get(stateSnapshot.getKey()));
+				partitionedSnapshot.writeStateInKeyGroup(kgCompressionView, alignedKeyGroupId);
+			} // this will just close the outer compression stream
+		}
+	}
+
+	private boolean checkAndSerializeChanglogedKeyState(
+		CheckpointStreamFactory.CheckpointStateOutputStream localStream,
+		DataOutputViewStreamWrapper outView,
+		long[] keyGroupRangeOffsets,
+		int keyGroupPos,
+		int alignedKeyGroupId,
+		int hashedKeyGroupId,
+		boolean[] changelogs,
 		Map<StateUID, StateSnapshot> cowStateStableSnapshots,
 		Map<StateUID, Integer> stateNamesToId) throws IOException {
 
@@ -423,7 +449,7 @@ class HeapSnapshotStrategy<K>
 
 			if ((stateSnapshot.getValue()).getChangelogs() != null) {
 				if (stateSnapshot.getValue().getChangelogs()
-					.containsKey(hashedKeyGroup)) {
+					.containsKey(hashedKeyGroupId)) {
 					changelogs[keyGroupPos] = true;
 				}
 			}
@@ -431,12 +457,12 @@ class HeapSnapshotStrategy<K>
 
 		if (changelogs[keyGroupPos]) {
 
-			outView.writeInt(hashedKeyGroup);
+			outView.writeInt(hashedKeyGroupId);
 
 			LOG.info("+++++--- keyGroupRange: " + keyGroupRange +
 				", alignedKeyGroupIndex: " + alignedKeyGroupId +
 				", offset: " + keyGroupRangeOffsets[keyGroupPos] +
-				", hashedKeyGroup: " + hashedKeyGroup);
+				", hashedKeyGroupIndex: " + hashedKeyGroupId);
 
 			for (Map.Entry<StateUID, StateSnapshot> stateSnapshot :
 			cowStateStableSnapshots.entrySet()) {

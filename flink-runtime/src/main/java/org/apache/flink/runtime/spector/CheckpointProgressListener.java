@@ -19,10 +19,9 @@
 package org.apache.flink.runtime.spector;
 
 import org.apache.flink.runtime.checkpoint.CompletedCheckpoint;
-import org.apache.flink.runtime.checkpoint.PendingCheckpoint;
-import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
+import org.apache.flink.runtime.checkpoint.PendingCheckpointStats;
 
 public interface CheckpointProgressListener {
 //	void onReceiveReconfigpointAcknowledge(ExecutionAttemptID attemptID, PendingCheckpoint checkpoint);
-	void onCompleteCheckpoint(CompletedCheckpoint checkpoint) throws Exception;
+	void onCompleteCheckpoint(CompletedCheckpoint checkpoint, PendingCheckpointStats statsCallback) throws Exception;
 }

@@ -414,7 +414,8 @@ public abstract class AbstractStreamOperator<OUT>
 
 	@Override
 	public final OperatorSnapshotFutures snapshotState(long checkpointId, long timestamp, CheckpointOptions checkpointOptions,
-													   CheckpointStreamFactory factory, boolean isChangelogEnabled, Set<Integer> backupKeyGroups) throws Exception {
+													   CheckpointStreamFactory factory, boolean isChangelogEnabled,
+													   Set<Integer> backupKeyGroups) throws Exception {
 
 		KeyGroupRange keyGroupRange = null != keyedStateBackend ?
 				keyedStateBackend.getKeyGroupRange() : KeyGroupRange.EMPTY_KEY_GROUP_RANGE;
@@ -463,7 +464,8 @@ public abstract class AbstractStreamOperator<OUT>
 
 	@Override
 	public final OperatorSnapshotFutures snapshotAffectedState(long checkpointId, long timestamp, CheckpointOptions checkpointOptions,
-															   CheckpointStreamFactory factory, Collection<Integer> affectedKeygroups) throws Exception {
+															   CheckpointStreamFactory factory, Collection<Integer> affectedKeyGroups,
+															   Set<Integer> backupKeyGroups) throws Exception {
 
 		KeyGroupRange keyGroupRange = null != keyedStateBackend ?
 			keyedStateBackend.getKeyGroupRange() : KeyGroupRange.EMPTY_KEY_GROUP_RANGE;
@@ -492,7 +494,7 @@ public abstract class AbstractStreamOperator<OUT>
 					"++++++Cannot snapshot affected states on non heap state backend");
 				snapshotInProgress.setKeyedStateManagedFuture(
 					((HeapKeyedStateBackend) keyedStateBackend).snapshotAffectedKeyGroups(checkpointId, timestamp,
-						factory, checkpointOptions, affectedKeygroups));
+						factory, checkpointOptions, affectedKeyGroups, backupKeyGroups));
 			}
 		} catch (Exception snapshotException) {
 			try {

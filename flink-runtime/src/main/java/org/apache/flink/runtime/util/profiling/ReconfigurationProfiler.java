@@ -92,6 +92,20 @@ public class ReconfigurationProfiler {
 		replicationTimer.endMeasure();
 	}
 
+	// Another way to record timer from outside rather than using the timer
+
+	public void onSyncEnd(long duration) {
+		syncTimer.endMeasureExternal(duration);
+	}
+
+	public void onUpdateEnd(long incrementalDuration) {
+		updateTimer.endMeasureExternalIncremental(incrementalDuration);
+	}
+
+	public void onReplicationEnd(long duration) {
+		replicationTimer.endMeasureExternal(duration);
+	}
+
 	public void onOtherStart(String timerName) {
 		Timer timer = this.otherTimers.get(timerName);
 		if (timer == null) {
@@ -128,6 +142,15 @@ public class ReconfigurationProfiler {
 			checkState(startTime > 0, "++++++ Invalid invocation, startTime = 0.");
 //			outputStream.println("end time: " + System.currentTimeMillis());
 			outputStream.println("++++++" + timerName + " : " + (System.currentTimeMillis() - startTime) + "ms");
+		}
+
+		public void endMeasureExternal(long duration) {
+			outputStream.println("++++++" + timerName + " : " + duration + "ms");
+		}
+
+		public void endMeasureExternalIncremental(long incrementalDuration) {
+			checkState(startTime > 0, "++++++ Invalid invocation, startTime = 0.");
+			outputStream.println("++++++" + timerName + " : " + (System.currentTimeMillis() - startTime + incrementalDuration) + "ms");
 		}
 
 		private void finish() {

@@ -517,6 +517,10 @@ public class PendingCheckpoint {
 		}
 	}
 
+	public PendingCheckpointStats getPendingCheckpointStats() {
+		return statsCallback;
+	}
+
 	// ------------------------------------------------------------------------
 	//  Utilities
 	// ------------------------------------------------------------------------

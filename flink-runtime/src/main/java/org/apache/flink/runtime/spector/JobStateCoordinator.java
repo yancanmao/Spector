@@ -48,7 +48,6 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 
 import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Operation.DISPATCH_STATE_TO_STANDBY_TASK;
-import static org.apache.flink.runtime.checkpoint.StateAssignmentOperation.Operation.REPARTITION_STATE;
 import static org.apache.flink.runtime.clusterframework.types.TaskManagerSlot.State.FREE;
 import static org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus.DONE;
 import static org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus.FAILED;
@@ -366,25 +365,32 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	}
 
 	@Override
-	public void onCompleteCheckpoint(CompletedCheckpoint checkpoint) throws Exception {
+	public void onCompleteCheckpoint(CompletedCheckpoint checkpoint, PendingCheckpointStats statsCallback) throws Exception {
 		checkNotNull(checkpoint);
+		checkNotNull(statsCallback,
+			"++++++ statsCallback cannot be null for tracking migration/replication metrics report");
 
-		System.out.println("++++++Current state size: " + checkpoint.getStateSize());
 
+
+//		System.out.println("++++++Current state size: " + checkpoint.getStateSize());
 		if (checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT) {
-			reconfigurationProfiler.onSyncEnd();
+			TaskStateStats taskStateStats = statsCallback.getTaskStateStats(targetVertex.getJobVertexId());
+			long transferDuration = taskStateStats.getSummaryStats().getSyncCheckpointDurationStats().getMaximum();
+			long syncDuration = checkpoint.getDuration() - transferDuration;
+			reconfigurationProfiler.onSyncEnd(syncDuration);
 			LOG.info("++++++ redistribute operator states");
-			migrateStateToDestinationTasks(checkpoint);
+			migrateStateToDestinationTasks(checkpoint, transferDuration);
 		} else {
-			LOG.info("++++++ checkpoint complete, start to dispatch state to replica");
+//			LOG.info("++++++ checkpoint complete, start to dispatch state to replica");
+			LOG.info("++++++ checkpoint and replication complete");
 			Preconditions.checkState(!reconfigInProgress,
 				"++++++ A reconfig is in progress, cannot do replication at the moment");
 //			replicationInProgress = true;
 //			reconfigurationProfiler.onReplicationStart();
 //			dispatchLatestCheckpointedStateToStandbyTasks(checkpoint);
-//			reconfigurationProfiler.onReplicationEnd();
+			reconfigurationProfiler.onReplicationEnd(checkpoint.getDuration());
 //			replicationInProgress = false;
-			LOG.info("++++++ Skip replication in this version");
+//			LOG.info("++++++ Skip replication in this version");
 		}
 	}
 
@@ -405,12 +411,12 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	 * dispatch checkpointed state to backup task based on the fine-grained state management policies
 	 * by default, it replicate state to all other backup task
 	 */
-	public void migrateStateToDestinationTasks(CompletedCheckpoint checkpoint) throws ExecutionGraphException {
+	public void migrateStateToDestinationTasks(CompletedCheckpoint checkpoint, long transferDuration) throws ExecutionGraphException {
 		Preconditions.checkState(checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT, "++++++ Need to be a RECONFIGPOINT");
 
 //		prepareAssignStates(checkpoint, REPARTITION_STATE);
 		// start to transfer the state to the destination tasks
-		assignNewStates();
+		assignNewStates(transferDuration);
 	}
 
 	private void prepareAssignStates(CompletedCheckpoint checkpoint, Operation operation) {
@@ -438,12 +444,13 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 		}
 	}
 
+	// Deprecated
 	private void checkStateOperationProgress() {
 		if (pendingAckTasks.isEmpty() && scheduleReconfigCompleted) {
 			String stateOperationType = reconfigInProgress ? "MIGRATION" : "REPLICATION";
 			LOG.info("++++++ State Operation: " + stateOperationType + " completed.");
 			if (stateOperationType.equals("MIGRATION")) {
-				completeReconfiguration();
+				completeReconfiguration(0);
 			} else {
 				reconfigurationProfiler.onReplicationEnd();
 				replicationInProgress = false;
@@ -638,7 +645,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	}
 
 
-	private void assignNewStates() throws ExecutionGraphException {
+	private void assignNewStates(long transferDuration) throws ExecutionGraphException {
 
 		reconfigurationProfiler.onUpdateStart();
 		scheduleReconfigCompleted = false; // set this to false to wait until all schedule reconfig being processed.
@@ -672,17 +679,18 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 			.thenRunAsync(() -> {
 				LOG.info("++++++ State migration completed");
 				scheduleReconfigCompleted = true;
-				checkStateOperationProgress();
+//				checkStateOperationProgress();
+				completeReconfiguration(transferDuration);
 			}, mainThreadExecutor);
 	}
 
-	private void completeReconfiguration() {
+	private void completeReconfiguration(long transferDuration) {
 		LOG.info("++++++ Assign new state for repartition Completed");
 
 		clean();
 
 		// notify streamSwitch that change is finished
-		reconfigurationProfiler.onUpdateEnd();
+		reconfigurationProfiler.onUpdateEnd(transferDuration);
 		reconfigurationProfiler.onReconfigurationEnd();
 		controlPlane.onMigrationExecutorsStopped(targetVertex.getJobVertexId());
 		controlPlane.onChangeImplemented(targetVertex.getJobVertexId());

@@ -133,7 +133,7 @@ public class OneInputStreamTask<IN, OUT> extends StreamTask<OUT, OneInputStreamO
 		}
 
 		if (taskConfigManager.isDestination()) {
-			inputProcessor.setMigratingKeys(taskConfigManager.getDstAffectedKeygroups());
+			inputProcessor.setMigratingKeys(taskConfigManager.getDstAffectedKeyGroups());
 		}
 
 

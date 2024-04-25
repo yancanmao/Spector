@@ -135,7 +135,7 @@ public class TaskConfigManager {
 
 	public boolean isSourceOrDestination() {
 		try {
-			return reconfigMeta.getSrcAffectedKeygroups() != null || reconfigMeta.getDstAffectedKeygroups() != null;
+			return reconfigMeta.getSrcAffectedKeyGroups() != null || reconfigMeta.getDstAffectedKeyGroups() != null;
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}
@@ -143,7 +143,7 @@ public class TaskConfigManager {
 
 	public boolean isSource() {
 		try {
-			return reconfigMeta.getSrcAffectedKeygroups() != null;
+			return reconfigMeta.getSrcAffectedKeyGroups() != null;
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}
@@ -151,7 +151,7 @@ public class TaskConfigManager {
 
 	public boolean isDestination() {
 		try {
-			return reconfigMeta.getDstAffectedKeygroups() != null;
+			return reconfigMeta.getDstAffectedKeyGroups() != null;
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}
@@ -280,12 +280,12 @@ public class TaskConfigManager {
 		return network;
 	}
 
-	public Collection<Integer> getSrcAffectedKeygroups() {
-		return reconfigMeta.getSrcAffectedKeygroups();
+	public Collection<Integer> getSrcAffectedKeyGroups() {
+		return reconfigMeta.getSrcAffectedKeyGroups();
 	}
 
-	public Collection<Integer> getDstAffectedKeygroups() {
-		return reconfigMeta.getDstAffectedKeygroups();
+	public Collection<Integer> getDstAffectedKeyGroups() {
+		return reconfigMeta.getDstAffectedKeyGroups();
 	}
 
 	public Map<Integer, TaskExecutorGateway> getSrcKeyGroupsWithDstGateway(){

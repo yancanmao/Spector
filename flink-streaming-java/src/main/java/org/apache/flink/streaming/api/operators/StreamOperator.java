@@ -147,7 +147,8 @@ public interface StreamOperator<OUT> extends CheckpointListener, KeyContext, Dis
 		long timestamp,
 		CheckpointOptions checkpointOptions,
 		CheckpointStreamFactory storageLocation,
-		@Nullable Collection<Integer> affectedKeygroups) throws Exception;
+		@Nullable Collection<Integer> affectedKeygroups,
+		Set<Integer> backupKeygroups) throws Exception;
 
 	/**
 	 * Provides a context to initialize all state in the operator.
