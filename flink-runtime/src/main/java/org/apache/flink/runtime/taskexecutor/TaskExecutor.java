@@ -841,11 +841,11 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 //				replicaStateManager.mergeState(jobvertexId, taskRestore);
 //			taskStateManager.setTaskRestore(taskRestore);
 
-				log.debug("++++++ " + jobvertexId + " Replicate completed, Acking to the jobmaster");
-				jobManagerConnection.getJobManagerGateway().acknowledgeStateTransmissionCompletion(
-					jobID,
-					executionAttemptID,
-					DONE);
+				log.debug("++++++ " + jobvertexId + " Replicate completed");
+//				jobManagerConnection.getJobManagerGateway().acknowledgeStateTransmissionCompletion(
+//					jobID,
+//					executionAttemptID,
+//					DONE);
 
 				return CompletableFuture.completedFuture(Acknowledge.get());
 			} else {
@@ -866,11 +866,11 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 				idInModel,
 				taskRestore);
 
-			log.debug("++++++ " + jobvertexId + " Migrate completed, Acking to the jobmaster");
-			jobManagerConnection.getJobManagerGateway().acknowledgeStateTransmissionCompletion(
-				jobID,
-				executionAttemptID,
-				DONE);
+			log.debug("++++++ " + jobvertexId + " Migrate completed");
+//			jobManagerConnection.getJobManagerGateway().acknowledgeStateTransmissionCompletion(
+//				jobID,
+//				executionAttemptID,
+//				DONE);
 
 			return CompletableFuture.completedFuture(Acknowledge.get());
 		}

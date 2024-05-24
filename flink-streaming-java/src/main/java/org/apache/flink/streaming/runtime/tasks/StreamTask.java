@@ -1152,6 +1152,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 						new OperatorSnapshotFinalizer(snapshotInProgress);
 
 					OperatorSubtaskState operatorSubtaskState = finalizedSnapshots.getJobManagerOwnedState();
+					LOG.info("++++--- State size: " + operatorSubtaskState.getStateSize());
 					for (KeyedStateHandle keyedStateHandle : operatorSubtaskState.getManagedKeyedState()) {
 						if (keyedStateHandle != null) {
 							if (keyedStateHandle instanceof KeyGroupsStateHandle) {

@@ -398,14 +398,14 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	 * dispatch checkpointed state to backup task based on the fine-grained state management policies
 	 * by default, it replicate state to all other backup task
 	 */
-	public void dispatchLatestCheckpointedStateToStandbyTasks(CompletedCheckpoint checkpoint) {
-		Preconditions.checkState(checkpoint.getProperties().getCheckpointType() == CheckpointType.CHECKPOINT, "++++++  Need to be a CHECKPOINT");
-
-		prepareAssignStates(checkpoint, DISPATCH_STATE_TO_STANDBY_TASK);
-		scheduleReconfigCompleted = true;
-		// check replication progress once, in case no keys are replicated.
-		checkStateOperationProgress();
-	}
+//	public void dispatchLatestCheckpointedStateToStandbyTasks(CompletedCheckpoint checkpoint) {
+//		Preconditions.checkState(checkpoint.getProperties().getCheckpointType() == CheckpointType.CHECKPOINT, "++++++  Need to be a CHECKPOINT");
+//
+//		prepareAssignStates(checkpoint, DISPATCH_STATE_TO_STANDBY_TASK);
+//		scheduleReconfigCompleted = true;
+//		// check replication progress once, in case no keys are replicated.
+//		checkStateOperationProgress();
+//	}
 
 	/**
 	 * dispatch checkpointed state to backup task based on the fine-grained state management policies
@@ -435,28 +435,29 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 	}
 
 	public void onAckStateTransmission(ExecutionAttemptID executionAttemptID, AckStatus ackStatus) {
-		if (ackStatus == DONE) {
-			pendingAckTasks.remove(executionAttemptID);
-			LOG.info("++++++ Receive Ack from execution: " + executionAttemptID);
-			checkStateOperationProgress();
-		} else if (ackStatus == FAILED) {
-			throw new RuntimeException("++++++ Replication/Migration failed for some reason.");
-		}
+		throw new RuntimeException("Deprecated, no need to send ack for replication");
+//		if (ackStatus == DONE) {
+//			pendingAckTasks.remove(executionAttemptID);
+//			LOG.info("++++++ Receive Ack from execution: " + executionAttemptID);
+//			checkStateOperationProgress();
+//		} else if (ackStatus == FAILED) {
+//			throw new RuntimeException("++++++ Replication/Migration failed for some reason.");
+//		}
 	}
 
 	// Deprecated
-	private void checkStateOperationProgress() {
-		if (pendingAckTasks.isEmpty() && scheduleReconfigCompleted) {
-			String stateOperationType = reconfigInProgress ? "MIGRATION" : "REPLICATION";
-			LOG.info("++++++ State Operation: " + stateOperationType + " completed.");
-			if (stateOperationType.equals("MIGRATION")) {
-				completeReconfiguration(0);
-			} else {
-				reconfigurationProfiler.onReplicationEnd();
-				replicationInProgress = false;
-			}
-		}
-	}
+//	private void checkStateOperationProgress() {
+//		if (pendingAckTasks.isEmpty() && scheduleReconfigCompleted) {
+//			String stateOperationType = reconfigInProgress ? "MIGRATION" : "REPLICATION";
+//			LOG.info("++++++ State Operation: " + stateOperationType + " completed.");
+//			if (stateOperationType.equals("MIGRATION")) {
+//				completeReconfiguration(0);
+//			} else {
+//				reconfigurationProfiler.onReplicationEnd();
+//				replicationInProgress = false;
+//			}
+//		}
+//	}
 
 	//****************************Scaling Actions****************************
 
