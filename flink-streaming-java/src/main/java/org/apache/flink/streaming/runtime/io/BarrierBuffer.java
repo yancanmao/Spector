@@ -34,11 +34,13 @@ import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import scopt.Check;
 
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Optional;
 
+import static org.apache.flink.runtime.checkpoint.CheckpointType.RECONFIGPOINT;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -60,6 +62,7 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 
 	/** Flags that indicate whether a channel is currently blocked/buffered. */
 	private volatile boolean[] blockedChannels;
+	private volatile boolean[] nonBlockedChannels;
 
 	/** The total number of channels that this buffer handles data from. */
 	private volatile int totalNumberOfInputChannels;
@@ -147,6 +150,7 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 		this.maxBufferedBytes = maxBufferedBytes;
 		this.totalNumberOfInputChannels = inputGate.getNumberOfInputChannels();
 		this.blockedChannels = new boolean[this.totalNumberOfInputChannels];
+		this.nonBlockedChannels = new boolean[this.totalNumberOfInputChannels];
 
 		this.bufferBlocker = checkNotNull(bufferBlocker);
 		this.queuedBuffered = new ArrayDeque<BufferOrEventSequence>();
@@ -197,7 +201,13 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 			else if (bufferOrEvent.getEvent().getClass() == CheckpointBarrier.class) {
 				if (!endOfStream) {
 					// process barriers only if there is a chance of the checkpoint completing
-					processBarrier((CheckpointBarrier) bufferOrEvent.getEvent(), bufferOrEvent.getChannelIndex());
+					// UPDATE: Extend the barrier passing to handle our special case, where reconfig point in key-level can be safely handled.
+					CheckpointBarrier checkpointBarrier = (CheckpointBarrier) bufferOrEvent.getEvent();
+					if (checkpointBarrier.getCheckpointOptions().getCheckpointType() != RECONFIGPOINT) {
+						processBarrier(checkpointBarrier, bufferOrEvent.getChannelIndex());
+					} else {
+						processReconfigBarrier(checkpointBarrier, bufferOrEvent.getChannelIndex());
+					}
 				}
 			}
 			else if (bufferOrEvent.getEvent().getClass() == CancelCheckpointMarker.class) {
@@ -220,6 +230,76 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 		if (currentBuffered != null) {
 			currentBuffered.open();
 			numQueuedBytes -= currentBuffered.size();
+		}
+	}
+
+	private void processReconfigBarrier(CheckpointBarrier receivedBarrier, int channelIndex) throws Exception {
+		final long barrierId = receivedBarrier.getId();
+
+		// fast path for single channel cases
+		if (totalNumberOfInputChannels == 1) {
+			if (barrierId > currentCheckpointId) {
+				// new checkpoint
+				currentCheckpointId = barrierId;
+				notifyCheckpoint(receivedBarrier);
+			}
+			return;
+		}
+
+		// -- general code path for multiple input channels --
+
+		if (numBarriersReceived > 0) {
+			// this is only true if some alignment is already progress and was not canceled
+
+			if (barrierId == currentCheckpointId) {
+				// regular case
+				onReconfigBarrier(channelIndex);
+			}
+			else if (barrierId > currentCheckpointId) {
+				// we did not complete the current checkpoint, another started before
+				LOG.warn("{}: Received checkpoint barrier for checkpoint {} before completing current checkpoint {}. " +
+						"Skipping current checkpoint.",
+					inputGate.getOwningTaskName(),
+					barrierId,
+					currentCheckpointId);
+
+				// let the task know we are not completing this
+				notifyAbort(currentCheckpointId, new CheckpointDeclineSubsumedException(barrierId));
+
+				// abort the current checkpoint
+				releaseBlocksAndResetBarriers();
+
+				// begin a the new checkpoint
+				beginNewReconfigAlignment(barrierId, channelIndex);
+			}
+			else {
+				// ignore trailing barrier from an earlier checkpoint (obsolete now)
+				return;
+			}
+		}
+		else if (barrierId > currentCheckpointId) {
+			// first barrier of a new checkpoint
+			beginNewReconfigAlignment(barrierId, channelIndex);
+		}
+		else {
+			// either the current checkpoint was canceled (numBarriers == 0) or
+			// this barrier is from an old subsumed checkpoint
+			return;
+		}
+
+		// check if we have all barriers - since canceled checkpoints always have zero barriers
+		// this can only happen on a non canceled checkpoint
+		if (numBarriersReceived + numClosedChannels == totalNumberOfInputChannels) {
+			// actually trigger checkpoint
+			if (LOG.isDebugEnabled()) {
+				LOG.debug("{}: Received all barriers, triggering checkpoint {} at {}.",
+					inputGate.getOwningTaskName(),
+					receivedBarrier.getId(),
+					receivedBarrier.getTimestamp());
+			}
+
+			releaseBlocksAndResetBarriers();
+			notifyCheckpoint(receivedBarrier);
 		}
 	}
 
@@ -451,6 +531,19 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 		numQueuedBytes = 0L;
 	}
 
+	private void beginNewReconfigAlignment(long checkpointId, int channelIndex) throws IOException {
+		currentCheckpointId = checkpointId;
+		onReconfigBarrier(channelIndex);
+
+		startOfAlignmentTimestamp = System.nanoTime();
+
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("{}: Starting stream alignment for checkpoint {}.",
+				inputGate.getOwningTaskName(),
+				checkpointId);
+		}
+	}
+
 	private void beginNewAlignment(long checkpointId, int channelIndex) throws IOException {
 		currentCheckpointId = checkpointId;
 		onBarrier(channelIndex);
@@ -472,6 +565,26 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 	 */
 	private boolean isBlocked(int channelIndex) {
 		return blockedChannels[channelIndex];
+	}
+
+	/**
+	 * Non-Blocking for the given channel index (assume the migrating keys are embedded), from which a barrier has been received.
+	 *
+	 * @param channelIndex The channel index to block.
+	 */
+	private void onReconfigBarrier(int channelIndex) throws IOException {
+		if (!nonBlockedChannels[channelIndex]) {
+			nonBlockedChannels[channelIndex] = true;
+
+			numBarriersReceived++;
+
+			LOG.info("++++++ {}: Received non-blocking barrier from channel {}.",
+				inputGate.getOwningTaskName(),
+				channelIndex);
+		}
+		else {
+			throw new IOException("Stream corrupt: Repeated barrier for same checkpoint on input " + channelIndex);
+		}
 	}
 
 	/**
@@ -506,6 +619,7 @@ public class BarrierBuffer implements CheckpointBarrierHandler {
 
 		for (int i = 0; i < blockedChannels.length; i++) {
 			blockedChannels[i] = false;
+			nonBlockedChannels[i] = false;
 		}
 
 		if (currentBuffered == null) {
