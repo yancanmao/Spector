@@ -68,7 +68,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static org.apache.flink.runtime.execution.ExecutionState.*;
-import static org.apache.flink.runtime.execution.ExecutionState.STANDBY;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -397,7 +396,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		} catch (InterruptedException | ExecutionException e) {
 			e.printStackTrace();
 		}
-		LOG.info("++++++ Update backup keygroups for task {}.", vertex.getTaskNameWithSubtaskIndex());
+		LOG.info("++++++ Dispatch task {} with standby tasks {}.", vertex.getTaskNameWithSubtaskIndex(), standbyTaskGateways);
 	}
 
 	/**

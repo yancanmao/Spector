@@ -138,6 +138,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
@@ -880,19 +881,37 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(
 		JobVertexID jobvertexId,
 		Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle) {
-			log.info("++++++ " + jobvertexId + " Receive backup state");
+		log.info("++++++ " + jobvertexId + " Receive backup state");
+		// TaskStateManager taskStateManager = replicaStateManager.getReplicas().get(jobvertexId);
+
+		// if (taskStateManager != null) {
+		// 	replicaStateManager.mergeState(jobvertexId, hashedKeyGroupToHandle);
+
+		// 	return CompletableFuture.completedFuture(Acknowledge.get());
+		// } else {
+		// 	final String message = "Cannot find standby task " + jobvertexId + " to dispatch state to it.";
+		// 	log.debug(message);
+
+		// 	throw new RuntimeException("++++++ Cannot find the corresponding taskStateManager");
+		// }
+
+		// Run the state merge asynchronously to avoid blocking the main thread
+		return CompletableFuture.supplyAsync(() -> {
 			TaskStateManager taskStateManager = replicaStateManager.getReplicas().get(jobvertexId);
 
 			if (taskStateManager != null) {
 				replicaStateManager.mergeState(jobvertexId, hashedKeyGroupToHandle);
-
-				return CompletableFuture.completedFuture(Acknowledge.get());
+				return Acknowledge.get();
 			} else {
 				final String message = "Cannot find standby task " + jobvertexId + " to dispatch state to it.";
 				log.debug(message);
-
 				throw new RuntimeException("++++++ Cannot find the corresponding taskStateManager");
 			}
+		}).exceptionally(ex -> {
+			// Handle any exceptions that occur during the asynchronous execution
+			log.error("Failed to dispatch state to standby task", ex);
+			throw new CompletionException(ex);
+		});
 	}
 
 	@Override
@@ -917,32 +936,37 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		final Task task = taskSlotTable.getTask(executionAttemptID);
 		if (task != null) {
 			List<TaskExecutorGateway> standbyTaskExecutorGateways = new ArrayList<>();
+			List<CompletableFuture<Void>> futureList = new ArrayList<>();
+
 			for (String standbyTaskGatewayAddress : standbyTaskGateways) {
 				if (!connectedTaskExecutorGateways.containsKey(standbyTaskGatewayAddress)) {
 					CompletableFuture<TaskExecutorGateway> taskExecutorGatewayFuture = getRpcService().connect(standbyTaskGatewayAddress, TaskExecutorGateway.class);
-					taskExecutorGatewayFuture.whenComplete(
-						(TaskExecutorGateway taskExecutorGateway, Throwable throwable) -> {
-							connectedTaskExecutorGateways.put(standbyTaskGatewayAddress, taskExecutorGateway);
-							standbyTaskExecutorGateways.add(taskExecutorGateway);
-						});
+					CompletableFuture<Void> future = taskExecutorGatewayFuture.thenAccept(taskExecutorGateway -> {
+						log.info("++++++ Connected to StandbyTask Gateway {} successfully.", standbyTaskGatewayAddress);
+						connectedTaskExecutorGateways.put(standbyTaskGatewayAddress, taskExecutorGateway);
+						standbyTaskExecutorGateways.add(taskExecutorGateway);
+					});
+					futureList.add(future);
 				} else {
 					standbyTaskExecutorGateways.add(connectedTaskExecutorGateways.get(standbyTaskGatewayAddress));
 				}
 			}
 
-			remoteReplicaRegistry.put(jobvertexId, standbyTaskExecutorGateways);
+			return FutureUtils.combineAll(futureList).thenApply(ignored -> {
+				remoteReplicaRegistry.put(jobvertexId, standbyTaskExecutorGateways);
 //			TaskStateManager taskStateManager = replicaStateManager.getReplicas().get(jobvertexId);
-			// save replica gateways to running task
-			TaskStateManager taskStateManager = task.getTaskStateManager();
-			Preconditions.checkNotNull(taskStateManager, "++++++ task state manager cannot be null during dispatchStandbyTaskGatewaysToTask");
-			taskStateManager.setStandbyTaskExecutorGateways(standbyTaskExecutorGateways);
+				// save replica gateways to running task
+				TaskStateManager taskStateManager = task.getTaskStateManager();
+				Preconditions.checkNotNull(taskStateManager, "++++++ task state manager cannot be null during dispatchStandbyTaskGatewaysToTask");
+				taskStateManager.setStandbyTaskExecutorGateways(standbyTaskExecutorGateways);
+				return Acknowledge.get();
+			});
 		} else {
 			final String message = "Cannot find task to update its configuration " + executionAttemptID + '.';
 
 			log.debug(message);
 			return FutureUtils.completedExceptionally(new TaskException(message));
 		}
-		return CompletableFuture.completedFuture(Acknowledge.get());
 	}
 
 
