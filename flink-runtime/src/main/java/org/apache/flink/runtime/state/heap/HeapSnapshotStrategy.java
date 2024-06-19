@@ -216,7 +216,7 @@ class HeapSnapshotStrategy<K>
 						}
 					}
 
-					LOG.info("++++++ Changeloged State: " + changelogCount + "/" + totalStateCount);
+					LOG.info("++++--- Changeloged State: " + changelogCount + "/" + totalStateCount);
 				}
 
 				@Override
@@ -358,7 +358,7 @@ class HeapSnapshotStrategy<K>
 						}
 					}
 
-					LOG.info("++++++ Changeloged State: " + changelogCount + "/" + totalStateCount);
+					LOG.info("++++--- State Migration Changeloged State: " + changelogCount + "/" + totalStateCount);
 
 					if (snapshotCloseableRegistry.unregisterCloseable(streamWithResultProvider)) {
 						KeyGroupRangeOffsets kgOffs = new KeyGroupRangeOffsets(keyGroupRange, keyGroupRangeOffsets, changelogs);
@@ -459,7 +459,7 @@ class HeapSnapshotStrategy<K>
 
 			outView.writeInt(hashedKeyGroupId);
 
-			LOG.info("+++++--- keyGroupRange: " + keyGroupRange +
+			LOG.debug("+++++--- keyGroupRange: " + keyGroupRange +
 				", alignedKeyGroupIndex: " + alignedKeyGroupId +
 				", offset: " + keyGroupRangeOffsets[keyGroupPos] +
 				", hashedKeyGroupIndex: " + hashedKeyGroupId);

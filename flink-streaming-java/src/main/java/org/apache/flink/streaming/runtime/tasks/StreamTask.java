@@ -1005,15 +1005,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 		LOG.info("++++++ let's reinitialize state: " + this + "  " + keyGroupRange + "  idInModel: " + idInModel);
 		try {
 			synchronized (lock) {
-				// TODO: optimize this part by transfer in rather than sel-compute. find out migrate in keygroup
-//				List<Integer> migrateInKeygroup = new ArrayList<>();
-//				for (int keyGroup = keyGroupRange.getStartKeyGroup(); keyGroup < keyGroupRange.getEndKeyGroup()+1; keyGroup++) {
-//					int hashedKeygroup = keyGroupRange.mapFromAlignedToHashed(keyGroup);
-//					if (!assignedKeyGroupRange.containsHashedKeyGroup(hashedKeygroup)) {
-//						migrateInKeygroup.add(hashedKeygroup);
-//					}
-//				}
-
 				this.assignedKeyGroupRange.update(keyGroupRange);
 				this.idInModel = idInModel;
 
@@ -1025,13 +1016,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					updateState(this.assignedKeyGroupRange, getEnvironment().getTaskInfo().getMaxNumberOfParallelSubtasks(), taskConfigManager.getDstAffectedKeyGroups());
 				}
 
-//				initializeState();
-//				openAllOperators();
-
 				getEnvironment().getMetricsManager().updateTaskId(
 					getEnvironment().getTaskInfo().getTaskNameWithSubtasks(), idInModel);
 
-//				initReconnect();
 				resume(); // resume the buffered processing
 			}
 		} catch (Exception e) {
@@ -1249,7 +1236,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 					if (failure != null) {
 						throw new CompletionException(failure);
 					}
-					LOG.info("++++++ Replicate snapshot to standby tasks completed");
+					LOG.info("++++++ Transfer snapshot to destination tasks completed");
 				});
 		}
 

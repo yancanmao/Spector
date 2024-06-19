@@ -143,7 +143,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
-import static org.apache.flink.runtime.spector.JobStateCoordinator.AckStatus.DONE;
 import static org.apache.flink.runtime.spector.SpectorOptions.*;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -831,74 +830,29 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		Time timeout) {
 		Task task = taskSlotTable.getTask(executionAttemptID);
 		// check whether the state is dispatched to the standby task.
-		if (task == null) {
-			log.info("++++++ " + jobvertexId + " Receive backup state");
-			TaskStateManager taskStateManager = replicaStateManager.getReplicas().get(jobvertexId);
+		JobManagerTaskRestore taskRestore = replicaStateManager.getTaskRestoreFromReplica(task.getJobVertexId(), keyGroupRange);
 
-			if (taskStateManager != null) {
-				JobID jobID = taskStateManager.getJobID();
-				JobManagerConnection jobManagerConnection = jobManagerTable.get(jobID);
+		log.info("++++--- Destination task " + executionAttemptID + " restore state size: " + taskRestore.getTaskStateSnapshot().getStateSize());
 
-//				replicaStateManager.mergeState(jobvertexId, taskRestore);
-//			taskStateManager.setTaskRestore(taskRestore);
+		task.assignNewState(
+			keyGroupRange,
+			idInModel,
+			taskRestore);
 
-				log.debug("++++++ " + jobvertexId + " Replicate completed");
-//				jobManagerConnection.getJobManagerGateway().acknowledgeStateTransmissionCompletion(
-//					jobID,
-//					executionAttemptID,
-//					DONE);
-
-				return CompletableFuture.completedFuture(Acknowledge.get());
-			} else {
-				final String message = "Cannot find standby task " + executionAttemptID + " to dispatch state to it.";
-				log.debug(message);
-
-				throw new RuntimeException("++++++ Cannot find the corresponding taskStateManager");
-			}
-		} else {
-			log.info("++++++ update task state of execution: " + executionAttemptID);
-			JobID jobID = task.getJobID();
-			JobManagerConnection jobManagerConnection = jobManagerTable.get(jobID);
-
-			JobManagerTaskRestore taskRestore = replicaStateManager.mergeTaskRestoreFromReplica(task.getJobVertexId(), keyGroupRange);
-
-			task.assignNewState(
-				keyGroupRange,
-				idInModel,
-				taskRestore);
-
-			log.debug("++++++ " + jobvertexId + " Migrate completed");
-//			jobManagerConnection.getJobManagerGateway().acknowledgeStateTransmissionCompletion(
-//				jobID,
-//				executionAttemptID,
-//				DONE);
-
-			return CompletableFuture.completedFuture(Acknowledge.get());
-		}
+		log.info("++++++ " + jobvertexId + " Migrate completed");
+		return CompletableFuture.completedFuture(Acknowledge.get());
 	}
 
 	@Override
 	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(
 		JobVertexID jobvertexId,
 		Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle) {
-		log.info("++++++ " + jobvertexId + " Receive backup state");
-		// TaskStateManager taskStateManager = replicaStateManager.getReplicas().get(jobvertexId);
-
-		// if (taskStateManager != null) {
-		// 	replicaStateManager.mergeState(jobvertexId, hashedKeyGroupToHandle);
-
-		// 	return CompletableFuture.completedFuture(Acknowledge.get());
-		// } else {
-		// 	final String message = "Cannot find standby task " + jobvertexId + " to dispatch state to it.";
-		// 	log.debug(message);
-
-		// 	throw new RuntimeException("++++++ Cannot find the corresponding taskStateManager");
-		// }
+		long stateSize = hashedKeyGroupToHandle.values().stream().mapToLong(stateHandle -> stateHandle.f1.getStateSize()).sum();
+		log.info("++++--- Standby Task " + jobvertexId + " Received State Size: " + stateSize);
 
 		// Run the state merge asynchronously to avoid blocking the main thread
 		return CompletableFuture.supplyAsync(() -> {
 			TaskStateManager taskStateManager = replicaStateManager.getReplicas().get(jobvertexId);
-
 			if (taskStateManager != null) {
 				replicaStateManager.mergeState(jobvertexId, hashedKeyGroupToHandle);
 				return Acknowledge.get();

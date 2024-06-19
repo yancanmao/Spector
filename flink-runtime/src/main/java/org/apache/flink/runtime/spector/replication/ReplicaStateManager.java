@@ -5,6 +5,8 @@ import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.state.*;
 import org.apache.flink.util.Preconditions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -14,6 +16,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * TODO: maybe we do not need this class, we assign a task to be a backup task, other task can access the task to get the backup state.
  */
 public class ReplicaStateManager {
+	protected final Logger log = LoggerFactory.getLogger(getClass());
+
 	private final Map<JobVertexID, TaskStateManager> replicas;
 
 	public ReplicaStateManager() {
@@ -27,7 +31,7 @@ public class ReplicaStateManager {
 	 * @param keyGroupRange
 	 * @return
 	 */
-	public JobManagerTaskRestore mergeTaskRestoreFromReplica(JobVertexID jobvertexId, KeyGroupRange keyGroupRange) {
+	public JobManagerTaskRestore getTaskRestoreFromReplica(JobVertexID jobvertexId, KeyGroupRange keyGroupRange) {
 		TaskStateManager taskStateManager = replicas.get(jobvertexId);
 		// directly assign backup taskrestore for the targeting task, and it will be updated in each operator during
 		// state initialization.
@@ -59,7 +63,10 @@ public class ReplicaStateManager {
 		TaskStateManager taskStateManager = replicas.get(jobvertexId);
 		Map<Integer, Tuple2<Long, StreamStateHandle>> localReplicatedStateHandle = ((TaskStateManagerImpl) taskStateManager).getHashedKeyGroupToHandles();
 		Preconditions.checkNotNull(localReplicatedStateHandle);
-		hashedKeyGroupToHandle.forEach(localReplicatedStateHandle::putIfAbsent);
+		localReplicatedStateHandle.putAll(hashedKeyGroupToHandle);
+
+		long stateSize = localReplicatedStateHandle.values().stream().mapToLong(stateHandle -> stateHandle.f1.getStateSize()).sum();
+        log.debug("++++--- Current total merged state size: " + stateSize);
 	}
 
 	public Map<JobVertexID, TaskStateManager> getReplicas() {
