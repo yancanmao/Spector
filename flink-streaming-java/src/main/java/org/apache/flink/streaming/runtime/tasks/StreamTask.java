@@ -1242,6 +1242,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
 		private void replicateStateHandleToReplicas(Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle) {
 			if (!hashedKeyGroupToHandle.isEmpty()) {
+				long start = System.currentTimeMillis();
 				TaskStateManager taskStateManager = owner.getEnvironment().getTaskStateManager();
 				List<TaskExecutorGateway> standbyTaskExecutorGateways = taskStateManager.getStandbyTaskExecutorGateways();
 				
@@ -1257,6 +1258,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 							LOG.error("Failed to replicate snapshot to standby tasks", failure);
 							throw new CompletionException(failure);
 						}
+						LOG.info("++++--- Complete replication: " + (System.currentTimeMillis() - start));
 						LOG.info("++++++ Replicate snapshot to standby tasks completed");
 					});
 			}

@@ -839,7 +839,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			idInModel,
 			taskRestore);
 
-		log.info("++++++ " + jobvertexId + " Migrate completed");
+		log.info("++++++ " + executionAttemptID + " Migrate completed");
 		return CompletableFuture.completedFuture(Acknowledge.get());
 	}
 

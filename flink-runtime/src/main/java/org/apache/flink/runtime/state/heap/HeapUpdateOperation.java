@@ -224,7 +224,7 @@ public class HeapUpdateOperation<K> {
 
 			int alignedKeyGroupIndex = keyGroupRange.mapFromHashedToAligned(hashedKeyGroup);
 
-			LOG.info("++++++-- keyGroupRange: " + keyGroupRange +
+			LOG.debug("++++++-- keyGroupRange: " + keyGroupRange +
 				", alignedKeyGroupIndex: " + keyGroupRange.mapFromHashedToAligned(hashedKeyGroup) +
 				", offset: " + offset +
 				", hashedKeyGroup: " + hashedKeyGroup);
@@ -244,7 +244,7 @@ public class HeapUpdateOperation<K> {
 					readVersion);
 			}
 
-			LOG.info("++++++-- Elapsed " + (System.currentTimeMillis() - start) + " ms");
+			LOG.debug("++++++-- Elapsed " + (System.currentTimeMillis() - start) + " ms");
 		}
 
 		return hashedKeyGroups;

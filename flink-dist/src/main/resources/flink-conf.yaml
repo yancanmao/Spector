@@ -329,7 +329,7 @@ spector.reconfig.sync_keys: 0
 spector.replicate_keys_filter: 0
 spector.reconfig.order_function: default
 
-netty.state.transmission.enabled: true
+netty.state.transmission.enabled: false
 netty.optimized.acknowledgement.enabled: false # do not make it true, not supported
 netty.optimized.deployment.enabled: false # do not make it true, not supported
 netty.chunked.acknowledgement.enabled: false

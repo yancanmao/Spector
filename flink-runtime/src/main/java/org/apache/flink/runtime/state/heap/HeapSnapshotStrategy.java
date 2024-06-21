@@ -344,16 +344,14 @@ class HeapSnapshotStrategy<K>
 						totalStateCount++;
 
 						if (affectedKeyGroups.contains(hashedKeyGroupId)) {
-							// Snapshot affected keygroup, if it is not in backup keygroup set, or it is in backup keygroup set but not ch
+							// Snapshot affected keygroup, if it is not in backup keygroup set, or it is in backup keygroup set but is not the latest
 							if (!backupKeyGroups.contains(hashedKeyGroupId)) {
 								checkAndSerializeAllKeyState(localStream, outView, keyGroupRangeOffsets, keyGroupPos,
 									alignedKeyGroupId, hashedKeyGroupId, cowStateStableSnapshots, stateNamesToId);
 								changelogCount++;
-							} else {
-								if (checkAndSerializeChanglogedKeyState(localStream, outView, keyGroupRangeOffsets, keyGroupPos,
-									alignedKeyGroupId, hashedKeyGroupId, changelogs, cowStateStableSnapshots, stateNamesToId)) {
-									changelogCount++;
-								}
+							} else if (checkAndSerializeChanglogedKeyState(localStream, outView, keyGroupRangeOffsets, keyGroupPos,
+								alignedKeyGroupId, hashedKeyGroupId, changelogs, cowStateStableSnapshots, stateNamesToId)) {
+								changelogCount++;
 							}
 						}
 					}
@@ -411,10 +409,10 @@ class HeapSnapshotStrategy<K>
 		Map<StateUID, Integer> stateNamesToId) throws IOException {
 		outView.writeInt(hashedKeyGroupId);
 
-		LOG.info("+++++--- keyGroupRange: " + keyGroupRange +
-			", alignedKeyGroupIndex: " + alignedKeyGroupId +
-			", offset: " + keyGroupRangeOffsets[keyGroupPos] +
-			", hashedKeyGroupIndex: " + hashedKeyGroupId);
+//		LOG.info("+++++--- keyGroupRange: " + keyGroupRange +
+//			", alignedKeyGroupIndex: " + alignedKeyGroupId +
+//			", offset: " + keyGroupRangeOffsets[keyGroupPos] +
+//			", hashedKeyGroupIndex: " + hashedKeyGroupId);
 
 		for (Map.Entry<StateUID, StateSnapshot> stateSnapshot :
 			cowStateStableSnapshots.entrySet()) {
@@ -459,10 +457,10 @@ class HeapSnapshotStrategy<K>
 
 			outView.writeInt(hashedKeyGroupId);
 
-			LOG.debug("+++++--- keyGroupRange: " + keyGroupRange +
-				", alignedKeyGroupIndex: " + alignedKeyGroupId +
-				", offset: " + keyGroupRangeOffsets[keyGroupPos] +
-				", hashedKeyGroupIndex: " + hashedKeyGroupId);
+//			LOG.debug("+++++--- keyGroupRange: " + keyGroupRange +
+//				", alignedKeyGroupIndex: " + alignedKeyGroupId +
+//				", offset: " + keyGroupRangeOffsets[keyGroupPos] +
+//				", hashedKeyGroupIndex: " + hashedKeyGroupId);
 
 			for (Map.Entry<StateUID, StateSnapshot> stateSnapshot :
 			cowStateStableSnapshots.entrySet()) {

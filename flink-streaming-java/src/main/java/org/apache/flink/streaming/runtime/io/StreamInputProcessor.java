@@ -411,7 +411,7 @@ public class StreamInputProcessor<IN> {
 	}
 
 	public void completeMigrationForKey(int keygroup) {
-		LOG.info("++++++ Complete migrating affected keygroup: " + keygroup);
+		LOG.debug("++++++ Complete migrating affected keygroup: " + keygroup);
 		migratingKeys.remove(keygroup);
 		migratedKeys.add(keygroup);
 	}

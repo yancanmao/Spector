@@ -35,6 +35,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * This class is the default implementation of {@link TaskStateManager} and collaborates with the job manager
@@ -61,7 +62,7 @@ public class TaskStateManagerImpl implements TaskStateManager {
 	private JobManagerTaskRestore jobManagerTaskRestore;
 
 	/** The data given by the job manager to restore the job. This is null for a new job without previous state. */
-	private Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandles;
+	private final Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandles;
 
 	/** The local state store to which this manager reports local state snapshots. */
 	private final TaskLocalStateStore localStateStore;
@@ -83,7 +84,7 @@ public class TaskStateManagerImpl implements TaskStateManager {
 		this.executionAttemptID = executionAttemptID;
 		this.checkpointResponder = checkpointResponder;
 		this.standbyTaskExecutorGateways = null;
-		this.hashedKeyGroupToHandles = new HashMap<>();
+		this.hashedKeyGroupToHandles = new ConcurrentHashMap<>();
 	}
 
 	@Override

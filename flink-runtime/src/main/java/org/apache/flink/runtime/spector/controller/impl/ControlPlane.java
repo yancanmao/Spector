@@ -75,7 +75,8 @@ public class ControlPlane {
 					operatorName,
 					targetOperators.get(operatorName),
 					stateMigrationPlanner,
-					executorMapping);
+					executorMapping,
+					maxParallelism);
 
 				controller.initMetrics(jobReconfigActor.getJobGraph(), vertexID, configuration, parallelism);
 				this.controllers.put(vertexID, controller);
@@ -83,7 +84,7 @@ public class ControlPlane {
 		}
 	}
 
-	private static Map<String, List<String>> generateExecutorMapping(int parallelism, int maxParallelism) {
+	public static Map<String, List<String>> generateExecutorMapping(int parallelism, int maxParallelism) {
 		Map<String, List<String>> executorMapping = new HashMap<>();
 
 		int numExecutors = generateExecutorDelegates(parallelism).size();

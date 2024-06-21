@@ -70,9 +70,9 @@ public class StateMigrationPlannerImpl implements StateMigrationPlanner {
 									 ExecutionGraph executionGraph) {
 		this.configuration = configuration;
 
-		int numAffectedKeys = configuration.getInteger(NUM_AFFECTED_KEYS);
+//		int numAffectedKeys = configuration.getInteger(NUM_AFFECTED_KEYS);
 		this.syncKeys = configuration.getInteger(SYNC_KEYS) == 0 ?
-			numAffectedKeys : configuration.getInteger(SYNC_KEYS);
+			Integer.MAX_VALUE / 2 : configuration.getInteger(SYNC_KEYS);
 
 		this.orderFunction = configuration.getString(ORDER_FUNCTION);
 

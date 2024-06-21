@@ -271,7 +271,7 @@ public class NestedMapsStateTable<K, N, S> extends StateTable<K, N, S> {
 
 	@Override
 	public void put(K key, int hashedKeyGroupIndex, N namespace, S value) {
-		tryAddToChangelogs(hashedKeyGroupIndex);
+		// This is the lower method invoked by upper layer method, do not need to add change log
 		putAndGetOld(key, hashedKeyGroupIndex, namespace, value);
 	}
 

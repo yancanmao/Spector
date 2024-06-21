@@ -1,6 +1,5 @@
 package org.apache.flink.runtime.spector.controller.impl;
 
-import org.apache.commons.math3.random.RandomGenerator;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
@@ -16,12 +15,14 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import static org.apache.flink.runtime.spector.SpectorOptions.*;
+import static org.apache.flink.runtime.spector.controller.impl.ControlPlane.generateExecutorMapping;
 
 public class DummyController extends Thread implements org.apache.flink.runtime.spector.controller.OperatorController {
 
 	private static final Logger LOG = LoggerFactory.getLogger(DummyController.class);
 	private final String reconfigScenario;
 	private final Configuration configuration;
+	private final int maxParallelism;
 
 	private StateMigrationPlanner stateMigrationPlanner;
 
@@ -46,7 +47,8 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 	private final int syncKeys;
 
 	public DummyController(Configuration configuration, String name, int start,
-						   StateMigrationPlanner stateMigrationPlanner, Map<String, List<String>> executorMapping) {
+						   StateMigrationPlanner stateMigrationPlanner, Map<String, List<String>> executorMapping,
+						   int maxParallelism) {
 		this.configuration = configuration;
 		this.name = name;
 		this.reconfigScenario = configuration.getString(RECONFIG_SCENARIO);
@@ -63,6 +65,7 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 		this.stateMigrationPlanner = stateMigrationPlanner;
 
 		this.executorMapping = executorMapping;
+		this.maxParallelism = maxParallelism;
 
 		this.random = new Random();
 		this.random.setSeed(System.currentTimeMillis());
@@ -124,6 +127,8 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 					dynamicExp();
 				} else if (reconfigScenario.equals("static")) {
 					staticExp();
+				} else if (reconfigScenario.equals("stock")) {
+					stockExp();
 				} else {
 					throw new UnsupportedOperationException();
 				}
@@ -169,6 +174,42 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 		((StateMigrationPlannerImpl) stateMigrationPlanner).changePlan(8, 2, "default");
 		Thread.sleep(30000 - (System.currentTimeMillis() - start));
 		loadBalanceZipf();
+	}
+
+	private void stockExp() throws InterruptedException {
+		long start = System.currentTimeMillis();
+		// Step 1: Scaling in from 16 to 4
+		Map<String, List<String>> executorMapping1 = rescale(4);
+		Preconditions.checkState(executorMapping1.size() == executorMapping.size(),
+			"++++++ The size of executor mapping has to be unchanged");
+		// run state migration
+		triggerNonblockingAction(
+			"trigger scaling in from 16 to 4",
+			() -> stateMigrationPlanner.remap(executorMapping1),
+			executorMapping1);
+		Thread.sleep(30000 - (System.currentTimeMillis() - start));
+
+		start = System.currentTimeMillis();
+		// Step 2: Scaling out from 4 to 8
+		Map<String, List<String>> executorMapping2 = rescale(8);
+		Preconditions.checkState(executorMapping2.size() == executorMapping.size(),
+			"++++++ The size of executor mapping has to be unchanged");
+		// run state migration
+		triggerNonblockingAction(
+			"trigger scaling out from 4 to 8",
+			() -> stateMigrationPlanner.remap(executorMapping2),
+			executorMapping2);
+		Thread.sleep(30000 - (System.currentTimeMillis() - start));
+
+		// Step 3: Scaling in from 8 to 6
+		Map<String, List<String>> executorMapping3 = rescale(6);
+		Preconditions.checkState(executorMapping3.size() == executorMapping.size(),
+			"++++++ The size of executor mapping has to be unchanged");
+		// run state migration
+		triggerNonblockingAction(
+			"trigger scaling in from 8 to 6",
+			() -> stateMigrationPlanner.remap(executorMapping3),
+			executorMapping3);
 	}
 
 	private void staticExp() throws InterruptedException {
@@ -345,17 +386,8 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 	}
 
 	private void executorMappingCheck(Map<String, List<String>> newExecutorMapping) {
-		int maxParallelism = 0;
-		int newMaxParallelism = 0;
-
-		for (List<String> keys : executorMapping.values()) {
-			maxParallelism += keys.size();
-		}
-
-		for (List<String> keys : newExecutorMapping.values()) {
-			newMaxParallelism += keys.size();
-		}
-
+		int maxParallelism = executorMapping.values().stream().mapToInt(List::size).sum();
+		int newMaxParallelism = newExecutorMapping.values().stream().mapToInt(List::size).sum();
 		Preconditions.checkState(maxParallelism == newMaxParallelism,
 			"++++++ new executor mapping has inconsistent max parallelism");
 	}
@@ -410,6 +442,21 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 			curTaskKeys.subList(0, keysToMigrate).clear();
 		}
 	}
+
+	private Map<String, List<String>> rescale(int parallelism) {
+		Map<String, List<String>> newExecutorMapping = generateExecutorMapping(parallelism, maxParallelism);
+		if (parallelism > executorMapping.size()) {
+			// scale out scenario do nothing
+			throw new UnsupportedOperationException("++++++ Parallelism cannot exceed the preserved slots in ExecutorMapping");
+		} else {
+			// fill in empty keygrouperange for those empty slots in ExecutorMapping
+            executorMapping.keySet().stream()
+				.filter(taskId -> !newExecutorMapping.containsKey(taskId))
+				.forEach(taskId -> newExecutorMapping.put(taskId, new ArrayList<>()));
+		}
+		return newExecutorMapping;
+	}
+
 
 	private void triggerNonblockingAction(String logStr, Runnable runnable, Map<String, List<String>> partitionAssignment) {
 		LOG.info("------ " + logStr + "   partitionAssignment: " + partitionAssignment);

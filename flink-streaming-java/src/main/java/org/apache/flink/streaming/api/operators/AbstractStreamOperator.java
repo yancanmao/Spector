@@ -288,7 +288,7 @@ public abstract class AbstractStreamOperator<OUT>
 		final PrioritizedOperatorSubtaskState prioritizedOperatorSubtaskStates =
 			taskStateManager.prioritizedOperatorState(getOperatorID());
 		// TODO: managed tate handle also need to be updated.
-		List<StateObjectCollection<KeyedStateHandle>> stateHandlesList = prioritizedOperatorSubtaskStates.getPrioritizedManagedKeyedState();
+		List<StateObjectCollection<KeyedStateHandle>> stateHandlesList = prioritizedOperatorSubtaskStates.getPrioritizedRawKeyedState();
 		int idx = 0;
 		// step 2: create a state table update operation to update the state table by read the input view
 		while (idx < stateHandlesList.size()) {
