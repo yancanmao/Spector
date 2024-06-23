@@ -187,7 +187,12 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 			"trigger scaling in from 16 to 4",
 			() -> stateMigrationPlanner.remap(executorMapping1),
 			executorMapping1);
-		Thread.sleep(30000 - (System.currentTimeMillis() - start));
+		long timeElapsed = System.currentTimeMillis() - start;
+		if (timeElapsed > 10000) {
+			Thread.sleep(10000 - timeElapsed % 10000);
+		}
+		Thread.sleep(10000 - timeElapsed);
+
 
 		start = System.currentTimeMillis();
 		// Step 2: Scaling out from 4 to 8
@@ -199,7 +204,11 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 			"trigger scaling out from 4 to 8",
 			() -> stateMigrationPlanner.remap(executorMapping2),
 			executorMapping2);
-		Thread.sleep(30000 - (System.currentTimeMillis() - start));
+		timeElapsed = System.currentTimeMillis() - start;
+		if (timeElapsed > 10000) {
+			Thread.sleep(10000 - timeElapsed % 10000);
+		}
+		Thread.sleep(10000 - timeElapsed);
 
 		// Step 3: Scaling in from 8 to 6
 		Map<String, List<String>> executorMapping3 = rescale(6);

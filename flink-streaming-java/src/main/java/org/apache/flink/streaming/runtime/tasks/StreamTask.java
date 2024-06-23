@@ -1200,44 +1200,35 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			}
 		}
 
-		private void transferStateHandleToDstTasks(Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle) {
+		private void transferStateHandleToDstTasks(Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle) throws ExecutionException, InterruptedException {
+			long start = System.currentTimeMillis();
 			Map<Integer, TaskExecutorGateway> srcKeyGroupsWithDstGateway = ((RuntimeEnvironment) owner.getEnvironment()).getTaskConfigManager().getSrcKeyGroupsWithDstGateway();
-			// Prepare state handle to send, according to keys and its future owning tasks.
-			Map<TaskExecutorGateway, Map<Integer, Tuple2<Long, StreamStateHandle>>> gatewayToStateHandle = srcKeyGroupsWithDstGateway
-				.entrySet()
-				.stream()
-				.filter(entry -> hashedKeyGroupToHandle.containsKey(entry.getKey()))
-				.collect(Collectors.groupingBy(
-					Map.Entry::getValue,
-					Collectors.toMap(
-						Map.Entry::getKey,
-						entry -> hashedKeyGroupToHandle.get(entry.getKey())
-					)
-				));
+			// Prepare futures for transferring each individual state handle
+			List<CompletableFuture<Acknowledge>> dispatchStateToStandbyTaskFutures = new ArrayList<>();
 
-			// final Collection<CompletableFuture<Acknowledge>> dispatchStateToStandbyTaskFutures = new ArrayList<>();
-			// // send all packed state handle to remote dst tasks.
-			// for (Map.Entry<TaskExecutorGateway, Map<Integer, Tuple2<Long, StreamStateHandle>>> keygroupWithGateway : gatewayToStateHandle.entrySet()) {
-			// 	// dispatch state to remote standbyTasks.
-			// 	dispatchStateToStandbyTaskFutures.add(keygroupWithGateway.getKey().dispatchStateToStandbyTask(owner.getEnvironment().getJobVertexId(), hashedKeyGroupToHandle));
-			// }
+			// Transfer each entry of the hashedKeyGroupToHandle individually
+			for (Map.Entry<Integer, Tuple2<Long, StreamStateHandle>> entry : hashedKeyGroupToHandle.entrySet()) {
+				int keyGroup = entry.getKey();
+				Tuple2<Long, StreamStateHandle> stateHandle = entry.getValue();
 
-			final Collection<CompletableFuture<Acknowledge>> dispatchStateToStandbyTaskFutures = gatewayToStateHandle
-				.entrySet()
-				.stream()
-				.map(entry -> entry.getKey().dispatchStateToStandbyTask(
-					owner.getEnvironment().getJobVertexId(), 
-					entry.getValue()))
-				.collect(Collectors.toList());
+				TaskExecutorGateway dstGateway = srcKeyGroupsWithDstGateway.get(keyGroup);
+				if (dstGateway != null) {
+					CompletableFuture<Acknowledge> future = dstGateway.dispatchStateToStandbyTask(
+						owner.getEnvironment().getJobVertexId(),
+						Collections.singletonMap(keyGroup, stateHandle));
+					dispatchStateToStandbyTaskFutures.add(future);
+				}
+			}
 
-			FutureUtils
-				.combineAll(dispatchStateToStandbyTaskFutures)
+
+			// Log the completion and time taken for the transfer
+			FutureUtils.combineAll(dispatchStateToStandbyTaskFutures)
 				.whenComplete((ignored, failure) -> {
-					if (failure != null) {
-						throw new CompletionException(failure);
-					}
-					LOG.info("++++++ Transfer snapshot to destination tasks completed");
-				});
+				if (failure != null) {
+					throw new CompletionException(failure);
+				}
+				LOG.info("++++--- Complete transfer: " + (System.currentTimeMillis() - start));
+			}).get(); // Block until all transfers are completed
 		}
 
 		private void replicateStateHandleToReplicas(Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle) {
@@ -1245,12 +1236,24 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 				long start = System.currentTimeMillis();
 				TaskStateManager taskStateManager = owner.getEnvironment().getTaskStateManager();
 				List<TaskExecutorGateway> standbyTaskExecutorGateways = taskStateManager.getStandbyTaskExecutorGateways();
-				
+
 				// Prepare the list of futures for dispatching state
-				List<CompletableFuture<Acknowledge>> dispatchStateToStandbyTaskFutures = standbyTaskExecutorGateways.stream()
-					.map(gateway -> gateway.dispatchStateToStandbyTask(owner.getEnvironment().getJobVertexId(), hashedKeyGroupToHandle))
-					.collect(Collectors.toList());
-		
+				List<CompletableFuture<Acknowledge>> dispatchStateToStandbyTaskFutures = new ArrayList<>();
+
+				// Transfer each entry of the hashedKeyGroupToHandle individually to each standby task executor gateway
+				for (Map.Entry<Integer, Tuple2<Long, StreamStateHandle>> entry : hashedKeyGroupToHandle.entrySet()) {
+					int keyGroup = entry.getKey();
+					Tuple2<Long, StreamStateHandle> stateHandle = entry.getValue();
+
+					standbyTaskExecutorGateways.forEach(gateway -> {
+						CompletableFuture<Acknowledge> future = gateway.dispatchStateToStandbyTask(
+							owner.getEnvironment().getJobVertexId(),
+							Collections.singletonMap(keyGroup, stateHandle)
+						);
+						dispatchStateToStandbyTaskFutures.add(future);
+					});
+				}
+
 				// Combine all futures and handle completion
 				FutureUtils.combineAll(dispatchStateToStandbyTaskFutures)
 					.whenComplete((ignored, failure) -> {
@@ -1259,8 +1262,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 							throw new CompletionException(failure);
 						}
 						LOG.info("++++--- Complete replication: " + (System.currentTimeMillis() - start));
-						LOG.info("++++++ Replicate snapshot to standby tasks completed");
-					});
+					}).join(); // Block until all transfers are completed
 			}
 		}
 

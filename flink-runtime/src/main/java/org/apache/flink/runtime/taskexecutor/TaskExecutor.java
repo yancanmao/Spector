@@ -828,9 +828,14 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 		KeyGroupRange keyGroupRange,
 		int idInModel,
 		Time timeout) {
+		log.info("++++--- Destination task " + executionAttemptID + " start dispatch");
+
+		long start = System.currentTimeMillis();
+
 		Task task = taskSlotTable.getTask(executionAttemptID);
 		// check whether the state is dispatched to the standby task.
-		JobManagerTaskRestore taskRestore = replicaStateManager.getTaskRestoreFromReplica(task.getJobVertexId(), keyGroupRange);
+		JobManagerTaskRestore taskRestore = replicaStateManager.getTaskRestoreFromReplica(task.getJobVertexId(),
+			task.getTaskConfigManager().getDstAffectedKeyGroups(), keyGroupRange);
 
 		log.info("++++--- Destination task " + executionAttemptID + " restore state size: " + taskRestore.getTaskStateSnapshot().getStateSize());
 
@@ -839,7 +844,7 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 			idInModel,
 			taskRestore);
 
-		log.info("++++++ " + executionAttemptID + " Migrate completed");
+		log.info("++++--- Destination task " + executionAttemptID + " Migrate completed: " + (System.currentTimeMillis() - start));
 		return CompletableFuture.completedFuture(Acknowledge.get());
 	}
 
@@ -847,8 +852,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 	public CompletableFuture<Acknowledge> dispatchStateToStandbyTask(
 		JobVertexID jobvertexId,
 		Map<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle) {
-		long stateSize = hashedKeyGroupToHandle.values().stream().mapToLong(stateHandle -> stateHandle.f1.getStateSize()).sum();
-		log.info("++++--- Standby Task " + jobvertexId + " Received State Size: " + stateSize);
+//		long stateSize = hashedKeyGroupToHandle.values().stream().mapToLong(stateHandle -> stateHandle.f1.getStateSize()).sum();
+//		log.info("++++--- Standby Task " + jobvertexId + " Received State Size: " + stateSize);
 
 		// Run the state merge asynchronously to avoid blocking the main thread
 		return CompletableFuture.supplyAsync(() -> {

@@ -776,7 +776,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 				network.getTaskEventDispatcher(),
 				checkpointResponder,
 				taskManagerConfig,
-				taskConfigManager,
+				getTaskConfigManager(),
 				keyGroupRange,
 				metrics,
 				this);
@@ -1382,7 +1382,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 		Map<Integer, TaskExecutorGateway> srcKeyGroupsWithDstGateway,
 		KeyGroupRange keyGroupRange) {
 
-		taskConfigManager.prepareReconfigMeta(
+		getTaskConfigManager().prepareReconfigMeta(
 			reconfigId,
 			reconfigOptions,
 			resultPartitionDeploymentDescriptors,
@@ -1394,7 +1394,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	}
 
 	public void updateBackupKeyGroups(Set<Integer> backupKeyGroups) {
-		taskConfigManager.setBackupKeyGroups(backupKeyGroups);
+		getTaskConfigManager().setBackupKeyGroups(backupKeyGroups);
 	}
 
 	public void assignNewState(KeyGroupRange keyGroupRange, int idInModel, JobManagerTaskRestore taskRestore) {
@@ -1408,7 +1408,7 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	}
 
 	public void createNewResultPartitions() throws IOException {
-		taskConfigManager.createNewResultPartitions();
+		getTaskConfigManager().createNewResultPartitions();
 	}
 
 	// ------------------------------------------------------------------------
@@ -1595,6 +1595,10 @@ public class Task implements Runnable, TaskActions, CheckpointListener {
 	/** The manager for state of operators running in this task/slot. */
 	public TaskStateManager getTaskStateManager() {
 		return taskStateManager;
+	}
+
+	public TaskConfigManager getTaskConfigManager() {
+		return taskConfigManager;
 	}
 
 	// ------------------------------------------------------------------------

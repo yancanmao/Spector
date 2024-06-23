@@ -375,7 +375,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 //		System.out.println("++++++Current state size: " + checkpoint.getStateSize());
 		if (checkpoint.getProperties().getCheckpointType() == CheckpointType.RECONFIGPOINT) {
 			TaskStateStats taskStateStats = statsCallback.getTaskStateStats(targetVertex.getJobVertexId());
-			long transferDuration = taskStateStats.getSummaryStats().getSyncCheckpointDurationStats().getMaximum();
+			long transferDuration = taskStateStats.getSummaryStats().getAsyncCheckpointDurationStats().getMaximum();
 			long syncDuration = checkpoint.getDuration() - transferDuration;
 			reconfigurationProfiler.onSyncEnd(syncDuration);
 			LOG.info("++++++ redistribute operator states");

@@ -27,7 +27,6 @@ import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.runtime.taskmanager.CheckpointResponder;
 
-import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -208,22 +207,24 @@ public class TaskStateManagerImpl implements TaskStateManager {
 		return hashedKeyGroupToHandles;
 	}
 
-	public JobManagerTaskRestore getTaskRestoreFromStateHandle(JobVertexID jobvertexId, KeyGroupRange keyGroupRange) {
+	public JobManagerTaskRestore getTaskRestoreFromStateHandle(JobVertexID jobvertexId, Collection<Integer> migratingInKeygroups, KeyGroupRange keyGroupRange) {
 		List<KeyedStateHandle> keyGroupsStateHandles = new ArrayList<>();
 
 //		for (Map.Entry<Integer, Tuple2<Long, StreamStateHandle>> hashedKeyGroupToHandle: hashedKeyGroupToHandles.entrySet()) {
-		for (int hashedKeyGroup : keyGroupRange.getFromAlignedToHashed().values()) {
-			Tuple2<Long, StreamStateHandle> hashedKeyGroupToHandle = hashedKeyGroupToHandles.get(hashedKeyGroup);
-//			Preconditions.checkNotNull(hashedKeyGroupToHandle, "++++++ Local replicated state handle must contain migrating state handles " + hashedKeyGroup);
-			if (hashedKeyGroupToHandle == null) {
-				continue;
-			}
-			int alignedKeyGroupId = keyGroupRange.mapFromHashedToAligned(hashedKeyGroup);
-			// keyGroupRange which length is 1
-			KeyGroupRange rangeOfOneKeyGroupRange = KeyGroupRange.of(alignedKeyGroupId, alignedKeyGroupId);
-			keyGroupsStateHandles.add(new KeyGroupsStateHandle(
-				new KeyGroupRangeOffsets(rangeOfOneKeyGroupRange, new long[]{hashedKeyGroupToHandle.f0}), hashedKeyGroupToHandle.f1));
-		}
+        //			Preconditions.checkNotNull(hashedKeyGroupToHandle, "++++++ Local replicated state handle must contain migrating state handles " + hashedKeyGroup);
+        // keyGroupRange which length is 1
+        keyGroupRange.getFromAlignedToHashed().values().stream().mapToInt(hashedKeyGroup -> hashedKeyGroup)
+			.filter(migratingInKeygroups::contains)
+			.forEach(hashedKeyGroup -> {
+            Tuple2<Long, StreamStateHandle> hashedKeyGroupToHandle = hashedKeyGroupToHandles.get(hashedKeyGroup);
+            if (hashedKeyGroupToHandle == null) {
+                return;
+            }
+            int alignedKeyGroupId = keyGroupRange.mapFromHashedToAligned(hashedKeyGroup);
+            KeyGroupRange rangeOfOneKeyGroupRange = KeyGroupRange.of(alignedKeyGroupId, alignedKeyGroupId);
+            keyGroupsStateHandles.add(new KeyGroupsStateHandle(
+                    new KeyGroupRangeOffsets(rangeOfOneKeyGroupRange, new long[]{hashedKeyGroupToHandle.f0}), hashedKeyGroupToHandle.f1));
+        });
 
 		// create a new jobmanager task restore.
 		TaskStateSnapshot taskState = new TaskStateSnapshot(1);

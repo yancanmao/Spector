@@ -8,6 +8,7 @@ import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -28,16 +29,17 @@ public class ReplicaStateManager {
 	 * The API to retrieve task restore from the replica tasks.
 	 *
 	 * @param jobvertexId
+	 * @param dstAffectedKeyGroups
 	 * @param keyGroupRange
 	 * @return
 	 */
-	public JobManagerTaskRestore getTaskRestoreFromReplica(JobVertexID jobvertexId, KeyGroupRange keyGroupRange) {
+	public JobManagerTaskRestore getTaskRestoreFromReplica(JobVertexID jobvertexId, Collection<Integer> migratingInKeygroups, KeyGroupRange keyGroupRange) {
 		TaskStateManager taskStateManager = replicas.get(jobvertexId);
 		// directly assign backup taskrestore for the targeting task, and it will be updated in each operator during
 		// state initialization.
 		Preconditions.checkNotNull(taskStateManager);
 
-		return ((TaskStateManagerImpl) taskStateManager).getTaskRestoreFromStateHandle(jobvertexId, keyGroupRange);
+		return ((TaskStateManagerImpl) taskStateManager).getTaskRestoreFromStateHandle(jobvertexId, migratingInKeygroups, keyGroupRange);
 	}
 
 	public void put(JobVertexID jobvertexId, TaskStateManager taskStateManager) {
@@ -64,9 +66,8 @@ public class ReplicaStateManager {
 		Map<Integer, Tuple2<Long, StreamStateHandle>> localReplicatedStateHandle = ((TaskStateManagerImpl) taskStateManager).getHashedKeyGroupToHandles();
 		Preconditions.checkNotNull(localReplicatedStateHandle);
 		localReplicatedStateHandle.putAll(hashedKeyGroupToHandle);
-
-		long stateSize = localReplicatedStateHandle.values().stream().mapToLong(stateHandle -> stateHandle.f1.getStateSize()).sum();
-        log.debug("++++--- Current total merged state size: " + stateSize);
+//		long stateSize = localReplicatedStateHandle.values().stream().mapToLong(stateHandle -> stateHandle.f1.getStateSize()).sum();
+//        log.debug("++++--- Current total merged state size: " + stateSize);
 	}
 
 	public Map<JobVertexID, TaskStateManager> getReplicas() {
