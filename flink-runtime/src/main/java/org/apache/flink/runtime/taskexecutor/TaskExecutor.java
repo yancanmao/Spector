@@ -834,10 +834,15 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
 
 		Task task = taskSlotTable.getTask(executionAttemptID);
 		// check whether the state is dispatched to the standby task.
-		JobManagerTaskRestore taskRestore = replicaStateManager.getTaskRestoreFromReplica(task.getJobVertexId(),
+//		Preconditions.checkNotNull(task.getTaskConfigManager().getDstAffectedKeyGroups(),
+//			"++++++ Task " + executionAttemptID + " is not a destination task to restore state");
+		JobManagerTaskRestore taskRestore = task.getTaskConfigManager().getDstAffectedKeyGroups() == null ?
+			null : replicaStateManager.getTaskRestoreFromReplica(task.getJobVertexId(),
 			task.getTaskConfigManager().getDstAffectedKeyGroups(), keyGroupRange);
 
-		log.info("++++--- Destination task " + executionAttemptID + " restore state size: " + taskRestore.getTaskStateSnapshot().getStateSize());
+		if (taskRestore != null) {
+			log.info("++++--- Destination task " + executionAttemptID + " restore state size: " + taskRestore.getTaskStateSnapshot().getStateSize());
+		}
 
 		task.assignNewState(
 			keyGroupRange,

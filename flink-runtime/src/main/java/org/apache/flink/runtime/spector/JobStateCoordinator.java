@@ -660,6 +660,7 @@ public class JobStateCoordinator implements JobReconfigActor, CheckpointProgress
 			CompletableFuture<Void> scheduledRescale;
 
 			if (jobExecutionPlan.isAffectedTask(i)) {
+//			if (jobExecutionPlan.isDestinationSubtask(i)) {
 				LOG.info("++++++ Schedule State Update for task: " + i);
 				scheduledRescale = executionAttempt.scheduleReconfig(reconfigId,
 					ReconfigOptions.REDISTRIBUTE_STATE,
