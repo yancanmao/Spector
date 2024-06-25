@@ -142,12 +142,18 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 	}
 
 	private void dynamicExp() throws InterruptedException {
+		// Phase 1 shuffle 25% of the entire state.
 		Map<String, List<String>> executorMapping1 = deepCopy(executorMapping);
-		Map<String, List<String>> executorMapping2 = deepCopy(executorMapping);
 		Map<String, List<String>> selectedTasks = selectAffectedTasks(numAffectedTasks, executorMapping1);
+		equiShuffle(numAffectedKeys / 4, selectedTasks);
+
+		// Phase 2 shuffle 100% of the entire state.
+		Map<String, List<String>> executorMapping2 = deepCopy(executorMapping1);
+		selectedTasks = selectAffectedTasks(numAffectedTasks, executorMapping2);
 		equiShuffle(numAffectedKeys, selectedTasks);
 
 		executorMappingCheck(executorMapping1);
+		executorMappingCheck(executorMapping2);
 
 		long start = System.currentTimeMillis();
 		// Phase 1: Set batching all.
@@ -222,12 +228,18 @@ public class DummyController extends Thread implements org.apache.flink.runtime.
 	}
 
 	private void staticExp() throws InterruptedException {
+		// Phase 1 shuffle 25% of the entire state.
 		Map<String, List<String>> executorMapping1 = deepCopy(executorMapping);
-		Map<String, List<String>> executorMapping2 = deepCopy(executorMapping);
 		Map<String, List<String>> selectedTasks = selectAffectedTasks(numAffectedTasks, executorMapping1);
+		equiShuffle(numAffectedKeys / 4, selectedTasks);
+
+		// Phase 2 shuffle 100% of the entire state.
+		Map<String, List<String>> executorMapping2 = deepCopy(executorMapping1);
+		selectedTasks = selectAffectedTasks(numAffectedTasks, executorMapping2);
 		equiShuffle(numAffectedKeys, selectedTasks);
 
 		executorMappingCheck(executorMapping1);
+		executorMappingCheck(executorMapping2);
 
 		long start = System.currentTimeMillis();
 		// Phase 1: Set batching all.
